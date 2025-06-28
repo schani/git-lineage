@@ -36,6 +36,24 @@ cargo run -- screenshot --config test_configs/default.json --width 100 --height 
 cargo run -- screenshot --config test_configs/default.json
 ```
 
+### Command Execution Mode (Automated Testing)
+
+Execute commands against configurations and get the resulting state:
+
+```bash
+# Execute a command and save result
+cargo run -- execute --config test_configs/default.json --command "next_panel" --output result.json
+
+# Execute with screenshot generation
+cargo run -- execute --config test_configs/default.json --command "toggle_diff" --screenshot --output result.json
+
+# Available commands include:
+# Panel navigation: next_panel, previous_panel
+# File navigator: up, down, expand, collapse, select_file, start_search, search:a, end_search
+# History: history_up, history_down, select_commit
+# Inspector: inspector_up, inspector_down, page_up, page_down, toggle_diff, goto_top, goto_bottom
+```
+
 ## Visual Testing System
 
 The project includes a comprehensive visual testing system that allows you to:

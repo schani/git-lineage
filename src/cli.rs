@@ -27,4 +27,25 @@ pub enum Commands {
         #[arg(long, default_value = "40")]
         height: u16,
     },
+    /// Execute a command against a configuration and output the result
+    Execute {
+        /// Path to the JSON configuration file
+        #[arg(short, long)]
+        config: String,
+        /// Command to execute (e.g., "next_panel", "up", "search:a")
+        #[arg(short = 'x', long)]
+        command: String,
+        /// Output file for the resulting configuration (defaults to stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Also generate a screenshot of the result
+        #[arg(long)]
+        screenshot: bool,
+        /// Terminal width for screenshot (if enabled)
+        #[arg(long, default_value = "120")]
+        width: u16,
+        /// Terminal height for screenshot (if enabled)
+        #[arg(long, default_value = "40")]
+        height: u16,
+    },
 }

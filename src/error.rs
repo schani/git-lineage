@@ -58,3 +58,9 @@ impl From<Box<dyn std::error::Error>> for GitLineageError {
         GitLineageError::Generic(error.to_string())
     }
 }
+
+impl From<serde_json::Error> for GitLineageError {
+    fn from(error: serde_json::Error) -> Self {
+        GitLineageError::Generic(error.to_string())
+    }
+}

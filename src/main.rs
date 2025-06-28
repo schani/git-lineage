@@ -21,6 +21,8 @@ mod config;
 mod cli;
 mod test_config;
 mod screenshot;
+mod command;
+mod executor;
 
 use app::App;
 use async_task::{Task, TaskResult};
@@ -35,6 +37,10 @@ async fn main() -> Result<()> {
         Commands::Run => run_interactive().await,
         Commands::Screenshot { config, output, width, height } => {
             screenshot::generate_screenshot(&config, output.as_deref(), width, height)?;
+            Ok(())
+        }
+        Commands::Execute { config, command, output, screenshot, width, height } => {
+            execute_command(&config, &command, output.as_deref(), screenshot, width, height)?;
             Ok(())
         }
     }
@@ -145,4 +151,67 @@ fn handle_task_result(app: &mut App, result: TaskResult) {
             app.status_message = format!("Error: {}", message);
         }
     }
+}
+
+fn execute_command(
+    config_path: &str,
+    command_str: &str,
+    output_path: Option<&str>,
+    generate_screenshot: bool,
+    width: u16,
+    height: u16,
+) -> Result<()> {
+    use std::fs;
+    
+    // Load the configuration
+    let config = test_config::TestConfig::load_from_file(config_path)?;
+    
+    // Parse the command
+    let command = command::Command::from_string(command_str)
+        .map_err(|e| error::GitLineageError::Generic(e))?;
+    
+    // Execute the command
+    let result = executor::Executor::execute(&config, command);
+    
+    // Convert result to JSON
+    let result_json = serde_json::to_string_pretty(&result.config)?;
+    
+    // Output the result
+    match output_path {
+        Some(path) => {
+            fs::write(path, &result_json)?;
+            println!("Result saved to: {}", path);
+        }
+        None => {
+            println!("{}", result_json);
+        }
+    }
+    
+    // Show execution summary
+    if let Some(status) = result.status_message {
+        eprintln!("Status: {}", status);
+    }
+    if result.should_quit {
+        eprintln!("Command resulted in quit");
+    }
+    
+    // Generate screenshot if requested
+    if generate_screenshot {
+        let screenshot_path = output_path
+            .map(|p| format!("{}.screenshot.txt", p.trim_end_matches(".json")))
+            .unwrap_or_else(|| "command_result_screenshot.txt".to_string());
+            
+        // Save the result config temporarily for screenshot generation
+        let temp_config_path = "temp_config.json";
+        fs::write(temp_config_path, &result_json)?;
+        
+        screenshot::generate_screenshot(&temp_config_path, Some(&screenshot_path), width, height)?;
+        
+        // Clean up temp file
+        let _ = fs::remove_file(temp_config_path);
+        
+        eprintln!("Screenshot saved to: {}", screenshot_path);
+    }
+    
+    Ok(())
 }
