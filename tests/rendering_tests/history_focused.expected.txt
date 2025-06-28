@@ -1,19 +1,19 @@
 ┌ File Navigator ──────────┐┌ Code Inspector ──────────────────────────────────┐
-│  M README.md             ││   1 # Project Title                              │
-│                          ││   2                                              │
-│                          ││   3 Description of the project.                  │
-│                          ││   4                                              │
-│                          ││   5 ## Installation                              │
-│                          ││   6                                              │
-│                          ││   7 npm install                                  │
+│▼ 📁  src                  ││   1 use std::io;                                 │
+│    A lib.rs              ││   2                                              │
+│    M main.rs             ││   3 fn main() {                                  │
+│  M Cargo.toml            ││   4     println!("Hello, world!");               │
+│                          ││   5 }                                            │
+│                          ││                                                  │
+│                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
 └──────────────────────────┘│                                                  │
-┌ Commit History (README.md┐│                                                  │
-│   1234567 5 mins ago Alic││                                                  │
-│>> abcdef1 1 hour ago Bob ││                                                  │
+┌ Commit History (src/main.┐│                                                  │
+│   a1b2c3d 2 hours ago Joh││                                                  │
+│>> b2c3d4e 1 day ago Jane ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
@@ -22,4 +22,4 @@
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
-Viewing commit: abcdef1 | Tab: Switch panel | ↑↓: Navigate | Enter: Select commi
+Ready | Tab: Switch panel | ↑↓: Navigate | Enter: Select commit────────────────┘

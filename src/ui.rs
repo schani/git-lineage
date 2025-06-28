@@ -2,10 +2,9 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
-use tui_tree_widget::{Tree, TreeItem, TreeState};
 
 use crate::app::{App, PanelFocus};
 
@@ -62,12 +61,20 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     // Get visible nodes from the file tree
     let visible_nodes = app.file_tree.get_visible_nodes();
     
-    // Convert visible nodes to tree items
-    let items: Vec<TreeItem<usize>> = visible_nodes
+    // Convert visible nodes to list items with proper highlighting
+    let items: Vec<ListItem> = visible_nodes
         .iter()
         .enumerate()
-        .map(|(i, node)| {
-            let status_char = node.git_status.unwrap_or(' ');
+        .map(|(_i, node)| {
+            let status_char = match node.git_status {
+                Some('M') => 'M',
+                Some('A') => 'A', 
+                Some('D') => 'D',
+                Some('?') => '?',
+                _ => ' ',
+            };
+            
+            // No extra indentation - start from the left edge
             let indent = "  ".repeat(node.depth());
             let display_name = if node.is_dir {
                 let expand_char = if node.is_expanded { "▼" } else { "▶" };
@@ -76,18 +83,52 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 format!("{}  {} {}", indent, status_char, node.name)
             };
             
-            TreeItem::new_leaf(i, display_name)
+            // Check if this node is selected
+            let is_selected = Some(&node.path) == app.file_tree.current_selection.as_ref();
+            
+            let line = if is_selected {
+                // Highlight selected item with bright colors
+                Line::from(vec![
+                    Span::styled(display_name, Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::Yellow)
+                        .add_modifier(ratatui::style::Modifier::BOLD))
+                ])
+            } else {
+                // Style based on git status and type
+                let style = if node.is_dir {
+                    Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD)
+                } else {
+                    match node.git_status {
+                        Some('M') => Style::default().fg(Color::Yellow),
+                        Some('A') => Style::default().fg(Color::Green),
+                        Some('D') => Style::default().fg(Color::Red),
+                        Some('?') => Style::default().fg(Color::Magenta),
+                        _ => Style::default().fg(Color::White),
+                    }
+                };
+                Line::from(vec![Span::styled(display_name, style)])
+            };
+            
+            ListItem::new(line)
         })
         .collect();
 
-    let tree = Tree::new(&items)
-        .expect("Failed to create tree")
+    let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(Color::DarkGray))
-        .highlight_symbol(">> ");
+        .highlight_style(Style::default()) // No additional highlighting since we handle it manually
+        .highlight_symbol("");
 
-    let mut tree_state = TreeState::default();
-    frame.render_stateful_widget(tree, area, &mut tree_state);
+    // Find the selected index for the list state
+    let selected_index = if let Some(ref current_selection) = app.file_tree.current_selection {
+        visible_nodes.iter().position(|node| &node.path == current_selection)
+    } else {
+        None
+    };
+
+    let mut list_state = ListState::default();
+    list_state.select(selected_index);
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
