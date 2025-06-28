@@ -44,6 +44,10 @@ async fn main() -> Result<()> {
             execute_command(&config, &command, output.as_deref(), screenshot, width, height)?;
             Ok(())
         }
+        Commands::SaveState { output } => {
+            save_current_state(output.as_deref()).await?;
+            Ok(())
+        }
     }
 }
 
@@ -125,6 +129,13 @@ fn handle_task_result(app: &mut App, result: TaskResult) {
     match result {
         TaskResult::FileTreeLoaded { files } => {
             app.file_tree = files;
+            // Automatically select the first item in the tree
+            app.file_tree.navigate_to_first();
+            // Reset viewport state
+            app.file_navigator_scroll_offset = 0;
+            app.file_navigator_cursor_position = 0;
+            // Update the list state to match the selection
+            app.update_file_navigator_list_state();
             app.status_message = "File tree loaded".to_string();
         }
         TaskResult::CommitHistoryLoaded { commits } => {
@@ -212,6 +223,54 @@ fn execute_command(
         let _ = fs::remove_file(temp_config_path);
         
         eprintln!("Screenshot saved to: {}", screenshot_path);
+    }
+    
+    Ok(())
+}
+
+async fn save_current_state(output_path: Option<&str>) -> Result<()> {
+    use std::fs;
+    
+    // Initialize Git repository - use open instead of discover to get the right error type
+    let repo = gix::open(".").map_err(|e| error::GitLineageError::from(e))?;
+    
+    // Create initial app state
+    let mut app = App::new(repo);
+    
+    // Load the file tree directly
+    match async_task::load_file_tree(".").await {
+        Ok(tree) => {
+            app.file_tree = tree;
+            // Automatically select the first item in the tree
+            app.file_tree.navigate_to_first();
+            // Reset viewport state
+            app.file_navigator_scroll_offset = 0;
+            app.file_navigator_cursor_position = 0;
+            // Update the list state to match the selection
+            app.update_file_navigator_list_state();
+            app.is_loading = false;
+            app.status_message = "File tree loaded".to_string();
+        }
+        Err(e) => {
+            app.status_message = format!("Error loading file tree: {}", e);
+        }
+    }
+    
+    // Convert app state to TestConfig format
+    let config = test_config::TestConfig::from_app(&app);
+    
+    // Convert to JSON
+    let config_json = serde_json::to_string_pretty(&config)?;
+    
+    // Output the result
+    match output_path {
+        Some(path) => {
+            fs::write(path, &config_json)?;
+            println!("Current state saved to: {}", path);
+        }
+        None => {
+            println!("{}", config_json);
+        }
     }
     
     Ok(())

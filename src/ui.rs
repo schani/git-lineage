@@ -60,13 +60,29 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     // Get visible nodes with their display depths from the file tree
-    let visible_nodes_with_depth = app.file_tree.get_visible_nodes_with_depth();
+    let all_visible_nodes = app.file_tree.get_visible_nodes_with_depth();
+    
+    // Calculate viewport bounds based on scroll offset
+    let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders
+    let scroll_offset = app.file_navigator_scroll_offset;
+    let viewport_end = (scroll_offset + viewport_height).min(all_visible_nodes.len());
+    
+    // Get only the nodes that should be visible in the current viewport
+    let visible_nodes_with_depth: Vec<_> = all_visible_nodes
+        .iter()
+        .skip(scroll_offset)
+        .take(viewport_height)
+        .collect();
+    
+    // CRITICAL FAILSAFE: The actual rendered viewport is the minimum of calculated height and available nodes
+    let actual_rendered_height = visible_nodes_with_depth.len();
+    let safe_cursor_position = app.file_navigator_cursor_position.min(actual_rendered_height.saturating_sub(1));
     
     // Convert visible nodes to list items with proper highlighting
     let items: Vec<ListItem> = visible_nodes_with_depth
         .iter()
         .enumerate()
-        .map(|(_i, (node, display_depth))| {
+        .map(|(viewport_index, (node, display_depth))| {
             let status_char = match node.git_status {
                 Some('M') => 'M',
                 Some('A') => 'A', 
@@ -102,13 +118,17 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
             };
             
             
-            // Check if this node is selected
-            let is_selected = Some(&node.path) == app.file_tree.current_selection.as_ref();
+            // Check if this node is at the cursor position within the viewport
+            let is_selected = viewport_index == safe_cursor_position;
             
             let line = if is_selected {
-                // Highlight selected item with high contrast
+                // Highlight selected item with high contrast - pad to full width
+                let content_width = (area.width as usize).saturating_sub(2); // Account for borders
+                let display_len = display_name.chars().count();
+                let padding_needed = content_width.saturating_sub(display_len);
+                let padded_name = format!("{}{}", display_name, " ".repeat(padding_needed));
                 Line::from(vec![
-                    Span::styled(display_name, Style::default()
+                    Span::styled(padded_name, Style::default()
                         .fg(Color::Black)
                         .bg(Color::White)
                         .add_modifier(ratatui::style::Modifier::BOLD))
@@ -138,15 +158,11 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .highlight_style(Style::default().bg(Color::White).fg(Color::Black).add_modifier(ratatui::style::Modifier::BOLD))
         .highlight_symbol("");
 
-    // Find the selected index for the list state
-    let selected_index = if let Some(ref current_selection) = app.file_tree.current_selection {
-        visible_nodes_with_depth.iter().position(|(node, _)| &node.path == current_selection)
-    } else {
-        None
-    };
-
+    // Don't use ListState selection for highlighting - we handle it manually with cursor position
+    // Set no selection to prevent automatic scrolling
     let mut list_state = ListState::default();
-    list_state.select(selected_index);
+    list_state.select(None);
+    
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 

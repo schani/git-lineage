@@ -63,7 +63,7 @@ pub async fn run_worker(
     }
 }
 
-async fn load_file_tree(repo_path: &str) -> Result<crate::tree::FileTree, Box<dyn std::error::Error>> {
+pub async fn load_file_tree(repo_path: &str) -> Result<crate::tree::FileTree, Box<dyn std::error::Error>> {
     // Try to load from the actual directory, fallback to mock data
     match crate::tree::FileTree::from_directory(repo_path) {
         Ok(tree) => Ok(tree),

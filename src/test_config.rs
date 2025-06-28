@@ -7,6 +7,7 @@ use std::path::PathBuf;
 pub struct TestConfig {
     pub active_panel: PanelFocus,
     pub file_tree: FileTree,
+    pub selected_file_navigator_index: Option<usize>,
     pub search_query: String,
     pub in_search_mode: bool,
     pub commit_list: Vec<CommitInfo>,
@@ -45,6 +46,7 @@ impl Default for TestConfig {
         Self {
             active_panel: PanelFocus::Navigator,
             file_tree,
+            selected_file_navigator_index: Some(0),
             search_query: String::new(),
             in_search_mode: false,
             commit_list: vec![
@@ -103,5 +105,25 @@ impl TestConfig {
         let json = serde_json::to_string_pretty(self)?;
         std::fs::write(path, json)?;
         Ok(())
+    }
+    
+    pub fn from_app(app: &crate::app::App) -> Self {
+        TestConfig {
+            active_panel: app.active_panel.clone(),
+            file_tree: app.file_tree.clone(),
+            selected_file_navigator_index: app.file_navigator_list_state.selected(),
+            search_query: app.search_query.clone(),
+            in_search_mode: app.in_search_mode,
+            commit_list: app.commit_list.clone(),
+            selected_commit_index: app.commit_list_state.selected(),
+            current_content: app.current_content.clone(),
+            cursor_line: app.cursor_line,
+            cursor_column: app.cursor_column,
+            inspector_scroll_vertical: app.inspector_scroll_vertical,
+            inspector_scroll_horizontal: app.inspector_scroll_horizontal,
+            show_diff_view: app.show_diff_view,
+            status_message: app.status_message.clone(),
+            is_loading: app.is_loading,
+        }
     }
 }

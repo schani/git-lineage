@@ -48,4 +48,10 @@ pub enum Commands {
         #[arg(long, default_value = "40")]
         height: u16,
     },
+    /// Save current state to JSON configuration without running TUI
+    SaveState {
+        /// Output file for the configuration (defaults to stdout)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }

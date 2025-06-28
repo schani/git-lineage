@@ -86,6 +86,28 @@ impl Command {
                         }
                     }
                 }
+                
+                if s.starts_with("sequence:[") && s.ends_with("]") {
+                    // Parse sequence: sequence:[cmd1,cmd2,cmd3]
+                    let inner = &s[10..s.len()-1]; // Remove "sequence:[" and "]"
+                    if inner.is_empty() {
+                        return Ok(Command::Sequence(vec![]));
+                    }
+                    
+                    let command_strings: Vec<&str> = inner.split(',').collect();
+                    let mut commands = Vec::new();
+                    
+                    for cmd_str in command_strings {
+                        let cmd_str = cmd_str.trim();
+                        match Command::from_string(cmd_str) {
+                            Ok(cmd) => commands.push(cmd),
+                            Err(e) => return Err(format!("Invalid command in sequence '{}': {}", cmd_str, e)),
+                        }
+                    }
+                    
+                    return Ok(Command::Sequence(commands));
+                }
+                
                 Err(format!("Unknown command: {}", s))
             }
         }
