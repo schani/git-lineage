@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::fs;
 use serde::{Deserialize, Serialize};
+use ignore::WalkBuilder;
 
 /// Represents a single node in the file tree
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,7 +159,7 @@ impl FileTree {
     /// Build tree from a directory path
     pub fn from_directory<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
         let mut tree = Self::new();
-        tree.scan_directory(path.as_ref())?;
+        tree.scan_directory_with_gitignore(path.as_ref())?;
         Ok(tree)
     }
 
@@ -229,6 +230,151 @@ impl FileTree {
             // Recursively scan subdirectories
             if is_dir {
                 self.scan_directory_into_node(&mut node, &path)?;
+            }
+            
+            parent.add_child(node);
+        }
+        
+        Ok(())
+    }
+
+    /// Scan a directory with gitignore filtering using the ignore crate
+    fn scan_directory_with_gitignore(&mut self, dir_path: &Path) -> Result<(), std::io::Error> {
+        // Use ignore crate's WalkBuilder for efficient gitignore-aware traversal
+        let walk = WalkBuilder::new(dir_path)
+            .max_depth(Some(1)) // Only get immediate children for this directory
+            .hidden(false) // We'll handle hidden files manually
+            .git_ignore(true) // Respect .gitignore files
+            .git_global(true) // Respect global git ignore
+            .git_exclude(true) // Respect .git/info/exclude
+            .parents(true) // Look at parent directories for gitignore files
+            .build();
+
+        let mut entries = Vec::new();
+        
+        for result in walk {
+            match result {
+                Ok(entry) => {
+                    let path = entry.path();
+                    
+                    // Skip the root directory itself
+                    if path == dir_path {
+                        continue;
+                    }
+                    
+                    // Skip hidden files and directories (starting with .)
+                    if let Some(name) = path.file_name() {
+                        let name_str = name.to_string_lossy();
+                        if name_str.starts_with('.') {
+                            continue;
+                        }
+                    }
+                    
+                    entries.push(path.to_path_buf());
+                }
+                Err(err) => {
+                    eprintln!("Warning: Error walking directory: {}", err);
+                    continue;
+                }
+            }
+        }
+        
+        // Process the collected entries
+        for path in entries {
+            let name = path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string_lossy().to_string());
+            
+            let is_dir = path.is_dir();
+            let mut node = TreeNode::new(name, path.clone(), is_dir);
+            
+            // Apply git status if available
+            if let Some(&status) = self.git_status_map.get(&path) {
+                node.git_status = Some(status);
+            }
+            
+            // Recursively scan subdirectories with gitignore filtering
+            if is_dir {
+                self.scan_directory_into_node_with_gitignore(&mut node, &path)?;
+            }
+            
+            self.root.push(node);
+        }
+        
+        // Sort root level
+        self.root.sort_by(|a, b| {
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.cmp(&b.name),
+            }
+        });
+        
+        Ok(())
+    }
+
+    /// Scan directory contents into a specific node with gitignore filtering
+    fn scan_directory_into_node_with_gitignore(
+        &mut self, 
+        parent: &mut TreeNode, 
+        dir_path: &Path
+    ) -> Result<(), std::io::Error> {
+        // Use ignore crate's WalkBuilder for this subdirectory
+        let walk = WalkBuilder::new(dir_path)
+            .max_depth(Some(1)) // Only get immediate children
+            .hidden(false) // We'll handle hidden files manually
+            .git_ignore(true) // Respect .gitignore files
+            .git_global(true) // Respect global git ignore
+            .git_exclude(true) // Respect .git/info/exclude
+            .parents(true) // Look at parent directories for gitignore files
+            .build();
+
+        let mut entries = Vec::new();
+        
+        for result in walk {
+            match result {
+                Ok(entry) => {
+                    let path = entry.path();
+                    
+                    // Skip the directory itself
+                    if path == dir_path {
+                        continue;
+                    }
+                    
+                    // Skip hidden files and directories (starting with .)
+                    if let Some(name) = path.file_name() {
+                        let name_str = name.to_string_lossy();
+                        if name_str.starts_with('.') {
+                            continue;
+                        }
+                    }
+                    
+                    entries.push(path.to_path_buf());
+                }
+                Err(err) => {
+                    eprintln!("Warning: Error walking directory: {}", err);
+                    continue;
+                }
+            }
+        }
+        
+        // Process the collected entries
+        for path in entries {
+            let name = path.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string_lossy().to_string());
+            
+            let is_dir = path.is_dir();
+            let mut node = TreeNode::new(name, path.clone(), is_dir);
+            
+            // Apply git status if available
+            if let Some(&status) = self.git_status_map.get(&path) {
+                node.git_status = Some(status);
+            }
+            
+            // Recursively scan subdirectories with gitignore filtering
+            if is_dir {
+                self.scan_directory_into_node_with_gitignore(&mut node, &path)?;
             }
             
             parent.add_child(node);
