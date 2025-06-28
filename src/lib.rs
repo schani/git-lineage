@@ -10,3 +10,4 @@ pub mod test_config;
 pub mod screenshot;
 pub mod command;
 pub mod executor;
+pub mod tree;
