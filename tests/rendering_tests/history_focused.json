@@ -1,48 +1,79 @@
 {
   "active_panel": "History",
-  "file_tree": [
-    {
-      "name": "README.md",
-      "path": "README.md",
-      "is_dir": false,
-      "git_status": "M",
-      "children": []
-    }
-  ],
-  "selected_file_path": "README.md",
+  "file_tree": {
+    "root": [
+      {
+        "name": "src",
+        "path": "src",
+        "is_dir": true,
+        "git_status": null,
+        "is_expanded": true,
+        "children": [
+          {
+            "name": "lib.rs",
+            "path": "src/lib.rs",
+            "is_dir": false,
+            "git_status": "A",
+            "is_expanded": false,
+            "children": [],
+            "parent_path": "src"
+          },
+          {
+            "name": "main.rs",
+            "path": "src/main.rs",
+            "is_dir": false,
+            "git_status": "M",
+            "is_expanded": false,
+            "children": [],
+            "parent_path": "src"
+          }
+        ],
+        "parent_path": null
+      },
+      {
+        "name": "Cargo.toml",
+        "path": "Cargo.toml",
+        "is_dir": false,
+        "git_status": "M",
+        "is_expanded": false,
+        "children": [],
+        "parent_path": null
+      }
+    ],
+    "current_selection": "src/main.rs",
+    "git_status_map": {}
+  },
   "search_query": "",
   "in_search_mode": false,
   "commit_list": [
     {
-      "hash": "1234567890abcdef1234567890abcdef12345678",
-      "short_hash": "1234567",
-      "author": "Alice Dev",
-      "date": "5 mins ago",
-      "subject": "Update docs"
+      "hash": "a1b2c3d4e5f6789012345678901234567890abcd",
+      "short_hash": "a1b2c3d",
+      "author": "John Doe",
+      "date": "2 hours ago",
+      "subject": "Add new feature"
     },
     {
-      "hash": "abcdef1234567890abcdef1234567890abcdef12",
-      "short_hash": "abcdef1",
-      "author": "Bob Dev",
-      "date": "1 hour ago",
-      "subject": "Add feature"
+      "hash": "b2c3d4e5f6789012345678901234567890abcdef",
+      "short_hash": "b2c3d4e",
+      "author": "Jane Smith",
+      "date": "1 day ago",
+      "subject": "Fix bug in parser"
     }
   ],
   "selected_commit_index": 1,
   "current_content": [
-    "# Project Title",
+    "use std::io;",
     "",
-    "Description of the project.",
-    "",
-    "## Installation",
-    "",
-    "npm install"
+    "fn main() {",
+    "    println!(\"Hello, world!\");",
+    "}"
   ],
   "cursor_line": 0,
   "cursor_column": 0,
   "inspector_scroll_vertical": 0,
   "inspector_scroll_horizontal": 0,
   "show_diff_view": false,
-  "status_message": "Viewing commit: abcdef1",
+  "status_message": "Ready",
   "is_loading": false
 }

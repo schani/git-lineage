@@ -23,6 +23,7 @@ mod test_config;
 mod screenshot;
 mod command;
 mod executor;
+mod tree;
 
 use app::App;
 use async_task::{Task, TaskResult};

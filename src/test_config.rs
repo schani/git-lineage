@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
-use crate::app::{PanelFocus, FileTreeNode, CommitInfo};
+use crate::app::{PanelFocus, CommitInfo};
+use crate::tree::{FileTree, TreeNode};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
     pub active_panel: PanelFocus,
-    pub file_tree: Vec<FileTreeNode>,
-    pub selected_file_path: Option<String>,
+    pub file_tree: FileTree,
     pub search_query: String,
     pub in_search_mode: bool,
     pub commit_list: Vec<CommitInfo>,
@@ -22,40 +23,28 @@ pub struct TestConfig {
 
 impl Default for TestConfig {
     fn default() -> Self {
+        let mut file_tree = FileTree::new();
+        
+        // Create sample tree structure
+        let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
+        src_dir.expand(); // Make it expanded by default
+        src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"))
+            .with_git_status('M'));
+        src_dir.add_child(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs"))
+            .with_git_status('A'));
+        
+        let cargo_toml = TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml"))
+            .with_git_status('M');
+        
+        file_tree.root.push(src_dir);
+        file_tree.root.push(cargo_toml);
+        
+        // Select the main.rs file by default
+        file_tree.select_node(&PathBuf::from("src/main.rs"));
+
         Self {
             active_panel: PanelFocus::Navigator,
-            file_tree: vec![
-                FileTreeNode {
-                    name: "src".to_string(),
-                    path: "src".to_string(),
-                    is_dir: true,
-                    git_status: None,
-                    children: vec![
-                        FileTreeNode {
-                            name: "main.rs".to_string(),
-                            path: "src/main.rs".to_string(),
-                            is_dir: false,
-                            git_status: Some('M'),
-                            children: vec![],
-                        },
-                        FileTreeNode {
-                            name: "lib.rs".to_string(),
-                            path: "src/lib.rs".to_string(),
-                            is_dir: false,
-                            git_status: Some('A'),
-                            children: vec![],
-                        },
-                    ],
-                },
-                FileTreeNode {
-                    name: "Cargo.toml".to_string(),
-                    path: "Cargo.toml".to_string(),
-                    is_dir: false,
-                    git_status: Some('M'),
-                    children: vec![],
-                },
-            ],
-            selected_file_path: Some("src/main.rs".to_string()),
+            file_tree,
             search_query: String::new(),
             in_search_mode: false,
             commit_list: vec![

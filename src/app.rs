@@ -2,6 +2,8 @@ use gix::Repository;
 use ratatui::widgets::ListState;
 use tui_tree_widget::TreeState;
 use serde::{Deserialize, Serialize};
+use crate::tree::FileTree;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelFocus {
@@ -34,9 +36,8 @@ pub struct App {
     pub should_quit: bool,
 
     // Panel 1 State - File Navigator
-    pub file_tree: Vec<FileTreeNode>,
+    pub file_tree: FileTree,
     pub file_tree_state: TreeState<usize>,
-    pub selected_file_path: Option<String>,
     pub search_query: String,
     pub in_search_mode: bool,
 
@@ -66,9 +67,8 @@ impl App {
             active_panel: PanelFocus::Navigator,
             should_quit: false,
 
-            file_tree: Vec::new(),
+            file_tree: FileTree::new(),
             file_tree_state: TreeState::default(),
-            selected_file_path: None,
             search_query: String::new(),
             in_search_mode: false,
 
@@ -105,6 +105,48 @@ impl App {
         };
     }
 
+    // File tree navigation methods
+    pub fn navigate_tree_up(&mut self) -> bool {
+        self.file_tree.navigate_up()
+    }
+
+    pub fn navigate_tree_down(&mut self) -> bool {
+        self.file_tree.navigate_down()
+    }
+
+    pub fn expand_selected_node(&mut self) -> bool {
+        if let Some(selected_path) = self.file_tree.current_selection.clone() {
+            self.file_tree.expand_node(&selected_path)
+        } else {
+            false
+        }
+    }
+
+    pub fn collapse_selected_node(&mut self) -> bool {
+        if let Some(selected_path) = self.file_tree.current_selection.clone() {
+            self.file_tree.collapse_node(&selected_path)
+        } else {
+            false
+        }
+    }
+
+    pub fn toggle_selected_node(&mut self) -> bool {
+        if let Some(selected_path) = self.file_tree.current_selection.clone() {
+            self.file_tree.toggle_node(&selected_path)
+        } else {
+            false
+        }
+    }
+
+    pub fn get_selected_file_path(&self) -> Option<PathBuf> {
+        self.file_tree.current_selection.clone()
+    }
+
+    pub fn set_file_tree_from_directory(&mut self, path: &std::path::Path) -> Result<(), std::io::Error> {
+        self.file_tree = FileTree::from_directory(path)?;
+        Ok(())
+    }
+
     pub fn from_test_config(config: &crate::test_config::TestConfig, repo: Repository) -> Self {
         let mut app = Self {
             repo,
@@ -113,7 +155,6 @@ impl App {
 
             file_tree: config.file_tree.clone(),
             file_tree_state: TreeState::default(),
-            selected_file_path: config.selected_file_path.clone(),
             search_query: config.search_query.clone(),
             in_search_mode: config.in_search_mode,
 

@@ -14,7 +14,7 @@ pub enum Task {
 
 #[derive(Debug, Clone)]
 pub enum TaskResult {
-    FileTreeLoaded { files: Vec<crate::app::FileTreeNode> },
+    FileTreeLoaded { files: crate::tree::FileTree },
     CommitHistoryLoaded { commits: Vec<crate::app::CommitInfo> },
     FileContentLoaded { content: Vec<String>, blame_info: Option<String> },
     NextChangeFound { commit_hash: String },
@@ -63,40 +63,31 @@ pub async fn run_worker(
     }
 }
 
-async fn load_file_tree(_repo_path: &str) -> Result<Vec<crate::app::FileTreeNode>, Box<dyn std::error::Error>> {
-    // TODO: Implement using gix to get file tree with Git status
-    // For now, return mock data
-    Ok(vec![
-        crate::app::FileTreeNode {
-            name: "src".to_string(),
-            path: "src".to_string(),
-            is_dir: true,
-            git_status: None,
-            children: vec![
-                crate::app::FileTreeNode {
-                    name: "main.rs".to_string(),
-                    path: "src/main.rs".to_string(),
-                    is_dir: false,
-                    git_status: Some('M'),
-                    children: vec![],
-                },
-                crate::app::FileTreeNode {
-                    name: "lib.rs".to_string(),
-                    path: "src/lib.rs".to_string(),
-                    is_dir: false,
-                    git_status: Some('A'),
-                    children: vec![],
-                },
-            ],
-        },
-        crate::app::FileTreeNode {
-            name: "Cargo.toml".to_string(),
-            path: "Cargo.toml".to_string(),
-            is_dir: false,
-            git_status: Some('M'),
-            children: vec![],
-        },
-    ])
+async fn load_file_tree(repo_path: &str) -> Result<crate::tree::FileTree, Box<dyn std::error::Error>> {
+    // Try to load from the actual directory, fallback to mock data
+    match crate::tree::FileTree::from_directory(repo_path) {
+        Ok(tree) => Ok(tree),
+        Err(_) => {
+            // Create mock data using the new FileTree structure
+            let mut tree = crate::tree::FileTree::new();
+            
+            let mut src_dir = crate::tree::TreeNode::new_dir("src".to_string(), std::path::PathBuf::from("src"));
+            src_dir.expand();
+            src_dir.add_child(crate::tree::TreeNode::new_file("main.rs".to_string(), std::path::PathBuf::from("src/main.rs"))
+                .with_git_status('M'));
+            src_dir.add_child(crate::tree::TreeNode::new_file("lib.rs".to_string(), std::path::PathBuf::from("src/lib.rs"))
+                .with_git_status('A'));
+            
+            tree.root.push(src_dir);
+            tree.root.push(crate::tree::TreeNode::new_file("Cargo.toml".to_string(), std::path::PathBuf::from("Cargo.toml"))
+                .with_git_status('M'));
+            
+            // Select first file by default
+            tree.select_node(&std::path::PathBuf::from("src/main.rs"));
+            
+            Ok(tree)
+        }
+    }
 }
 
 async fn load_commit_history(

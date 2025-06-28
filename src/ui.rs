@@ -51,7 +51,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    if app.file_tree.is_empty() {
+    if app.file_tree.root.is_empty() {
         let paragraph = Paragraph::new("No files found")
             .block(block)
             .style(Style::default().fg(Color::Gray));
@@ -59,17 +59,23 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Convert file tree to tree items
-    let items: Vec<TreeItem<usize>> = app.file_tree
+    // Get visible nodes from the file tree
+    let visible_nodes = app.file_tree.get_visible_nodes();
+    
+    // Convert visible nodes to tree items
+    let items: Vec<TreeItem<usize>> = visible_nodes
         .iter()
         .enumerate()
         .map(|(i, node)| {
             let status_char = node.git_status.unwrap_or(' ');
+            let indent = "  ".repeat(node.depth());
             let display_name = if node.is_dir {
-                format!("📁 {}", node.name)
+                let expand_char = if node.is_expanded { "▼" } else { "▶" };
+                format!("{}{} 📁 {}", indent, expand_char, node.name)
             } else {
-                format!("{} {}", status_char, node.name)
+                format!("{}  {} {}", indent, status_char, node.name)
             };
+            
             TreeItem::new_leaf(i, display_name)
         })
         .collect();
@@ -92,8 +98,8 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         Style::default()
     };
 
-    let title = if let Some(ref path) = app.selected_file_path {
-        format!(" Commit History ({}) ", path)
+    let title = if let Some(ref path) = app.file_tree.current_selection {
+        format!(" Commit History ({}) ", path.display())
     } else {
         " Commit History ".to_string()
     };

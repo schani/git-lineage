@@ -251,36 +251,65 @@ impl Executor {
 
 // Implementation of specific command handlers
 impl Executor {
-    fn execute_navigate_up(_config: &mut TestConfig, status_message: &mut Option<String>) {
-        // In a real implementation, this would navigate the tree structure
-        // For now, we'll simulate basic navigation
-        *status_message = Some("Navigated up in file tree".to_string());
+    fn execute_navigate_up(config: &mut TestConfig, status_message: &mut Option<String>) {
+        if config.file_tree.navigate_up() {
+            *status_message = Some("Navigated up in file tree".to_string());
+        } else {
+            *status_message = Some("Already at top".to_string());
+        }
     }
     
-    fn execute_navigate_down(_config: &mut TestConfig, status_message: &mut Option<String>) {
-        *status_message = Some("Navigated down in file tree".to_string());
+    fn execute_navigate_down(config: &mut TestConfig, status_message: &mut Option<String>) {
+        if config.file_tree.navigate_down() {
+            *status_message = Some("Navigated down in file tree".to_string());
+        } else {
+            *status_message = Some("Already at bottom".to_string());
+        }
     }
     
-    fn execute_expand_node(_config: &mut TestConfig, status_message: &mut Option<String>) {
-        *status_message = Some("Expanded directory node".to_string());
+    fn execute_expand_node(config: &mut TestConfig, status_message: &mut Option<String>) {
+        if let Some(selected_path) = config.file_tree.current_selection.clone() {
+            if config.file_tree.expand_node(&selected_path) {
+                *status_message = Some("Expanded directory node".to_string());
+            } else {
+                *status_message = Some("Cannot expand this node".to_string());
+            }
+        }
     }
     
-    fn execute_collapse_node(_config: &mut TestConfig, status_message: &mut Option<String>) {
-        *status_message = Some("Collapsed directory node".to_string());
+    fn execute_collapse_node(config: &mut TestConfig, status_message: &mut Option<String>) {
+        if let Some(selected_path) = config.file_tree.current_selection.clone() {
+            if config.file_tree.collapse_node(&selected_path) {
+                *status_message = Some("Collapsed directory node".to_string());
+            } else {
+                *status_message = Some("Cannot collapse this node".to_string());
+            }
+        }
     }
     
     fn execute_select_file(config: &mut TestConfig, status_message: &mut Option<String>) {
-        // Simulate selecting the first file in the tree
-        if let Some(first_file) = config.file_tree.first() {
-            if !first_file.is_dir {
-                config.selected_file_path = Some(first_file.path.clone());
-                *status_message = Some(format!("Selected file: {}", first_file.path));
-            } else if let Some(child) = first_file.children.first() {
-                if !child.is_dir {
-                    config.selected_file_path = Some(child.path.clone());
-                    *status_message = Some(format!("Selected file: {}", child.path));
-                }
+        if let Some(selected_path) = config.file_tree.current_selection.clone() {
+            let is_dir = config.file_tree.find_node(&selected_path)
+                .map(|node| node.is_dir)
+                .unwrap_or(false);
+                
+            if !is_dir {
+                *status_message = Some(format!("Selected file: {}", selected_path.display()));
+            } else {
+                // Toggle directory expansion
+                let was_expanded = config.file_tree.find_node(&selected_path)
+                    .map(|n| n.is_expanded)
+                    .unwrap_or(false);
+                    
+                config.file_tree.toggle_node(&selected_path);
+                *status_message = Some(if was_expanded {
+                    "Collapsed directory".to_string()
+                } else {
+                    "Expanded directory".to_string()
+                });
             }
+        } else {
+            *status_message = Some("No file selected".to_string());
         }
     }
     

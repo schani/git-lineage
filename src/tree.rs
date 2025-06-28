@@ -112,7 +112,7 @@ impl TreeNode {
 }
 
 /// Manages the file tree structure and operations
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileTree {
     pub root: Vec<TreeNode>,
     pub current_selection: Option<PathBuf>,

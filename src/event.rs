@@ -71,27 +71,45 @@ fn handle_navigator_event(
 
     match key {
         KeyCode::Up => {
-            // TODO: Navigate up in file tree
+            if app.navigate_tree_up() {
+                app.status_message = "Navigated up".to_string();
+            }
         }
         KeyCode::Down => {
-            // TODO: Navigate down in file tree
+            if app.navigate_tree_down() {
+                app.status_message = "Navigated down".to_string();
+            }
         }
         KeyCode::Right => {
-            // TODO: Expand directory
+            if app.expand_selected_node() {
+                app.status_message = "Expanded directory".to_string();
+            }
         }
         KeyCode::Left => {
-            // TODO: Collapse directory
+            if app.collapse_selected_node() {
+                app.status_message = "Collapsed directory".to_string();
+            }
         }
         KeyCode::Enter => {
-            // TODO: Select file and update commit history
-            if let Some(selected) = app.file_tree_state.selected().first() {
-                if *selected < app.file_tree.len() {
-                    let file = &app.file_tree[*selected];
-                    if !file.is_dir {
-                        app.selected_file_path = Some(file.path.clone());
-                        app.status_message = format!("Selected: {}", file.path);
-                        // TODO: Load commit history for this file
-                    }
+            if let Some(selected_path) = app.get_selected_file_path() {
+                let is_dir = app.file_tree.find_node(&selected_path)
+                    .map(|node| node.is_dir)
+                    .unwrap_or(false);
+                
+                if is_dir {
+                    let was_expanded = app.file_tree.find_node(&selected_path)
+                        .map(|node| node.is_expanded)
+                        .unwrap_or(false);
+                    
+                    app.toggle_selected_node();
+                    app.status_message = if was_expanded {
+                        "Collapsed directory".to_string()
+                    } else {
+                        "Expanded directory".to_string()
+                    };
+                } else {
+                    app.status_message = format!("Selected: {}", selected_path.display());
+                    // TODO: Load commit history for this file
                 }
             }
         }
@@ -240,10 +258,10 @@ fn handle_next_change(
     async_sender: &mpsc::Sender<Task>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if let (Some(ref file_path), Some(ref commit_hash)) = 
-        (&app.selected_file_path, &app.selected_commit_hash) {
+        (&app.get_selected_file_path(), &app.selected_commit_hash) {
         
         let task = Task::FindNextChange {
-            file_path: file_path.clone(),
+            file_path: file_path.to_string_lossy().to_string(),
             current_commit: commit_hash.clone(),
             line_number: app.cursor_line,
         };
