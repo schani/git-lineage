@@ -1,0 +1,42 @@
+{
+  "active_panel": "Inspector",
+  "file_tree": [
+    {
+      "name": "large_file.js",
+      "path": "large_file.js",
+      "is_dir": false,
+      "git_status": "M",
+      "children": []
+    }
+  ],
+  "selected_file_path": "large_file.js",
+  "search_query": "",
+  "in_search_mode": false,
+  "commit_list": [
+    {
+      "hash": "def456ghi789def456ghi789def456ghi789def4",
+      "short_hash": "def456g",
+      "author": "JS Dev",
+      "date": "30 mins ago",
+      "subject": "Add async functions"
+    }
+  ],
+  "selected_commit_index": 0,
+  "current_content": [
+    "async function fetchData() {",
+    "  const response = await fetch('/api/data');",
+    "  return response.json();",
+    "}",
+    "",
+    "function processData(data) {",
+    "  return data.map(item => item.value);",
+    "}"
+  ],
+  "cursor_line": 1,
+  "cursor_column": 20,
+  "inspector_scroll_vertical": 0,
+  "inspector_scroll_horizontal": 0,
+  "show_diff_view": false,
+  "status_message": "Searching for next change...",
+  "is_loading": true
+}

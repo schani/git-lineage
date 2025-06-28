@@ -1,0 +1,40 @@
+{
+  "active_panel": "Navigator",
+  "file_tree": [
+    {
+      "name": "config.toml",
+      "path": "config.toml",
+      "is_dir": false,
+      "git_status": "M",
+      "children": []
+    },
+    {
+      "name": "src",
+      "path": "src",
+      "is_dir": true,
+      "git_status": null,
+      "children": [
+        {
+          "name": "config.rs",
+          "path": "src/config.rs",
+          "is_dir": false,
+          "git_status": "A",
+          "children": []
+        }
+      ]
+    }
+  ],
+  "selected_file_path": null,
+  "search_query": "config",
+  "in_search_mode": true,
+  "commit_list": [],
+  "selected_commit_index": null,
+  "current_content": [],
+  "cursor_line": 0,
+  "cursor_column": 0,
+  "inspector_scroll_vertical": 0,
+  "inspector_scroll_horizontal": 0,
+  "show_diff_view": false,
+  "status_message": "Search: config",
+  "is_loading": false
+}

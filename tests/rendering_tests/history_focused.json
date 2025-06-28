@@ -1,0 +1,48 @@
+{
+  "active_panel": "History",
+  "file_tree": [
+    {
+      "name": "README.md",
+      "path": "README.md",
+      "is_dir": false,
+      "git_status": "M",
+      "children": []
+    }
+  ],
+  "selected_file_path": "README.md",
+  "search_query": "",
+  "in_search_mode": false,
+  "commit_list": [
+    {
+      "hash": "1234567890abcdef1234567890abcdef12345678",
+      "short_hash": "1234567",
+      "author": "Alice Dev",
+      "date": "5 mins ago",
+      "subject": "Update docs"
+    },
+    {
+      "hash": "abcdef1234567890abcdef1234567890abcdef12",
+      "short_hash": "abcdef1",
+      "author": "Bob Dev",
+      "date": "1 hour ago",
+      "subject": "Add feature"
+    }
+  ],
+  "selected_commit_index": 1,
+  "current_content": [
+    "# Project Title",
+    "",
+    "Description of the project.",
+    "",
+    "## Installation",
+    "",
+    "npm install"
+  ],
+  "cursor_line": 0,
+  "cursor_column": 0,
+  "inspector_scroll_vertical": 0,
+  "inspector_scroll_horizontal": 0,
+  "show_diff_view": false,
+  "status_message": "Viewing commit: abcdef1",
+  "is_loading": false
+}

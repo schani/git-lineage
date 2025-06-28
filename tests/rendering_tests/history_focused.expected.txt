@@ -1,0 +1,25 @@
+┌ File Navigator ──────────┐┌ Code Inspector ──────────────────────────────────┐
+│  M README.md             ││   1 # Project Title                              │
+│                          ││   2                                              │
+│                          ││   3 Description of the project.                  │
+│                          ││   4                                              │
+│                          ││   5 ## Installation                              │
+│                          ││   6                                              │
+│                          ││   7 npm install                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+└──────────────────────────┘│                                                  │
+┌ Commit History (README.md┐│                                                  │
+│   1234567 5 mins ago Alic││                                                  │
+│>> abcdef1 1 hour ago Bob ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+Viewing commit: abcdef1 | Tab: Switch panel | ↑↓: Navigate | Enter: Select commi

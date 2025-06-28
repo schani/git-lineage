@@ -1,0 +1,42 @@
+{
+  "active_panel": "Inspector",
+  "file_tree": [
+    {
+      "name": "example.py",
+      "path": "example.py",
+      "is_dir": false,
+      "git_status": "M",
+      "children": []
+    }
+  ],
+  "selected_file_path": "example.py",
+  "search_query": "",
+  "in_search_mode": false,
+  "commit_list": [
+    {
+      "hash": "xyz123abc456xyz123abc456xyz123abc456xyz1",
+      "short_hash": "xyz123a",
+      "author": "Dev User",
+      "date": "10 mins ago",
+      "subject": "Refactor code"
+    }
+  ],
+  "selected_commit_index": 0,
+  "current_content": [
+    "def hello_world():",
+    "    print('Hello, World!')",
+    "",
+    "def main():",
+    "    hello_world()",
+    "",
+    "if __name__ == '__main__':",
+    "    main()"
+  ],
+  "cursor_line": 4,
+  "cursor_column": 8,
+  "inspector_scroll_vertical": 0,
+  "inspector_scroll_horizontal": 0,
+  "show_diff_view": true,
+  "status_message": "Diff view enabled",
+  "is_loading": false
+}

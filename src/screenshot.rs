@@ -51,7 +51,7 @@ pub fn generate_screenshot(
     Ok(())
 }
 
-fn buffer_to_string(buffer: &Buffer) -> String {
+pub fn buffer_to_string(buffer: &Buffer) -> String {
     let mut result = String::new();
     
     for y in 0..buffer.area().height {
@@ -75,7 +75,6 @@ fn buffer_to_string(buffer: &Buffer) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_config::TestConfig;
     
     #[test]
     fn test_buffer_to_string() {

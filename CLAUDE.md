@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## PRIME DIRECTIVES
 
-- Whenever you hit an important checkpoint, commit all the changes with a meaningful commit description.  Use emojis.
+- Whenever you hit an important checkpoint and all the tests pass, commit all the changes with a meaningful commit description.  Use emojis.
 
 ## Project Overview
 
