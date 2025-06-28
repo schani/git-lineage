@@ -9,6 +9,7 @@ use ratatui::{
 };
 use std::{io, time::Duration};
 use tokio::sync::mpsc;
+use clap::Parser;
 
 mod app;
 mod ui;
@@ -17,13 +18,29 @@ mod async_task;
 mod git_utils;
 mod error;
 mod config;
+mod cli;
+mod test_config;
+mod screenshot;
 
 use app::App;
 use async_task::{Task, TaskResult};
 use error::Result;
+use cli::{Cli, Commands};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command.unwrap_or(Commands::Run) {
+        Commands::Run => run_interactive().await,
+        Commands::Screenshot { config, output, width, height } => {
+            screenshot::generate_screenshot(&config, output.as_deref(), width, height)?;
+            Ok(())
+        }
+    }
+}
+
+async fn run_interactive() -> Result<()> {
     // Initialize Git repository
     let repo = git_utils::open_repository(".")?;
     

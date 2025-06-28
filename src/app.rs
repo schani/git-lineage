@@ -1,15 +1,16 @@
 use gix::Repository;
 use ratatui::widgets::ListState;
 use tui_tree_widget::TreeState;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelFocus {
     Navigator,
     History,
     Inspector,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileTreeNode {
     pub name: String,
     pub path: String,
@@ -18,7 +19,7 @@ pub struct FileTreeNode {
     pub children: Vec<FileTreeNode>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitInfo {
     pub hash: String,
     pub short_hash: String,
@@ -102,5 +103,44 @@ impl App {
             PanelFocus::History => PanelFocus::Navigator,
             PanelFocus::Inspector => PanelFocus::History,
         };
+    }
+
+    pub fn from_test_config(config: &crate::test_config::TestConfig, repo: Repository) -> Self {
+        let mut app = Self {
+            repo,
+            active_panel: config.active_panel,
+            should_quit: false,
+
+            file_tree: config.file_tree.clone(),
+            file_tree_state: TreeState::default(),
+            selected_file_path: config.selected_file_path.clone(),
+            search_query: config.search_query.clone(),
+            in_search_mode: config.in_search_mode,
+
+            commit_list: config.commit_list.clone(),
+            commit_list_state: ListState::default(),
+            selected_commit_hash: None,
+
+            current_content: config.current_content.clone(),
+            current_blame: None,
+            inspector_scroll_vertical: config.inspector_scroll_vertical,
+            inspector_scroll_horizontal: config.inspector_scroll_horizontal,
+            cursor_line: config.cursor_line,
+            cursor_column: config.cursor_column,
+            show_diff_view: config.show_diff_view,
+
+            status_message: config.status_message.clone(),
+            is_loading: config.is_loading,
+        };
+
+        // Set the selected commit if specified
+        if let Some(index) = config.selected_commit_index {
+            if index < app.commit_list.len() {
+                app.commit_list_state.select(Some(index));
+                app.selected_commit_hash = Some(app.commit_list[index].hash.clone());
+            }
+        }
+
+        app
     }
 }
