@@ -48,7 +48,8 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(border_style);
+        .border_style(border_style)
+        .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
 
     if app.file_tree.root.is_empty() {
         let paragraph = Paragraph::new("No files found")
@@ -58,14 +59,14 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Get visible nodes from the file tree
-    let visible_nodes = app.file_tree.get_visible_nodes();
+    // Get visible nodes with their display depths from the file tree
+    let visible_nodes_with_depth = app.file_tree.get_visible_nodes_with_depth();
     
     // Convert visible nodes to list items with proper highlighting
-    let items: Vec<ListItem> = visible_nodes
+    let items: Vec<ListItem> = visible_nodes_with_depth
         .iter()
         .enumerate()
-        .map(|(_i, node)| {
+        .map(|(_i, (node, display_depth))| {
             let status_char = match node.git_status {
                 Some('M') => 'M',
                 Some('A') => 'A', 
@@ -74,37 +75,55 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 _ => ' ',
             };
             
-            // No extra indentation - start from the left edge
-            let indent = "  ".repeat(node.depth());
+            // Use display depth for indentation (how deep in the currently visible tree)
             let display_name = if node.is_dir {
                 let expand_char = if node.is_expanded { "▼" } else { "▶" };
-                format!("{}{} 📁 {}", indent, expand_char, node.name)
+                if *display_depth == 0 {
+                    format!("{} {}", expand_char, node.name)
+                } else {
+                    format!("{}{} {}", " ".repeat(display_depth * 2), expand_char, node.name)
+                }
             } else {
-                format!("{}  {} {}", indent, status_char, node.name)
+                if *display_depth == 0 {
+                    // Root level files - align with directory names (after expand char + space)
+                    if status_char == ' ' {
+                        format!("  {}", node.name)
+                    } else {
+                        format!("{} {}", status_char, node.name)
+                    }
+                } else {
+                    // Nested files - align with nested directory names
+                    if status_char == ' ' {
+                        format!("{}  {}", " ".repeat(display_depth * 2), node.name)
+                    } else {
+                        format!("{}{} {}", " ".repeat(display_depth * 2), status_char, node.name)
+                    }
+                }
             };
+            
             
             // Check if this node is selected
             let is_selected = Some(&node.path) == app.file_tree.current_selection.as_ref();
             
             let line = if is_selected {
-                // Highlight selected item with bright colors
+                // Highlight selected item with high contrast
                 Line::from(vec![
                     Span::styled(display_name, Style::default()
                         .fg(Color::Black)
-                        .bg(Color::Yellow)
+                        .bg(Color::White)
                         .add_modifier(ratatui::style::Modifier::BOLD))
                 ])
             } else {
-                // Style based on git status and type
+                // Style based on git status and type with moderate, readable colors
                 let style = if node.is_dir {
-                    Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD)
+                    Style::default().fg(Color::Blue).add_modifier(ratatui::style::Modifier::BOLD)
                 } else {
                     match node.git_status {
                         Some('M') => Style::default().fg(Color::Yellow),
-                        Some('A') => Style::default().fg(Color::Green),
+                        Some('A') => Style::default().fg(Color::Green), 
                         Some('D') => Style::default().fg(Color::Red),
                         Some('?') => Style::default().fg(Color::Magenta),
-                        _ => Style::default().fg(Color::White),
+                        _ => Style::default().fg(Color::Reset), // Default terminal color
                     }
                 };
                 Line::from(vec![Span::styled(display_name, style)])
@@ -116,12 +135,12 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default()) // No additional highlighting since we handle it manually
+        .highlight_style(Style::default().bg(Color::White).fg(Color::Black).add_modifier(ratatui::style::Modifier::BOLD))
         .highlight_symbol("");
 
     // Find the selected index for the list state
     let selected_index = if let Some(ref current_selection) = app.file_tree.current_selection {
-        visible_nodes.iter().position(|node| &node.path == current_selection)
+        visible_nodes_with_depth.iter().position(|(node, _)| &node.path == current_selection)
     } else {
         None
     };

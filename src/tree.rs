@@ -105,9 +105,29 @@ impl TreeNode {
         !self.children.is_empty()
     }
 
-    /// Get the depth of this node in the tree
+    /// Get the depth of this node in the tree relative to the project root
     pub fn depth(&self) -> usize {
-        self.path.components().count().saturating_sub(1)
+        // Handle paths that start with "./" - these should be treated as root level
+        let path_str = self.path.to_string_lossy();
+        if path_str.starts_with("./") {
+            // Remove the "./" prefix and count remaining components
+            let without_dot_slash = &path_str[2..];
+            if without_dot_slash.is_empty() || !without_dot_slash.contains('/') {
+                // "./src" or "./Cargo.toml" = root level = depth 0
+                0
+            } else {
+                // "./src/main.rs" = count slashes for depth
+                without_dot_slash.matches('/').count()
+            }
+        } else {
+            // Fallback for other path formats
+            let component_count = self.path.components().count();
+            if component_count <= 1 {
+                0
+            } else {
+                component_count - 1
+            }
+        }
     }
 }
 
@@ -350,6 +370,15 @@ impl FileTree {
         visible
     }
 
+    /// Get visible nodes with their display depth (how deep they appear in the UI)
+    pub fn get_visible_nodes_with_depth(&self) -> Vec<(&TreeNode, usize)> {
+        let mut visible = Vec::new();
+        for node in &self.root {
+            self.collect_visible_nodes_with_depth(node, &mut visible, 0);
+        }
+        visible
+    }
+
     /// Recursively collect visible nodes
     fn collect_visible_nodes<'a>(&self, node: &'a TreeNode, visible: &mut Vec<&'a TreeNode>) {
         visible.push(node);
@@ -357,6 +386,17 @@ impl FileTree {
         if node.is_dir && node.is_expanded {
             for child in &node.children {
                 self.collect_visible_nodes(child, visible);
+            }
+        }
+    }
+
+    /// Recursively collect visible nodes with their display depth
+    fn collect_visible_nodes_with_depth<'a>(&self, node: &'a TreeNode, visible: &mut Vec<(&'a TreeNode, usize)>, depth: usize) {
+        visible.push((node, depth));
+        
+        if node.is_dir && node.is_expanded {
+            for child in &node.children {
+                self.collect_visible_nodes_with_depth(child, visible, depth + 1);
             }
         }
     }
