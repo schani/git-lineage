@@ -1,4 +1,4 @@
-┌ File Navigator ──────────┐┌ Code Inspector ──────────────────────────────────┐
+┌ File Navigator ──────────┐┌ Code Inspector - large_file.js @ def456gh ───────┐
 │M large_file.js           ││   1 async function fetchData() {                 │
 │                          ││   2   const response = await fetch('/api/data'); │
 │                          ││   3   return response.json();                    │

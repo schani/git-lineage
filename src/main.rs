@@ -149,6 +149,11 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             } else {
                 format!("Loaded {} commits", commit_count)
             };
+            
+            // Auto-load content for the first (most recent) commit if available
+            if !app.commit_list.is_empty() {
+                event::update_code_inspector_for_commit(app);
+            }
         }
         TaskResult::FileContentLoaded { content, blame_info: _ } => {
             app.current_content = content;

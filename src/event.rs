@@ -242,23 +242,63 @@ fn handle_inspector_event(
     Ok(())
 }
 
-fn update_code_inspector_for_commit(app: &mut App) {
+pub fn update_code_inspector_for_commit(app: &mut App) {
     if let Some(selected) = app.commit_list_state.selected() {
         if selected < app.commit_list.len() {
             let commit = &app.commit_list[selected];
             app.selected_commit_hash = Some(commit.hash.clone());
-            app.status_message = format!("Viewing commit: {}", commit.short_hash);
             
-            // TODO: Load file content and blame info for this commit
-            // For now, just set placeholder content
-            app.current_content = vec![
-                format!("// Content for commit {}", commit.short_hash),
-                "// TODO: Load actual file content from Git".to_string(),
-                "".to_string(),
-                "fn main() {".to_string(),
-                "    println!(\"Hello, world!\");".to_string(),
-                "}".to_string(),
-            ];
+            // Load actual file content at this commit if we have a selected file
+            if let Some(ref file_path) = app.file_tree.current_selection {
+                app.is_loading = true;
+                app.status_message = format!("Loading {} at commit {}...", 
+                    file_path.file_name().unwrap_or_default().to_string_lossy(),
+                    &commit.short_hash);
+
+                match crate::git_utils::get_file_content_at_commit(
+                    &app.repo,
+                    &file_path.to_string_lossy(),
+                    &commit.hash
+                ) {
+                    Ok(content) => {
+                        app.current_content = content;
+                        app.inspector_scroll_vertical = 0; // Reset scroll to top
+                        app.inspector_scroll_horizontal = 0;
+                        app.cursor_line = 0;
+                        app.status_message = format!(
+                            "Loaded {} ({} lines) at commit {}", 
+                            file_path.file_name().unwrap_or_default().to_string_lossy(),
+                            app.current_content.len(),
+                            &commit.short_hash
+                        );
+                    }
+                    Err(e) => {
+                        app.current_content = vec![
+                            format!("Error loading file content:"),
+                            format!("{}", e),
+                            "".to_string(),
+                            "This could happen if:".to_string(),
+                            "- The file didn't exist at this commit".to_string(),
+                            "- The commit hash is invalid".to_string(),
+                            "- There's a Git repository issue".to_string(),
+                        ];
+                        app.status_message = format!("Failed to load content: {}", e);
+                    }
+                }
+                app.is_loading = false;
+            } else {
+                // No file selected - show commit info instead
+                app.current_content = vec![
+                    format!("Commit: {}", commit.hash),
+                    format!("Short: {}", commit.short_hash),
+                    format!("Author: {}", commit.author),
+                    format!("Date: {}", commit.date),
+                    format!("Subject: {}", commit.subject),
+                    "".to_string(),
+                    "Select a file to view its content at this commit.".to_string(),
+                ];
+                app.status_message = format!("Viewing commit: {}", commit.short_hash);
+            }
         }
     }
 }

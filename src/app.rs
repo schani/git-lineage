@@ -297,6 +297,109 @@ impl App {
         Ok(())
     }
 
+    /// Load file content for the Inspector panel based on current selections
+    pub fn load_inspector_content(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Check if we have both a selected file and commit
+        let file_path = match &self.file_tree.current_selection {
+            Some(path) => path.to_string_lossy().to_string(),
+            None => {
+                self.current_content.clear();
+                self.status_message = "No file selected".to_string();
+                return Ok(());
+            }
+        };
+
+        let commit_hash = match &self.selected_commit_hash {
+            Some(hash) => hash.clone(),
+            None => {
+                self.current_content.clear();
+                self.status_message = "No commit selected".to_string();
+                return Ok(());
+            }
+        };
+
+        // Load file content at the selected commit
+        self.is_loading = true;
+        self.status_message = format!("Loading {} at commit {}...", file_path, &commit_hash[..8]);
+
+        match crate::git_utils::get_file_content_at_commit(&self.repo, &file_path, &commit_hash) {
+            Ok(content) => {
+                self.current_content = content;
+                self.inspector_scroll_vertical = 0; // Reset scroll to top
+                self.inspector_scroll_horizontal = 0;
+                self.cursor_line = 0;
+                self.status_message = format!("Loaded {} ({} lines) at commit {}", 
+                    file_path, self.current_content.len(), &commit_hash[..8]);
+            }
+            Err(e) => {
+                self.current_content.clear();
+                self.status_message = format!("Error loading {}: {}", file_path, e);
+            }
+        }
+
+        self.is_loading = false;
+        Ok(())
+    }
+
+    /// Update the selected commit and refresh Inspector content if applicable
+    pub fn set_selected_commit(&mut self, commit_hash: String) -> Result<(), Box<dyn std::error::Error>> {
+        self.selected_commit_hash = Some(commit_hash);
+        
+        // Auto-load content if we have a file selected
+        if self.file_tree.current_selection.is_some() {
+            self.load_inspector_content()?;
+        }
+        
+        Ok(())
+    }
+
+    /// Load commit history for the currently selected file
+    pub fn load_commit_history_for_selected_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let file_path = match &self.file_tree.current_selection {
+            Some(path) => path.to_string_lossy().to_string(),
+            None => {
+                self.commit_list.clear();
+                self.commit_list_state.select(None);
+                self.selected_commit_hash = None;
+                self.status_message = "No file selected for history".to_string();
+                return Ok(());
+            }
+        };
+
+        self.is_loading = true;
+        self.status_message = format!("Loading commit history for {}...", file_path);
+
+        match crate::git_utils::get_commit_history_for_file(&self.repo, &file_path) {
+            Ok(commits) => {
+                self.commit_list = commits;
+                if !self.commit_list.is_empty() {
+                    // Auto-select the first (most recent) commit
+                    self.commit_list_state.select(Some(0));
+                    self.selected_commit_hash = Some(self.commit_list[0].hash.clone());
+                    self.status_message = format!("Loaded {} commits for {}", self.commit_list.len(), file_path);
+                    
+                    // Auto-load content for the most recent commit
+                    self.load_inspector_content()?;
+                } else {
+                    self.commit_list_state.select(None);
+                    self.selected_commit_hash = None;
+                    self.current_content.clear();
+                    self.status_message = format!("No commits found for {}", file_path);
+                }
+            }
+            Err(e) => {
+                self.commit_list.clear();
+                self.commit_list_state.select(None);
+                self.selected_commit_hash = None;
+                self.current_content.clear();
+                self.status_message = format!("Error loading history for {}: {}", file_path, e);
+            }
+        }
+
+        self.is_loading = false;
+        Ok(())
+    }
+
     pub fn from_test_config(config: &crate::test_config::TestConfig, repo: Repository) -> Self {
         let mut app = Self {
             repo,

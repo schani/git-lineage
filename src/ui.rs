@@ -65,7 +65,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     // Calculate viewport bounds based on scroll offset
     let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders
     let scroll_offset = app.file_navigator_scroll_offset;
-    let viewport_end = (scroll_offset + viewport_height).min(all_visible_nodes.len());
+    let _viewport_end = (scroll_offset + viewport_height).min(all_visible_nodes.len());
     
     // Get only the nodes that should be visible in the current viewport
     let visible_nodes_with_depth: Vec<_> = all_visible_nodes
@@ -226,10 +226,15 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
         Style::default()
     };
 
+    // Create a more informative title
     let title = if app.show_diff_view {
-        " Code Inspector (Diff View) "
+        " Code Inspector (Diff View) ".to_string()
+    } else if let (Some(file_path), Some(commit_hash)) = (&app.file_tree.current_selection, &app.selected_commit_hash) {
+        format!(" Code Inspector - {} @ {} ", 
+            file_path.file_name().unwrap_or_default().to_string_lossy(),
+            &commit_hash[..8])
     } else {
-        " Code Inspector "
+        " Code Inspector ".to_string()
     };
 
     let block = Block::default()
@@ -238,14 +243,24 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
         .border_style(border_style);
 
     if app.current_content.is_empty() {
-        let paragraph = Paragraph::new("Select a file and commit to view content")
+        let message = if app.file_tree.current_selection.is_none() {
+            "Select a file to view its content"
+        } else if app.selected_commit_hash.is_none() {
+            "Select a commit to view file content at that point"
+        } else if app.is_loading {
+            "Loading file content..."
+        } else {
+            "No content available for selected file/commit"
+        };
+
+        let paragraph = Paragraph::new(message)
             .block(block)
             .style(Style::default().fg(Color::Gray));
         frame.render_widget(paragraph, area);
         return;
     }
 
-    // Simple content display for now
+    // Enhanced content display with syntax-aware styling
     let content_lines: Vec<Line> = app.current_content
         .iter()
         .enumerate()
@@ -253,15 +268,19 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
         .take((area.height - 2) as usize) // Account for borders
         .map(|(line_num, line)| {
             let line_number = format!("{:4} ", line_num + 1);
+            
+            // Basic syntax highlighting for common file types
+            let line_style = get_line_style(line, &app.file_tree.current_selection);
+            
             if line_num == app.cursor_line {
                 Line::from(vec![
-                    Span::styled(line_number, Style::default().fg(Color::Yellow)),
-                    Span::styled(line, Style::default().bg(Color::DarkGray)),
+                    Span::styled(line_number, Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
+                    Span::styled(line, line_style.bg(Color::DarkGray)),
                 ])
             } else {
                 Line::from(vec![
                     Span::styled(line_number, Style::default().fg(Color::Blue)),
-                    Span::raw(line),
+                    Span::styled(line, line_style),
                 ])
             }
         })
@@ -272,6 +291,53 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
         .scroll((0, app.inspector_scroll_horizontal));
 
     frame.render_widget(paragraph, area);
+}
+
+/// Basic syntax highlighting based on file content and extension
+fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
+    let trimmed = line.trim();
+    
+    // Comments (works for most languages)
+    if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
+        return Style::default().fg(Color::Green);
+    }
+    
+    // Strings (basic detection)
+    if trimmed.contains('"') || trimmed.contains('\'') {
+        return Style::default().fg(Color::Yellow);
+    }
+    
+    // Keywords based on file extension
+    if let Some(path) = file_path {
+        if let Some(extension) = path.extension() {
+            match extension.to_string_lossy().as_ref() {
+                "rs" => {
+                    if trimmed.starts_with("use ") || trimmed.starts_with("pub ") || 
+                       trimmed.starts_with("fn ") || trimmed.starts_with("struct ") ||
+                       trimmed.starts_with("enum ") || trimmed.starts_with("impl ") {
+                        return Style::default().fg(Color::Magenta).add_modifier(ratatui::style::Modifier::BOLD);
+                    }
+                }
+                "js" | "ts" => {
+                    if trimmed.starts_with("function ") || trimmed.starts_with("const ") ||
+                       trimmed.starts_with("let ") || trimmed.starts_with("var ") ||
+                       trimmed.starts_with("import ") || trimmed.starts_with("export ") {
+                        return Style::default().fg(Color::Magenta).add_modifier(ratatui::style::Modifier::BOLD);
+                    }
+                }
+                "py" => {
+                    if trimmed.starts_with("def ") || trimmed.starts_with("class ") ||
+                       trimmed.starts_with("import ") || trimmed.starts_with("from ") {
+                        return Style::default().fg(Color::Magenta).add_modifier(ratatui::style::Modifier::BOLD);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    // Default style
+    Style::default().fg(Color::Reset)
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {

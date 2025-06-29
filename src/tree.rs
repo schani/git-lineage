@@ -138,6 +138,8 @@ pub struct FileTree {
     pub root: Vec<TreeNode>,
     pub current_selection: Option<PathBuf>,
     pub git_status_map: HashMap<PathBuf, char>,
+    #[serde(skip)]
+    pub repo_root: PathBuf,
 }
 
 impl Default for FileTree {
@@ -153,12 +155,14 @@ impl FileTree {
             root: Vec::new(),
             current_selection: None,
             git_status_map: HashMap::new(),
+            repo_root: PathBuf::new(),
         }
     }
 
     /// Build tree from a directory path
     pub fn from_directory<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
         let mut tree = Self::new();
+        tree.repo_root = path.as_ref().to_path_buf();
         tree.scan_directory_with_gitignore(path.as_ref())?;
         Ok(tree)
     }
@@ -285,10 +289,16 @@ impl FileTree {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.to_string_lossy().to_string());
             
-            let is_dir = path.is_dir();
-            let mut node = TreeNode::new(name, path.clone(), is_dir);
+            // Convert absolute path to relative path from repo root
+            let relative_path = match path.strip_prefix(&self.repo_root) {
+                Ok(rel_path) => rel_path.to_path_buf(),
+                Err(_) => path.clone(), // Fallback to absolute path if strip fails
+            };
             
-            // Apply git status if available
+            let is_dir = path.is_dir();
+            let mut node = TreeNode::new(name, relative_path.clone(), is_dir);
+            
+            // Apply git status if available (using original absolute path for git status lookup)
             if let Some(&status) = self.git_status_map.get(&path) {
                 node.git_status = Some(status);
             }
@@ -364,10 +374,16 @@ impl FileTree {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.to_string_lossy().to_string());
             
-            let is_dir = path.is_dir();
-            let mut node = TreeNode::new(name, path.clone(), is_dir);
+            // Convert absolute path to relative path from repo root
+            let relative_path = match path.strip_prefix(&self.repo_root) {
+                Ok(rel_path) => rel_path.to_path_buf(),
+                Err(_) => path.clone(), // Fallback to absolute path if strip fails
+            };
             
-            // Apply git status if available
+            let is_dir = path.is_dir();
+            let mut node = TreeNode::new(name, relative_path, is_dir);
+            
+            // Apply git status if available (using original absolute path for git status lookup)
             if let Some(&status) = self.git_status_map.get(&path) {
                 node.git_status = Some(status);
             }

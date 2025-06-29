@@ -1,4 +1,4 @@
-┌ File Navigator ──────────┐┌ Code Inspector ──────────────────────────────────┐
+┌ File Navigator ──────────┐┌ Code Inspector - main.rs @ a1b2c3d4 ─────────────┐
 │▼ src                     ││   1 use std::io;                                 │
 │  A lib.rs                ││   2                                              │
 │  M main.rs               ││   3 fn main() {                                  │

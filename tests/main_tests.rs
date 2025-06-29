@@ -8,6 +8,7 @@ use git_lineage::async_task::TaskResult;
 use git_lineage::tree::{FileTree, TreeNode};
 use git_lineage::test_config::TestConfig;
 use git_lineage::cli::{Cli, Commands};
+use serial_test::serial;
 
 // Test utilities
 fn create_test_git_repo(temp_dir: &TempDir) -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -342,6 +343,7 @@ mod command_execution {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_execute_command_with_output_file() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -373,14 +375,32 @@ mod command_execution {
     }
 
     #[test]
+    #[serial]
     fn test_execute_command_with_screenshot() {
         let temp_dir = TempDir::new().unwrap();
+        create_test_git_repo(&temp_dir).unwrap();
         
-        // Create test config
+        // Create test config in the temp directory with the git repo
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
         
         let output_path = temp_dir.path().join("result.json");
+        
+        // Change to the test directory only for the duration of the execute_command call
+        let original_dir = std::env::current_dir().unwrap();
+        
+        // Use a guard to ensure directory is always restored
+        struct DirGuard {
+            original_dir: std::path::PathBuf,
+        }
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                let _ = std::env::set_current_dir(&self.original_dir);
+            }
+        }
+        
+        let _guard = DirGuard { original_dir: original_dir.clone() };
+        std::env::set_current_dir(temp_dir.path()).unwrap();
         
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
@@ -391,15 +411,21 @@ mod command_execution {
             30
         );
         
+        // Restore original directory before asserting (guard will also do this)
+        std::env::set_current_dir(&original_dir).unwrap();
+        
         assert_ok!(&result);
         assert!(output_path.exists());
         
         // Screenshot should also be created
         let screenshot_path = temp_dir.path().join("result.screenshot.txt");
         assert!(screenshot_path.exists());
+        
+        drop(temp_dir);
     }
 
     #[test]
+    #[serial]
     fn test_execute_command_invalid_config() {
         let result = git_lineage::main_lib::execute_command(
             "/nonexistent/config.json",
@@ -414,6 +440,7 @@ mod command_execution {
     }
 
     #[test]
+    #[serial]
     fn test_execute_command_invalid_command() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -438,6 +465,7 @@ mod command_execution {
     }
 
     #[test]
+    #[serial]
     fn test_execute_command_complex_sequence() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -466,6 +494,7 @@ mod state_management {
     use super::*;
 
     #[tokio::test]
+    #[serial]
     async fn test_save_current_state_to_file() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
@@ -494,6 +523,7 @@ mod state_management {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_save_current_state_to_stdout() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
@@ -511,6 +541,7 @@ mod state_management {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_save_current_state_invalid_repo() {
         let temp_dir = TempDir::new().unwrap();
         // Don't create a git repo
@@ -528,6 +559,7 @@ mod state_management {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_save_current_state_file_tree_error() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
@@ -553,6 +585,7 @@ mod integration_scenarios {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_command_execution_output_formats() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -589,6 +622,7 @@ mod integration_scenarios {
     }
 
     #[test]
+    #[serial]
     fn test_temp_file_cleanup() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -615,6 +649,7 @@ mod integration_scenarios {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_state_serialization_roundtrip() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
@@ -639,10 +674,13 @@ mod integration_scenarios {
             40
         );
         
-        // Restore original directory
-        std::env::set_current_dir(original_dir).unwrap();
+        // Restore original directory before asserting (and before temp_dir drops)
+        std::env::set_current_dir(&original_dir).unwrap();
         
         assert_ok!(&execute_result);
+        
+        // Keep temp_dir alive until the end
+        drop(temp_dir);
     }
 
     #[test]
@@ -675,6 +713,7 @@ mod edge_cases {
     use super::*;
 
     #[test]
+    #[serial]
     fn test_very_large_dimensions() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -698,6 +737,7 @@ mod edge_cases {
     }
 
     #[test]
+    #[serial]
     fn test_zero_dimensions() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -721,6 +761,7 @@ mod edge_cases {
     }
 
     #[test]
+    #[serial]
     fn test_empty_command_string() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -741,6 +782,7 @@ mod edge_cases {
     }
 
     #[test]
+    #[serial]
     fn test_very_long_command_string() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -773,6 +815,7 @@ mod edge_cases {
     }
 
     #[test]
+    #[serial]
     fn test_screenshot_path_generation() {
         let temp_dir = TempDir::new().unwrap();
         
@@ -791,9 +834,10 @@ mod edge_cases {
         
         assert_ok!(&result);
         
-        // Default screenshot should be created
+        // Default screenshot should be created - don't fail if cleanup fails
         let default_screenshot = std::env::current_dir().unwrap().join("command_result_screenshot.txt");
         if default_screenshot.exists() {
+            // Ignore cleanup errors to prevent race conditions between tests
             let _ = fs::remove_file(default_screenshot);
         }
     }
