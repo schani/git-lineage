@@ -196,7 +196,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(theme.inactive_border)
     };
 
-    let title = if let Some(ref path) = app.file_tree.current_selection {
+    let title = if let Some(ref path) = app.active_file_context {
         format!(" Commit History ({}) ", path.display())
     } else {
         " Commit History ".to_string()
@@ -261,7 +261,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = if app.show_diff_view {
         " Code Inspector (Diff View) ".to_string()
     } else if let (Some(file_path), Some(commit_hash)) =
-        (&app.file_tree.current_selection, &app.selected_commit_hash)
+        (&app.active_file_context, &app.selected_commit_hash)
     {
         format!(
             " Code Inspector - {} @ {} ",
@@ -278,7 +278,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
         .border_style(border_style);
 
     if app.current_content.is_empty() {
-        let message = if app.file_tree.current_selection.is_none() {
+        let message = if app.active_file_context.is_none() {
             "Select a file to view its content"
         } else if app.selected_commit_hash.is_none() {
             "Select a commit to view file content at that point"
@@ -306,7 +306,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
             let line_number = format!("{:4} ", line_num + 1);
 
             // Basic syntax highlighting for common file types
-            let line_style = get_line_style(line, &app.file_tree.current_selection);
+            let line_style = get_line_style(line, &app.active_file_context);
 
             if line_num == app.cursor_line {
                 // Calculate content width and add padding for full-width highlighting

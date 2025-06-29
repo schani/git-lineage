@@ -49,6 +49,10 @@ pub struct App {
     pub commit_list: Vec<CommitInfo>,
     pub commit_list_state: ListState,
     pub selected_commit_hash: Option<String>,
+    
+    // Content Context - tracks what file's content is being displayed
+    // This is separate from navigator selection to handle directories properly
+    pub active_file_context: Option<PathBuf>,
 
     // Panel 3 State - Code Inspector
     pub current_content: Vec<String>,
@@ -84,6 +88,7 @@ impl App {
             commit_list: Vec::new(),
             commit_list_state: ListState::default(),
             selected_commit_hash: None,
+            active_file_context: None,
 
             current_content: Vec::new(),
             current_blame: None,
@@ -477,6 +482,7 @@ impl App {
             commit_list: config.commit_list.clone(),
             commit_list_state: ListState::default(),
             selected_commit_hash: None,
+            active_file_context: None, // Will be set below based on selection
 
             current_content: config.current_content.clone(),
             current_blame: None,
@@ -502,6 +508,19 @@ impl App {
         // Set the selected file navigator index if specified
         if let Some(index) = config.selected_file_navigator_index {
             app.file_navigator_list_state.select(Some(index));
+        }
+
+        // Set active_file_context based on current selection (only if it's a file, not directory)
+        if let Some(ref selected_path) = app.file_tree.current_selection {
+            let is_dir = app
+                .file_tree
+                .find_node(selected_path)
+                .map(|node| node.is_dir)
+                .unwrap_or(false);
+            
+            if !is_dir {
+                app.active_file_context = Some(selected_path.clone());
+            }
         }
 
         app

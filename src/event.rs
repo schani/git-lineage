@@ -263,8 +263,8 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
             let commit = &app.commit_list[selected];
             app.selected_commit_hash = Some(commit.hash.clone());
 
-            // Load actual file content at this commit if we have a selected file
-            if let Some(ref file_path) = app.file_tree.current_selection {
+            // Load actual file content at this commit if we have an active file context
+            if let Some(ref file_path) = app.active_file_context {
                 app.is_loading = true;
                 app.status_message = format!(
                     "Loading {} at commit {}...",
@@ -362,7 +362,9 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
             .unwrap_or(false);
 
         if !is_dir {
-            // It's a file - load commit history for this file
+            // It's a file - set as active context and load commit history
+            app.active_file_context = Some(selected_path.clone());
+            
             let file_path = selected_path.to_string_lossy().to_string();
             if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory {
                 file_path: file_path.clone(),
@@ -377,7 +379,29 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
                         .to_string_lossy()
                 );
             }
+        } else {
+            // It's a directory - clear file context and content
+            app.active_file_context = None;
+            app.commit_list.clear();
+            app.commit_list_state.select(None);
+            app.selected_commit_hash = None;
+            app.current_content.clear();
+            app.current_blame = None;
+            app.cursor_line = 0;
+            app.inspector_scroll_vertical = 0;
+            app.status_message = "Directory selected".to_string();
         }
+    } else {
+        // No selection - clear file context and content
+        app.active_file_context = None;
+        app.commit_list.clear();
+        app.commit_list_state.select(None);
+        app.selected_commit_hash = None;
+        app.current_content.clear();
+        app.current_blame = None;
+        app.cursor_line = 0;
+        app.inspector_scroll_vertical = 0;
+        app.status_message = "No file selected".to_string();
     }
 }
 
