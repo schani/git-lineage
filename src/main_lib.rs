@@ -38,6 +38,11 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 } else {
                     format!("Loaded {} commits", commit_count)
                 };
+
+                // Auto-load content for the first (most recent) commit if available
+                if !app.commit_list.is_empty() {
+                    crate::event::update_code_inspector_for_commit(app);
+                }
             } else {
                 // Async result is stale - ignore it
                 app.status_message = "Async result ignored (file context changed)".to_string();
