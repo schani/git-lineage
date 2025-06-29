@@ -18,6 +18,7 @@ mod error;
 mod event;
 mod executor;
 mod git_utils;
+mod line_mapping;
 mod screenshot;
 mod test_config;
 mod theme;

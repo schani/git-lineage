@@ -1,40 +1,25 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector - large_file.js @ def456gh ─────────────────────────────────┐
-│M large_file.js                         ││   1 async function fetchData() {                                           │
-│                                        ││   2   const response = await fetch('/api/data');                           │
-│                                        ││   3   return response.json();                                              │
-│                                        ││   4 }                                                                      │
-│                                        ││   5                                                                        │
-│                                        ││   6 function processData(data) {                                           │
-│                                        ││   7   return data.map(item => item.value);                                 │
-│                                        ││   8 }                                                                      │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-└────────────────────────────────────────┘│                                                                            │
-┌ Commit History (./large_file.js) ──────┐│                                                                            │
-│>> def456g 30 mins ago JS Dev Add async ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-Loading... | Searching for next change... | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑
+┌ File Navigator ──────────┐┌ Code Inspector - large_file.js @ def456gh ───────┐
+│M large_file.js           ││   1 async function fetchData() {                 │
+│                          ││   2   const response = await fetch('/api/data'); │
+│                          ││   3   return response.json();                    │
+│                          ││   4 }                                            │
+│                          ││   5                                              │
+│                          ││   6 function processData(data) {                 │
+│                          ││   7   return data.map(item => item.value);       │
+│                          ││   8 }                                            │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+└──────────────────────────┘│                                                  │
+┌ Commit History (./large_f┐│                                                  │
+│>> def456g 30 mins ago JS ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+Loading... | Searching for next change... | Tab: Switch panel | 1/2/3: Direct pa

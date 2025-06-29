@@ -1,40 +1,25 @@
-┌ File Navigator (Search: config) ───────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│M config.toml                           ││Select a file to view its content                                           │
-│▶ src                                   ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-└────────────────────────────────────────┘│                                                                            │
-┌ Commit History ────────────────────────┐│                                                                            │
-│Select a file to view its history       ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-Search: config | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navigate | →
+┌ File Navigator (Search: c┐┌ Code Inspector ──────────────────────────────────┐
+│M config.toml             ││Select a file to view its content                 │
+│▶ src                     ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+└──────────────────────────┘│                                                  │
+┌ Commit History ──────────┐│                                                  │
+│Select a file to view its ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+Search: config | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Young

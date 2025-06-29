@@ -172,7 +172,33 @@ cargo check
 for config in test_configs/*.json; do
     cargo run -- screenshot --config "$config" --output "screenshots/$(basename "$config" .json).txt"
 done
+
+# Update rendering test expected outputs
+./update_test_screenshots.sh
 ```
+
+### Updating Rendering Test Screenshots
+
+The project includes a script to regenerate all expected outputs for rendering tests:
+
+```bash
+./update_test_screenshots.sh
+```
+
+This script:
+- 🔄 Finds all `*.json` test configuration files in `tests/rendering_tests/`
+- 📸 Generates screenshots using the exact dimensions expected by tests (80x25)
+- ✅ Updates all `*.expected.txt` files with the current UI output
+- 🧪 Runs the rendering tests to verify they pass
+- ✨ Reports success or failure
+
+**When to use this script:**
+- After making UI layout changes that affect test screenshots
+- When adding new rendering test cases
+- After updating the terminal rendering logic
+- If rendering tests fail due to outdated expected outputs
+
+**Important:** Always review the generated screenshots before committing to ensure the changes are intentional and correct.
 
 ### Pre-commit Hook
 

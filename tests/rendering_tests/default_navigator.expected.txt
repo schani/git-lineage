@@ -1,40 +1,25 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector - main.rs @ a1b2c3d4 ───────────────────────────────────────┐
-│▼ src                                   ││   1 use std::io;                                                           │
-│  A lib.rs                              ││   2                                                                        │
-│  M main.rs                             ││   3 fn main() {                                                            │
-│M Cargo.toml                            ││   4     println!("Hello, world!");                                         │
-│                                        ││   5 }                                                                      │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-└────────────────────────────────────────┘│                                                                            │
-┌ Commit History (src/main.rs) ──────────┐│                                                                            │
-│>> a1b2c3d 2 hours ago John Doe Add new ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
-Ready | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navigate | →←: Expand
+┌ File Navigator ──────────┐┌ Code Inspector - main.rs @ a1b2c3d4 ─────────────┐
+│▼ src                     ││   1 use std::io;                                 │
+│  A lib.rs                ││   2                                              │
+│  M main.rs               ││   3 fn main() {                                  │
+│M Cargo.toml              ││   4     println!("Hello, world!");               │
+│                          ││   5 }                                            │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+└──────────────────────────┘│                                                  │
+┌ Commit History (src/main.┐│                                                  │
+│>> a1b2c3d 2 hours ago Joh││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+Ready | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit
