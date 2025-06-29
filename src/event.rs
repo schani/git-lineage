@@ -270,34 +270,66 @@ fn handle_inspector_event(
 pub fn update_code_inspector_for_commit(app: &mut App) {
     if let Some(selected) = app.commit_list_state.selected() {
         if selected < app.commit_list.len() {
-            let commit = &app.commit_list[selected];
-            app.selected_commit_hash = Some(commit.hash.clone());
+            // Extract commit data before any mutable borrows
+            let commit_hash = app.commit_list[selected].hash.clone();
+            let commit_short_hash = app.commit_list[selected].short_hash.clone();
+            let commit_author = app.commit_list[selected].author.clone();
+            let commit_date = app.commit_list[selected].date.clone();
+            let commit_subject = app.commit_list[selected].subject.clone();
+            
+            // Save current cursor position AND line for mapping BEFORE setting new commit
+            let old_cursor_line = app.cursor_line;
+            let old_commit_hash = app.selected_commit_hash.clone();
+            
+            app.selected_commit_hash = Some(commit_hash.clone());
 
             // Load actual file content at this commit if we have an active file context
             if let Some(ref file_path) = app.active_file_context {
+                let file_path = file_path.clone(); // Clone to avoid borrow issues
+                
                 app.is_loading = true;
                 app.status_message = format!(
                     "Loading {} at commit {}...",
                     file_path.file_name().unwrap_or_default().to_string_lossy(),
-                    &commit.short_hash
+                    &commit_short_hash
                 );
+
+                // Set up line mapping if we had a previous commit
+                if let Some(ref previous_commit) = old_commit_hash {
+                    if previous_commit != &commit_hash {
+                        app.save_cursor_position(previous_commit, &file_path);
+                        // Set the previous commit for line mapping
+                        app.last_commit_for_mapping = Some(previous_commit.clone());
+                    }
+                }
 
                 match crate::git_utils::get_file_content_at_commit(
                     &app.repo,
                     &file_path.to_string_lossy(),
-                    &commit.hash,
+                    &commit_hash,
                 ) {
                     Ok(content) => {
                         app.current_content = content;
                         app.inspector_scroll_vertical = 0; // Reset scroll to top
                         app.inspector_scroll_horizontal = 0;
-                        app.cursor_line = 0;
-                        app.status_message = format!(
+                        
+                        // Restore the cursor line for mapping, then apply smart positioning
+                        app.cursor_line = old_cursor_line;
+                        let positioning_message = app.apply_smart_cursor_positioning(&commit_hash, &file_path);
+                        
+                        // Combine file loading info with cursor positioning info
+                        let file_info = format!(
                             "Loaded {} ({} lines) at commit {}",
                             file_path.file_name().unwrap_or_default().to_string_lossy(),
                             app.current_content.len(),
-                            &commit.short_hash
+                            &commit_short_hash
                         );
+                        
+                        app.status_message = if positioning_message.contains("top of file") || positioning_message.contains("unchanged") {
+                            file_info
+                        } else {
+                            format!("{} • {}", file_info, positioning_message)
+                        };
                     }
                     Err(e) => {
                         app.current_content = vec![
@@ -309,6 +341,9 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
                             "- The commit hash is invalid".to_string(),
                             "- There's a Git repository issue".to_string(),
                         ];
+                        // Reset cursor position and clear tracking state on error
+                        app.cursor_line = 0;
+                        app.last_commit_for_mapping = None;
                         app.status_message = format!("Failed to load content: {}", e);
                     }
                 }
@@ -316,15 +351,18 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
             } else {
                 // No file selected - show commit info instead
                 app.current_content = vec![
-                    format!("Commit: {}", commit.hash),
-                    format!("Short: {}", commit.short_hash),
-                    format!("Author: {}", commit.author),
-                    format!("Date: {}", commit.date),
-                    format!("Subject: {}", commit.subject),
+                    format!("Commit: {}", commit_hash),
+                    format!("Short: {}", commit_short_hash),
+                    format!("Author: {}", commit_author),
+                    format!("Date: {}", commit_date),
+                    format!("Subject: {}", commit_subject),
                     "".to_string(),
                     "Select a file to view its content at this commit.".to_string(),
                 ];
-                app.status_message = format!("Viewing commit: {}", commit.short_hash);
+                // Clear cursor position and tracking state when no file is selected
+                app.cursor_line = 0;
+                app.last_commit_for_mapping = None;
+                app.status_message = format!("Viewing commit: {}", commit_short_hash);
             }
         }
     }
@@ -373,6 +411,9 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
 
         if !is_dir {
             // It's a file - set as active context and load commit history
+            // Clear position tracking state when switching to a different file
+            app.per_commit_cursor_positions.clear();
+            app.last_commit_for_mapping = None;
             app.active_file_context = Some(selected_path.clone());
             
             let file_path = selected_path.to_string_lossy().to_string();
@@ -391,6 +432,8 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
             }
         } else {
             // It's a directory - clear file context and content
+            app.per_commit_cursor_positions.clear();
+            app.last_commit_for_mapping = None;
             app.active_file_context = None;
             app.commit_list.clear();
             app.commit_list_state.select(None);
@@ -403,6 +446,8 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
         }
     } else {
         // No selection - clear file context and content
+        app.per_commit_cursor_positions.clear();
+        app.last_commit_for_mapping = None;
         app.active_file_context = None;
         app.commit_list.clear();
         app.commit_list_state.select(None);
