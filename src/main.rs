@@ -156,21 +156,32 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             app.update_file_navigator_list_state();
             app.status_message = "File tree loaded".to_string();
         }
-        TaskResult::CommitHistoryLoaded { commits } => {
-            let commit_count = commits.len();
-            app.commit_list = commits;
-            // Reset commit list selection when new commits are loaded
-            app.commit_list_state
-                .select(if commit_count == 0 { None } else { Some(0) });
-            app.status_message = if commit_count == 0 {
-                "No commits found for this file".to_string()
-            } else {
-                format!("Loaded {} commits", commit_count)
-            };
+        TaskResult::CommitHistoryLoaded { file_path, commits } => {
+            // Race condition protection: Only apply commits if they're for the currently active file
+            let is_still_relevant = app.active_file_context
+                .as_ref()
+                .map(|active_path| active_path.to_string_lossy() == file_path)
+                .unwrap_or(false);
+            
+            if is_still_relevant {
+                let commit_count = commits.len();
+                app.commit_list = commits;
+                // Reset commit list selection when new commits are loaded
+                app.commit_list_state
+                    .select(if commit_count == 0 { None } else { Some(0) });
+                app.status_message = if commit_count == 0 {
+                    "No commits found for this file".to_string()
+                } else {
+                    format!("Loaded {} commits", commit_count)
+                };
 
-            // Auto-load content for the first (most recent) commit if available
-            if !app.commit_list.is_empty() {
-                event::update_code_inspector_for_commit(app);
+                // Auto-load content for the first (most recent) commit if available
+                if !app.commit_list.is_empty() {
+                    event::update_code_inspector_for_commit(app);
+                }
+            } else {
+                // Async result is stale - ignore it
+                app.status_message = "Async result ignored (file context changed)".to_string();
             }
         }
         TaskResult::FileContentLoaded {

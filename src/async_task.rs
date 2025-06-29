@@ -23,6 +23,7 @@ pub enum TaskResult {
         files: crate::tree::FileTree,
     },
     CommitHistoryLoaded {
+        file_path: String,
         commits: Vec<crate::app::CommitInfo>,
     },
     FileContentLoaded {
@@ -53,7 +54,10 @@ pub async fn run_worker(
             },
             Task::LoadCommitHistory { file_path } => {
                 match load_commit_history(&repo_path, &file_path).await {
-                    Ok(commits) => TaskResult::CommitHistoryLoaded { commits },
+                    Ok(commits) => TaskResult::CommitHistoryLoaded { 
+                        file_path: file_path.clone(),
+                        commits 
+                    },
                     Err(e) => TaskResult::Error {
                         message: e.to_string(),
                     },
@@ -433,7 +437,8 @@ mod tests {
             // Receive result
             let result = result_rx.recv().await.unwrap();
             match result {
-                TaskResult::CommitHistoryLoaded { commits } => {
+                TaskResult::CommitHistoryLoaded { file_path, commits } => {
+                    assert_eq!(file_path, "src/main.rs");
                     assert!(!commits.is_empty());
                 }
                 _ => panic!("Expected CommitHistoryLoaded result"),
@@ -705,10 +710,11 @@ mod tests {
             }
 
             // Collect results from all workers
-            for mut result_rx in result_receivers {
+            for (i, mut result_rx) in result_receivers.into_iter().enumerate() {
                 let result = result_rx.recv().await.unwrap();
                 match result {
-                    TaskResult::CommitHistoryLoaded { commits } => {
+                    TaskResult::CommitHistoryLoaded { file_path, commits } => {
+                        assert_eq!(file_path, format!("src/file{}.rs", i));
                         // Empty is okay for non-existent files
                         assert!(commits.is_empty());
                     }

@@ -225,6 +225,8 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_with_commits() {
         let mut app = create_test_app();
         app.is_loading = true;
+        // Set active file context to match the result
+        app.active_file_context = Some(std::path::PathBuf::from("test_file.rs"));
 
         let commits = vec![
             CommitInfo {
@@ -244,6 +246,7 @@ mod task_result_handling {
         ];
 
         let result = TaskResult::CommitHistoryLoaded {
+            file_path: "test_file.rs".to_string(),
             commits: commits.clone(),
         };
 
@@ -259,8 +262,13 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_empty() {
         let mut app = create_test_app();
         app.is_loading = true;
+        // Set active file context to match the result
+        app.active_file_context = Some(std::path::PathBuf::from("empty_file.rs"));
 
-        let result = TaskResult::CommitHistoryLoaded { commits: vec![] };
+        let result = TaskResult::CommitHistoryLoaded { 
+            file_path: "empty_file.rs".to_string(),
+            commits: vec![] 
+        };
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
