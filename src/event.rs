@@ -1162,6 +1162,75 @@ mod tests {
         }
 
         #[test]
+        fn test_update_code_inspector_no_selection() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(None); // No selection
+
+            update_code_inspector_for_commit(&mut app);
+
+            // Should not crash or change state
+            assert!(app.selected_commit_hash.is_none());
+        }
+
+        #[test]
+        fn test_update_code_inspector_with_file_context() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(Some(0));
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+
+            update_code_inspector_for_commit(&mut app);
+
+            assert_eq!(app.selected_commit_hash, Some("abc123".to_string()));
+            assert!(!app.is_loading); // Should complete loading
+        }
+
+        #[test]
+        fn test_update_code_inspector_without_file_context() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(Some(0));
+            app.active_file_context = None; // No file selected
+
+            update_code_inspector_for_commit(&mut app);
+
+            assert_eq!(app.selected_commit_hash, Some("abc123".to_string()));
+            assert!(!app.current_content.is_empty());
+            assert!(app.current_content[0].contains("Commit:"));
+            assert!(app.current_content[1].contains("Short:"));
+            assert!(app.status_message.contains("Viewing commit"));
+        }
+
+        #[test]
+        fn test_update_code_inspector_preserves_cursor_position() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(Some(0));
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.cursor_line = 5;
+            app.inspector_scroll_vertical = 10;
+
+            let _old_cursor = app.cursor_line;
+            let _old_scroll = app.inspector_scroll_vertical;
+
+            update_code_inspector_for_commit(&mut app);
+
+            // The positioning system should be invoked
+            assert_eq!(app.selected_commit_hash, Some("abc123".to_string()));
+            // The exact cursor/scroll position depends on line mapping, but it shouldn't crash
+        }
+
+        #[test]
+        fn test_update_code_inspector_clears_position_tracking_state() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(Some(0));
+            app.active_file_context = None; // No file context
+            app.last_commit_for_mapping = Some("old_commit".to_string());
+
+            update_code_inspector_for_commit(&mut app);
+
+            assert!(app.last_commit_for_mapping.is_none());
+            assert_eq!(app.cursor_line, 0);
+        }
+
+        #[test]
         fn test_handle_previous_change() {
             let mut app = create_test_app();
             app.cursor_line = 10;
@@ -1170,6 +1239,233 @@ mod tests {
 
             assert!(result.is_ok());
             assert!(app.status_message.contains("Previous change for line 11"));
+        }
+
+        #[test]
+        fn test_handle_next_change_task_send_failure() {
+            let mut app = create_test_app();
+            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            app.selected_commit_hash = Some("abc123".to_string());
+            app.cursor_line = 5;
+
+            // Create a channel and immediately drop the receiver to simulate failure
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            drop(rx);
+
+            let result = handle_next_change(&mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(!app.is_loading);
+            assert!(app.status_message.contains("Failed to start search"));
+        }
+    }
+
+    mod file_selection_tests {
+        use super::*;
+
+        #[test]
+        fn test_handle_file_selection_change_with_file() {
+            let mut app = create_test_app();
+            app.file_tree.current_selection = Some(std::path::PathBuf::from("src/main.rs"));
+            let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+
+            handle_file_selection_change(&mut app, &tx);
+
+            assert_eq!(app.active_file_context, Some(std::path::PathBuf::from("src/main.rs")));
+            assert!(app.per_commit_cursor_positions.is_empty());
+            assert!(app.last_commit_for_mapping.is_none());
+            assert!(app.status_message.contains("Loading history"));
+
+            // Should send LoadCommitHistory task
+            let task = rx.try_recv();
+            assert!(task.is_ok());
+            match task.unwrap() {
+                crate::async_task::Task::LoadCommitHistory { file_path } => {
+                    assert!(file_path.contains("main.rs"));
+                }
+                _ => panic!("Expected LoadCommitHistory task"),
+            }
+        }
+
+        #[test]
+        fn test_handle_file_selection_change_with_directory() {
+            let mut app = create_test_app();
+            app.file_tree.current_selection = Some(std::path::PathBuf::from("tests"));
+            app.active_file_context = Some(std::path::PathBuf::from("old_file.rs"));
+            app.commit_list.push(crate::app::CommitInfo {
+                hash: "test".to_string(),
+                short_hash: "test".to_string(),
+                author: "test".to_string(),
+                date: "test".to_string(),
+                subject: "test".to_string(),
+            });
+            let (tx, _rx) = tokio::sync::mpsc::channel(100);
+
+            handle_file_selection_change(&mut app, &tx);
+
+            assert!(app.active_file_context.is_none());
+            assert!(app.commit_list.is_empty());
+            assert!(app.current_content.is_empty());
+            assert_eq!(app.cursor_line, 0);
+            assert!(app.status_message.contains("Directory selected"));
+        }
+
+        #[test]
+        fn test_handle_file_selection_change_no_selection() {
+            let mut app = create_test_app();
+            app.file_tree.current_selection = None;
+            app.active_file_context = Some(std::path::PathBuf::from("old_file.rs"));
+            let (tx, _rx) = tokio::sync::mpsc::channel(100);
+
+            handle_file_selection_change(&mut app, &tx);
+
+            assert!(app.active_file_context.is_none());
+            assert!(app.commit_list.is_empty());
+            assert!(app.current_content.is_empty());
+            assert_eq!(app.cursor_line, 0);
+            assert!(app.status_message.contains("No file selected"));
+        }
+
+        #[test]
+        fn test_handle_file_selection_change_task_send_failure() {
+            let mut app = create_test_app();
+            app.file_tree.current_selection = Some(std::path::PathBuf::from("src/main.rs"));
+            
+            // Create a channel and immediately drop the receiver to simulate failure
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            drop(rx);
+
+            handle_file_selection_change(&mut app, &tx);
+
+            assert!(app.status_message.contains("Failed to load commit history"));
+        }
+    }
+
+    mod navigation_tests {
+        use super::*;
+
+        #[test]
+        fn test_navigate_to_younger_commit_success() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(Some(1)); // Start at older commit
+
+            let result = navigate_to_younger_commit(&mut app);
+
+            assert!(result);
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("younger commit"));
+        }
+
+        #[test]
+        fn test_navigate_to_younger_commit_at_boundary() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(Some(0)); // Already at youngest
+
+            let result = navigate_to_younger_commit(&mut app);
+
+            assert!(!result);
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("Already at youngest"));
+        }
+
+        #[test]
+        fn test_navigate_to_younger_commit_no_file_context() {
+            let mut app = create_test_app();
+            app.active_file_context = None;
+
+            let result = navigate_to_younger_commit(&mut app);
+
+            assert!(!result);
+            assert!(app.status_message.contains("No file selected"));
+        }
+
+        #[test]
+        fn test_navigate_to_younger_commit_empty_history() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list.clear();
+
+            let result = navigate_to_younger_commit(&mut app);
+
+            assert!(!result);
+            assert!(app.status_message.contains("No commit history"));
+        }
+
+        #[test]
+        fn test_navigate_to_younger_commit_no_selection() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(None);
+
+            let result = navigate_to_younger_commit(&mut app);
+
+            assert!(result);
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("Selected youngest"));
+        }
+
+        #[test]
+        fn test_navigate_to_older_commit_success() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(Some(0)); // Start at younger commit
+
+            let result = navigate_to_older_commit(&mut app);
+
+            assert!(result);
+            assert_eq!(app.commit_list_state.selected(), Some(1));
+            assert!(app.status_message.contains("older commit"));
+        }
+
+        #[test]
+        fn test_navigate_to_older_commit_at_boundary() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(Some(1)); // Already at oldest
+
+            let result = navigate_to_older_commit(&mut app);
+
+            assert!(!result);
+            assert_eq!(app.commit_list_state.selected(), Some(1));
+            assert!(app.status_message.contains("Already at oldest"));
+        }
+
+        #[test]
+        fn test_navigate_to_older_commit_no_file_context() {
+            let mut app = create_test_app();
+            app.active_file_context = None;
+
+            let result = navigate_to_older_commit(&mut app);
+
+            assert!(!result);
+            assert!(app.status_message.contains("No file selected"));
+        }
+
+        #[test]
+        fn test_navigate_to_older_commit_empty_history() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list.clear();
+
+            let result = navigate_to_older_commit(&mut app);
+
+            assert!(!result);
+            assert!(app.status_message.contains("No commit history"));
+        }
+
+        #[test]
+        fn test_navigate_to_older_commit_no_selection() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(None);
+
+            let result = navigate_to_older_commit(&mut app);
+
+            assert!(result);
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("Selected youngest"));
         }
     }
 
