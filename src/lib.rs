@@ -11,3 +11,4 @@ pub mod screenshot;
 pub mod command;
 pub mod executor;
 pub mod tree;
+pub mod main_lib;

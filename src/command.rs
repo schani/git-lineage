@@ -171,6 +171,8 @@ mod tests {
         assert_eq!(Command::from_string("search:a").unwrap(), Command::SearchInput('a'));
         
         assert!(Command::from_string("invalid").is_err());
+        assert!(Command::from_string("").is_err()); // Empty string should fail
+        assert!(Command::from_string("down,up,quit").is_err()); // Comma separated should fail
     }
 
     #[test]

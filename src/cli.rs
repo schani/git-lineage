@@ -8,7 +8,7 @@ pub struct Cli {
     pub command: Option<Commands>,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug, PartialEq)]
 pub enum Commands {
     /// Run the interactive TUI (default)
     Run,

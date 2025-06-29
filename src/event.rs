@@ -13,9 +13,16 @@ pub fn handle_event(
         Event::Key(key) => {
             // Global keybindings
             match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
+                KeyCode::Char('q') => {
                     app.should_quit = true;
                     return Ok(());
+                }
+                KeyCode::Esc => {
+                    // Don't quit if in search mode - let panel handlers deal with it
+                    if !app.in_search_mode {
+                        app.should_quit = true;
+                        return Ok(());
+                    }
                 }
                 KeyCode::Tab => {
                     if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -287,4 +294,679 @@ fn handle_next_change(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{App, PanelFocus};
+    use crate::async_task::Task;
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use tokio::sync::mpsc;
+    use std::path::PathBuf;
+
+    // Test utilities
+    fn create_test_app() -> App {
+        let repo = crate::git_utils::open_repository(".")
+            .unwrap_or_else(|_| panic!("Failed to open test repository"));
+        let mut app = App::new(repo);
+        
+        // Set up a basic file tree for testing by building nodes manually
+        use crate::tree::TreeNode;
+        
+        // Create root level nodes
+        let src_main = TreeNode::new_file("main.rs".to_string(), "src/main.rs".into());
+        let src_lib = TreeNode::new_file("lib.rs".to_string(), "src/lib.rs".into());
+        let mut tests_dir = TreeNode::new_dir("tests".to_string(), "tests".into());
+        let test_file = TreeNode::new_file("test.rs".to_string(), "tests/test.rs".into());
+        
+        // Add test file to tests directory
+        tests_dir.add_child(test_file);
+        
+        // Add nodes to the file tree root
+        app.file_tree.root.push(src_main);
+        app.file_tree.root.push(src_lib);
+        app.file_tree.root.push(tests_dir);
+        
+        // Add some commits for testing
+        app.commit_list = vec![
+            crate::app::CommitInfo {
+                hash: "abc123".to_string(),
+                short_hash: "abc123".to_string(),
+                author: "Test Author".to_string(),
+                date: "2023-01-01".to_string(),
+                subject: "Test commit".to_string(),
+            },
+            crate::app::CommitInfo {
+                hash: "def456".to_string(),
+                short_hash: "def456".to_string(),
+                author: "Another Author".to_string(),
+                date: "2023-01-02".to_string(),
+                subject: "Another commit".to_string(),
+            },
+        ];
+        
+        app
+    }
+
+    fn create_key_event(code: KeyCode) -> Event {
+        Event::Key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    fn create_key_event_with_modifiers(code: KeyCode, modifiers: KeyModifiers) -> Event {
+        Event::Key(KeyEvent::new(code, modifiers))
+    }
+
+    async fn create_test_channel() -> (mpsc::Sender<Task>, mpsc::Receiver<Task>) {
+        mpsc::channel(100)
+    }
+
+    mod global_keybindings {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_quit_on_q() {
+            let mut app = create_test_app();
+            let (tx, _rx) = create_test_channel().await;
+            let event = create_key_event(KeyCode::Char('q'));
+
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.should_quit);
+        }
+
+        #[tokio::test]
+        async fn test_quit_on_esc() {
+            let mut app = create_test_app();
+            let (tx, _rx) = create_test_channel().await;
+            let event = create_key_event(KeyCode::Esc);
+
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.should_quit);
+        }
+
+        #[tokio::test]
+        async fn test_tab_next_panel() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            let (tx, _rx) = create_test_channel().await;
+            let event = create_key_event(KeyCode::Tab);
+
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert_eq!(app.active_panel, PanelFocus::History);
+        }
+
+        #[tokio::test]
+        async fn test_shift_tab_previous_panel() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::History;
+            let (tx, _rx) = create_test_channel().await;
+            let event = create_key_event_with_modifiers(KeyCode::Tab, KeyModifiers::SHIFT);
+
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert_eq!(app.active_panel, PanelFocus::Navigator);
+        }
+
+        #[tokio::test]
+        async fn test_resize_event_handling() {
+            let mut app = create_test_app();
+            let (tx, _rx) = create_test_channel().await;
+            let event = Event::Resize(80, 24);
+
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            // Resize events are currently handled as no-op, so just verify no errors
+        }
+
+        #[tokio::test]
+        async fn test_unknown_event_handling() {
+            let mut app = create_test_app();
+            let (tx, _rx) = create_test_channel().await;
+            let event = Event::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            });
+
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            // Unknown events should be handled gracefully
+        }
+    }
+
+    mod navigator_events {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_up_down_navigation() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test down navigation
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Test up navigation
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_expand_collapse_directories() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test right (expand)
+            let event = create_key_event(KeyCode::Right);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Test left (collapse)
+            let event = create_key_event(KeyCode::Left);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_search_mode_activation() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.in_search_mode = false;
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Char('/'));
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.in_search_mode);
+            assert!(app.search_query.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_search_input_handling() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.in_search_mode = true;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test character input
+            let event = create_key_event(KeyCode::Char('t'));
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.search_query, "t");
+
+            // Test more characters
+            let event = create_key_event(KeyCode::Char('e'));
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.search_query, "te");
+
+            // Test backspace
+            let event = create_key_event(KeyCode::Backspace);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.search_query, "t");
+        }
+
+        #[tokio::test]
+        async fn test_search_escape() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.in_search_mode = true;
+            app.search_query = "test query".to_string();
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Esc);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(!app.in_search_mode);
+            assert!(app.search_query.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_search_enter() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.in_search_mode = true;
+            app.search_query = "test query".to_string();
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Enter);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(!app.in_search_mode);
+            assert_eq!(app.search_query, "test query"); // Should preserve query on Enter
+        }
+
+        #[tokio::test]
+        async fn test_file_selection_triggers_history_load() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            let (tx, mut rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Enter);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            
+            // Check that a task was sent
+            let task = rx.try_recv();
+            assert!(task.is_ok());
+            match task.unwrap() {
+                Task::LoadCommitHistory { file_path } => {
+                    assert!(file_path.contains("main.rs"));
+                }
+                _ => panic!("Expected LoadCommitHistory task"),
+            }
+        }
+    }
+
+    mod history_events {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_commit_navigation_up() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::History;
+            app.commit_list_state.select(Some(1)); // Start at second commit
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+        }
+
+        #[tokio::test]
+        async fn test_commit_navigation_down() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::History;
+            app.commit_list_state.select(Some(0)); // Start at first commit
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(1));
+        }
+
+        #[tokio::test]
+        async fn test_commit_navigation_bounds() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::History;
+            app.commit_list_state.select(Some(0)); // At first commit
+            let (tx, _rx) = create_test_channel().await;
+
+            // Try to go up from first commit
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(0)); // Should stay at first
+
+            // Go to last commit
+            app.commit_list_state.select(Some(1));
+            
+            // Try to go down from last commit
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(1)); // Should stay at last
+        }
+
+        #[tokio::test]
+        async fn test_commit_selection_with_enter() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::History;
+            app.commit_list_state.select(Some(0));
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Enter);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            // Verify that update_code_inspector_for_commit was called
+            assert!(app.selected_commit_hash.is_some());
+            assert!(!app.current_content.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_empty_history_handling() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::History;
+            app.commit_list.clear(); // Empty commit list
+            app.commit_list_state.select(None);
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test navigation with empty list
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+        }
+    }
+
+    mod inspector_events {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_cursor_up_down_movement() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.current_content = vec!["line1".to_string(), "line2".to_string(), "line3".to_string()];
+            app.cursor_line = 1;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test up movement
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 0);
+
+            // Test down movement
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 1);
+        }
+
+        #[tokio::test]
+        async fn test_page_up_down_movement() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.current_content = (0..50).map(|i| format!("line{}", i)).collect();
+            app.cursor_line = 20;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test page up
+            let event = create_key_event(KeyCode::PageUp);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 10);
+
+            // Test page down
+            let event = create_key_event(KeyCode::PageDown);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 20);
+        }
+
+        #[tokio::test]
+        async fn test_home_end_navigation() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.current_content = (0..10).map(|i| format!("line{}", i)).collect();
+            app.cursor_line = 5;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test Home key
+            let event = create_key_event(KeyCode::Home);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 0);
+            assert_eq!(app.inspector_scroll_vertical, 0);
+
+            // Test End key
+            let event = create_key_event(KeyCode::End);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 9);
+        }
+
+        #[tokio::test]
+        async fn test_cursor_bounds_validation() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.current_content = vec!["line1".to_string(), "line2".to_string()];
+            app.cursor_line = 0;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Try to go up from first line
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 0); // Should stay at 0
+
+            // Go to last line
+            app.cursor_line = 1;
+            
+            // Try to go down from last line
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 1); // Should stay at last line
+        }
+
+        #[tokio::test]
+        async fn test_diff_view_toggle() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.show_diff_view = false;
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Char('d'));
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.show_diff_view);
+            assert!(app.status_message.contains("diff view"));
+        }
+
+        #[tokio::test]
+        async fn test_go_to_shortcuts() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.current_content = (0..10).map(|i| format!("line{}", i)).collect();
+            app.cursor_line = 5;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test 'g' (go to top)
+            let event = create_key_event(KeyCode::Char('g'));
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 0);
+
+            // Test 'G' (go to bottom)
+            let event = create_key_event(KeyCode::Char('G'));
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+            assert_eq!(app.cursor_line, 9);
+        }
+
+        #[tokio::test]
+        async fn test_previous_change_navigation() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.cursor_line = 5;
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Char('p'));
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.status_message.contains("Previous change"));
+        }
+
+        #[tokio::test]
+        async fn test_next_change_with_valid_context() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.cursor_line = 5;
+            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            app.selected_commit_hash = Some("abc123".to_string());
+            let (tx, mut rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Char('n'));
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.is_loading);
+            assert!(app.status_message.contains("Searching"));
+
+            // Check that the correct task was sent
+            let task = rx.try_recv();
+            assert!(task.is_ok());
+            match task.unwrap() {
+                Task::FindNextChange { file_path, current_commit, line_number } => {
+                    assert!(file_path.contains("main.rs"));
+                    assert_eq!(current_commit, "abc123");
+                    assert_eq!(line_number, 5);
+                }
+                _ => panic!("Expected FindNextChange task"),
+            }
+        }
+
+        #[tokio::test]
+        async fn test_next_change_without_context() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.file_tree.current_selection = None; // No file selected
+            app.selected_commit_hash = None; // No commit selected
+            let (tx, _rx) = create_test_channel().await;
+
+            let event = create_key_event(KeyCode::Char('n'));
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(!app.is_loading);
+            assert!(app.status_message.contains("No file or commit selected"));
+        }
+    }
+
+    mod helper_functions {
+        use super::*;
+
+        #[test]
+        fn test_update_code_inspector_for_commit() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(Some(0));
+
+            update_code_inspector_for_commit(&mut app);
+
+            assert_eq!(app.selected_commit_hash, Some("abc123".to_string()));
+            assert!(app.status_message.contains("abc123"));
+            assert!(!app.current_content.is_empty());
+        }
+
+        #[test]
+        fn test_update_code_inspector_invalid_selection() {
+            let mut app = create_test_app();
+            app.commit_list_state.select(Some(999)); // Invalid index
+
+            update_code_inspector_for_commit(&mut app);
+
+            // Should not crash, but also should not update anything
+        }
+
+        #[test]
+        fn test_handle_previous_change() {
+            let mut app = create_test_app();
+            app.cursor_line = 10;
+
+            let result = handle_previous_change(&mut app);
+
+            assert!(result.is_ok());
+            assert!(app.status_message.contains("Previous change for line 11"));
+        }
+    }
+
+    mod edge_cases {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_channel_send_failure() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            
+            // Create a channel and immediately drop the receiver to simulate failure
+            let (tx, rx) = create_test_channel().await;
+            drop(rx);
+
+            let event = create_key_event(KeyCode::Enter);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            assert!(app.status_message.contains("Failed to load commit history"));
+        }
+
+        #[tokio::test]
+        async fn test_all_panel_routing() {
+            let mut app = create_test_app();
+            let (tx, _rx) = create_test_channel().await;
+            let event = create_key_event(KeyCode::Char('x')); // Unmapped key
+
+            // Test Navigator panel
+            app.active_panel = PanelFocus::Navigator;
+            let result = handle_event(event.clone(), &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Test History panel
+            app.active_panel = PanelFocus::History;
+            let result = handle_event(event.clone(), &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Test Inspector panel
+            app.active_panel = PanelFocus::Inspector;
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_search_with_special_characters() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.in_search_mode = true;
+            let (tx, _rx) = create_test_channel().await;
+
+            let special_chars = vec!['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+'];
+            
+            for ch in special_chars {
+                let event = create_key_event(KeyCode::Char(ch));
+                let result = handle_event(event, &mut app, &tx);
+                assert!(result.is_ok());
+            }
+            
+            assert_eq!(app.search_query.len(), 12);
+        }
+
+        #[tokio::test]
+        async fn test_multiple_backspaces_in_search() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.in_search_mode = true;
+            app.search_query = "test".to_string();
+            let (tx, _rx) = create_test_channel().await;
+
+            // Backspace more times than there are characters
+            for _ in 0..10 {
+                let event = create_key_event(KeyCode::Backspace);
+                let result = handle_event(event, &mut app, &tx);
+                assert!(result.is_ok());
+            }
+            
+            assert!(app.search_query.is_empty());
+        }
+    }
 }
