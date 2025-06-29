@@ -144,6 +144,22 @@ for config in test_configs/*.json; do
 done
 ```
 
+### Pre-commit Hook
+
+The repository includes a pre-commit hook that automatically runs `cargo test` before each commit to ensure code quality. The hook:
+
+- Runs all tests with `cargo test --quiet`
+- Prevents commits if any tests fail
+- Shows clear success/failure messages
+
+The hook is automatically installed at `.git/hooks/pre-commit` and is executable. If tests fail, fix them before committing:
+
+```bash
+# If tests fail during commit:
+cargo test  # Fix any failing tests
+git commit  # Try again
+```
+
 ## Dependencies
 
 - **ratatui** - TUI framework

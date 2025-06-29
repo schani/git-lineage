@@ -80,21 +80,25 @@ fn handle_navigator_event(
         KeyCode::Up => {
             if app.navigate_tree_up() {
                 app.status_message = "Navigated up".to_string();
+                handle_file_selection_change(app, task_sender);
             }
         }
         KeyCode::Down => {
             if app.navigate_tree_down() {
                 app.status_message = "Navigated down".to_string();
+                handle_file_selection_change(app, task_sender);
             }
         }
         KeyCode::Right => {
             if app.expand_selected_node() {
                 app.status_message = "Expanded directory".to_string();
+                handle_file_selection_change(app, task_sender);
             }
         }
         KeyCode::Left => {
             if app.collapse_selected_node() {
                 app.status_message = "Collapsed directory".to_string();
+                handle_file_selection_change(app, task_sender);
             }
         }
         KeyCode::Enter => {
@@ -114,18 +118,11 @@ fn handle_navigator_event(
                     } else {
                         "Expanded directory".to_string()
                     };
+                    handle_file_selection_change(app, task_sender);
                 } else {
-                    app.status_message = format!("Selected: {}", selected_path.display());
-                    
-                    // Load commit history for this file
-                    let file_path = selected_path.to_string_lossy().to_string();
-                    if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory { 
-                        file_path 
-                    }) {
-                        app.status_message = format!("Failed to load commit history: {}", e);
-                    } else {
-                        app.status_message = format!("Loading commit history for {}", selected_path.display());
-                    }
+                    // For files, Enter could switch to the History panel since the history is already loaded
+                    app.active_panel = crate::app::PanelFocus::History;
+                    app.status_message = format!("Viewing history for {}", selected_path.display());
                 }
             }
         }
@@ -334,6 +331,30 @@ fn handle_next_change(
     }
 
     Ok(())
+}
+
+fn handle_file_selection_change(
+    app: &mut App,
+    task_sender: &mpsc::Sender<Task>,
+) {
+    if let Some(selected_path) = app.get_selected_file_path() {
+        let is_dir = app.file_tree.find_node(&selected_path)
+            .map(|node| node.is_dir)
+            .unwrap_or(false);
+        
+        if !is_dir {
+            // It's a file - load commit history for this file
+            let file_path = selected_path.to_string_lossy().to_string();
+            if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory { 
+                file_path: file_path.clone()
+            }) {
+                app.status_message = format!("Failed to load commit history: {}", e);
+            } else {
+                app.status_message = format!("Loading history for {}", 
+                    selected_path.file_name().unwrap_or_default().to_string_lossy());
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -598,23 +619,41 @@ mod tests {
         async fn test_file_selection_triggers_history_load() {
             let mut app = create_test_app();
             app.active_panel = PanelFocus::Navigator;
-            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            // Start with no selection
+            app.file_tree.current_selection = None;
             let (tx, mut rx) = create_test_channel().await;
+
+            // Navigate down should trigger automatic loading for the first file
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+
+            assert!(result.is_ok());
+            
+            // Check that a task was sent due to navigation triggering auto-load
+            let task = rx.try_recv();
+            assert!(task.is_ok());
+            match task.unwrap() {
+                Task::LoadCommitHistory { file_path } => {
+                    // The first navigation should select the first file
+                    assert!(file_path.contains("lib.rs") || file_path.contains("main.rs"));
+                }
+                _ => panic!("Expected LoadCommitHistory task"),
+            }
+        }
+
+        #[tokio::test]
+        async fn test_enter_on_file_switches_to_history() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator;
+            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            let (tx, _rx) = create_test_channel().await;
 
             let event = create_key_event(KeyCode::Enter);
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            
-            // Check that a task was sent
-            let task = rx.try_recv();
-            assert!(task.is_ok());
-            match task.unwrap() {
-                Task::LoadCommitHistory { file_path } => {
-                    assert!(file_path.contains("main.rs"));
-                }
-                _ => panic!("Expected LoadCommitHistory task"),
-            }
+            assert_eq!(app.active_panel, PanelFocus::History);
+            assert!(app.status_message.contains("Viewing history"));
         }
     }
 
@@ -938,13 +977,15 @@ mod tests {
         async fn test_channel_send_failure() {
             let mut app = create_test_app();
             app.active_panel = PanelFocus::Navigator;
-            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            // Start with no selection to trigger navigation
+            app.file_tree.current_selection = None;
             
             // Create a channel and immediately drop the receiver to simulate failure
             let (tx, rx) = create_test_channel().await;
             drop(rx);
 
-            let event = create_key_event(KeyCode::Enter);
+            // Navigate down should try to auto-load and fail
+            let event = create_key_event(KeyCode::Down);
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
