@@ -61,12 +61,9 @@ Here are actionable recommendations, prioritized from high to low.
     *   `calculate_new_cursor_position(...) -> (usize, String)`
     *   `update_inspector_state(...)`
 *   **Why**: The current function is over 300 lines long and has a high cyclomatic complexity. Refactoring will improve readability, make it easier to test, and isolate logic.
+*   **Status**: DONE
 
-#### 3. **Address `line_mapping.rs` Edge Cases**
-*   **What**: Implement the high-priority items from `TODO.md`, especially binary file detection (to prevent crashes) and handling for very large files (to prevent UI freezes).
-*   **Why**: These are user-facing issues that can lead to a poor experience or application instability.
-
-#### 4. **Eliminate Code Duplication**
+#### 3. **Eliminate Code Duplication**
 *   **What**: Refactor `main.rs` to call the functions in `main_lib.rs` instead of duplicating them. The `main_lib.rs` file should be the canonical implementation, and `main.rs` should simply be a thin wrapper that calls into it.
 *   **Why**: Adheres to the DRY principle, reduces maintenance overhead, and prevents inconsistencies.
 
@@ -95,6 +92,10 @@ Here are actionable recommendations, prioritized from high to low.
 #### 2. **Improve Async Error Handling**
 *   **What**: Modify `async_task.rs` and `git_utils.rs` to return more specific error types instead of `Box<dyn Error>` or `String`. Use the `GitLineageError` enum from `error.rs` more extensively.
 *   **Why**: This provides more context on failures, allowing the UI to present more informative error messages to the user.
+
+#### 3. **Address `line_mapping.rs` Edge Cases**
+*   **What**: Implement the high-priority items from `TODO.md`, especially binary file detection (to prevent crashes) and handling for very large files (to prevent UI freezes).
+*   **Why**: These are user-facing issues that can lead to a poor experience or application instability.
 
 ---
 
