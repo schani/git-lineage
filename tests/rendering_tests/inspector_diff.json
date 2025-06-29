@@ -1,15 +1,21 @@
 {
   "active_panel": "Inspector",
-  "file_tree": [
-    {
-      "name": "example.py",
-      "path": "example.py",
-      "is_dir": false,
-      "git_status": "M",
-      "children": []
-    }
-  ],
-  "selected_file_path": "example.py",
+  "file_tree": {
+    "root": [
+      {
+        "name": "example.py",
+        "path": "./example.py",
+        "is_dir": false,
+        "git_status": "M",
+        "is_expanded": false,
+        "children": [],
+        "parent_path": null
+      }
+    ],
+    "current_selection": "./example.py",
+    "git_status_map": {}
+  },
+  "selected_file_navigator_index": 0,
   "search_query": "",
   "in_search_mode": false,
   "commit_list": [

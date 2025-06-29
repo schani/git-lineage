@@ -1,5 +1,5 @@
 ┌ File Navigator ──────────┐┌ Code Inspector ──────────────────────────────────┐
-│  M large_file.js         ││   1 async function fetchData() {                 │
+│M large_file.js           ││   1 async function fetchData() {                 │
 │                          ││   2   const response = await fetch('/api/data'); │
 │                          ││   3   return response.json();                    │
 │                          ││   4 }                                            │
@@ -11,7 +11,7 @@
 │                          ││                                                  │
 │                          ││                                                  │
 └──────────────────────────┘│                                                  │
-┌ Commit History (large_fil┐│                                                  │
+┌ Commit History (./large_f┐│                                                  │
 │>> def456g 30 mins ago JS ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │

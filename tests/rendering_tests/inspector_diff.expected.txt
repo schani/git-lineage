@@ -1,5 +1,5 @@
 ┌ File Navigator ──────────┐┌ Code Inspector (Diff View) ──────────────────────┐
-│  M example.py            ││   1 def hello_world():                           │
+│M example.py              ││   1 def hello_world():                           │
 │                          ││   2     print('Hello, World!')                   │
 │                          ││   3                                              │
 │                          ││   4 def main():                                  │
@@ -11,7 +11,7 @@
 │                          ││                                                  │
 │                          ││                                                  │
 └──────────────────────────┘│                                                  │
-┌ Commit History (example.p┐│                                                  │
+┌ Commit History (./example┐│                                                  │
 │>> xyz123a 10 mins ago Dev││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
