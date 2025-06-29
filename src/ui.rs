@@ -9,7 +9,7 @@ use ratatui::{
 use crate::app::{App, PanelFocus};
 use crate::theme::get_theme;
 
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
@@ -245,7 +245,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
-fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
+fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
     let theme = get_theme();
     let is_active = app.active_panel == PanelFocus::Inspector;
     let border_style = if is_active {
@@ -253,6 +253,9 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         Style::default().fg(theme.inactive_border)
     };
+
+    // Update the visible height in the app state
+    app.inspector_visible_height = area.height as usize;
 
     // Create a more informative title
     let title = if app.show_diff_view {
@@ -306,15 +309,23 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
             let line_style = get_line_style(line, &app.file_tree.current_selection);
 
             if line_num == app.cursor_line {
+                // Calculate content width and add padding for full-width highlighting
+                let content_width = (area.width as usize).saturating_sub(2); // Account for borders
+                let line_number_width = line_number.len();
+                let content_len = line.chars().count();
+                let total_used = line_number_width + content_len;
+                let padding_needed = content_width.saturating_sub(total_used);
+                
                 Line::from(vec![
                     Span::styled(
                         line_number,
                         Style::default()
                             .fg(theme.line_numbers_current)
+                            .bg(theme.code_background_current)
                             .add_modifier(ratatui::style::Modifier::BOLD),
                     ),
                     Span::styled(
-                        line,
+                        format!("{}{}", line, " ".repeat(padding_needed)),
                         line_style
                             .bg(theme.code_background_current)
                             .fg(theme.code_foreground_current),

@@ -21,7 +21,7 @@ pub fn generate_screenshot(
     })?;
 
     // Create app from test config
-    let app = App::from_test_config(&config, repo);
+    let mut app = App::from_test_config(&config, repo);
 
     // Create TestBackend with specified dimensions
     let backend = TestBackend::new(width, height);
@@ -29,7 +29,7 @@ pub fn generate_screenshot(
 
     // Render the UI once
     terminal.draw(|frame| {
-        ui::draw(frame, &app);
+        ui::draw(frame, &mut app);
     })?;
 
     // Get the buffer content

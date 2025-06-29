@@ -186,31 +186,31 @@ fn handle_inspector_event(
         KeyCode::Up => {
             if app.cursor_line > 0 {
                 app.cursor_line -= 1;
-                if app.cursor_line < app.inspector_scroll_vertical as usize {
-                    app.inspector_scroll_vertical = app.cursor_line as u16;
-                }
+                app.ensure_inspector_cursor_visible();
             }
         }
         KeyCode::Down => {
             if app.cursor_line < app.current_content.len().saturating_sub(1) {
                 app.cursor_line += 1;
-                // TODO: Implement scroll logic based on visible area
+                app.ensure_inspector_cursor_visible();
             }
         }
         KeyCode::PageUp => {
             app.cursor_line = app.cursor_line.saturating_sub(10);
-            app.inspector_scroll_vertical = app.cursor_line as u16;
+            app.ensure_inspector_cursor_visible();
         }
         KeyCode::PageDown => {
             app.cursor_line =
                 (app.cursor_line + 10).min(app.current_content.len().saturating_sub(1));
+            app.ensure_inspector_cursor_visible();
         }
         KeyCode::Home => {
             app.cursor_line = 0;
-            app.inspector_scroll_vertical = 0;
+            app.ensure_inspector_cursor_visible();
         }
         KeyCode::End => {
             app.cursor_line = app.current_content.len().saturating_sub(1);
+            app.ensure_inspector_cursor_visible();
         }
         KeyCode::Char('p') => {
             // Previous change - jump to blame commit
@@ -232,11 +232,12 @@ fn handle_inspector_event(
         KeyCode::Char('g') => {
             // Go to top
             app.cursor_line = 0;
-            app.inspector_scroll_vertical = 0;
+            app.ensure_inspector_cursor_visible();
         }
         KeyCode::Char('G') => {
             // Go to bottom
             app.cursor_line = app.current_content.len().saturating_sub(1);
+            app.ensure_inspector_cursor_visible();
         }
         _ => {}
     }

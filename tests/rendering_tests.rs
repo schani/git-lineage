@@ -53,7 +53,7 @@ fn generate_test_screenshot(config: &TestConfig) -> Result<String, Box<dyn std::
     })?;
 
     // Create app from test config
-    let app = App::from_test_config(config, repo);
+    let mut app = App::from_test_config(config, repo);
 
     // Create TestBackend with fixed dimensions (80x25 to match expected screenshots)
     let backend = TestBackend::new(80, 25);
@@ -61,7 +61,7 @@ fn generate_test_screenshot(config: &TestConfig) -> Result<String, Box<dyn std::
 
     // Render the UI once
     terminal.draw(|frame| {
-        ui::draw(frame, &app);
+        ui::draw(frame, &mut app);
     })?;
 
     // Get the buffer content and convert to string

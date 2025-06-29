@@ -55,6 +55,7 @@ pub struct App {
     pub current_blame: Option<String>, // Simplified for now
     pub inspector_scroll_vertical: u16,
     pub inspector_scroll_horizontal: u16,
+    pub inspector_visible_height: usize, // Actual viewport height from UI
     pub cursor_line: usize,
     pub cursor_column: usize,
     pub show_diff_view: bool,
@@ -88,6 +89,7 @@ impl App {
             current_blame: None,
             inspector_scroll_vertical: 0,
             inspector_scroll_horizontal: 0,
+            inspector_visible_height: 20, // Default reasonable value
             cursor_line: 0,
             cursor_column: 0,
             show_diff_view: false,
@@ -344,9 +346,9 @@ impl App {
         match crate::git_utils::get_file_content_at_commit(&self.repo, &file_path, &commit_hash) {
             Ok(content) => {
                 self.current_content = content;
-                self.inspector_scroll_vertical = 0; // Reset scroll to top
                 self.inspector_scroll_horizontal = 0;
                 self.cursor_line = 0;
+                self.ensure_inspector_cursor_visible(); // Use unified scroll management
                 self.status_message = format!(
                     "Loaded {} ({} lines) at commit {}",
                     file_path,
@@ -380,6 +382,31 @@ impl App {
     }
 
     /// Load commit history for the currently selected file
+    /// Ensure the cursor is visible in the inspector viewport by adjusting scroll
+    pub fn ensure_inspector_cursor_visible(&mut self) {
+        if self.current_content.is_empty() {
+            return;
+        }
+
+        let visible_lines = self.inspector_visible_height.saturating_sub(2); // Account for borders
+        if visible_lines == 0 {
+            return;
+        }
+
+        let scroll_top = self.inspector_scroll_vertical as usize;
+        let scroll_bottom = scroll_top + visible_lines;
+
+        // If cursor is above visible area, scroll up
+        if self.cursor_line < scroll_top {
+            self.inspector_scroll_vertical = self.cursor_line as u16;
+        }
+        // If cursor is below visible area, scroll down
+        else if self.cursor_line >= scroll_bottom {
+            self.inspector_scroll_vertical = (self.cursor_line.saturating_sub(visible_lines - 1)) as u16;
+        }
+        // Otherwise cursor is already visible, no scrolling needed
+    }
+
     pub fn load_commit_history_for_selected_file(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -455,6 +482,7 @@ impl App {
             current_blame: None,
             inspector_scroll_vertical: config.inspector_scroll_vertical,
             inspector_scroll_horizontal: config.inspector_scroll_horizontal,
+            inspector_visible_height: 20, // Default reasonable value
             cursor_line: config.cursor_line,
             cursor_column: config.cursor_column,
             show_diff_view: config.show_diff_view,

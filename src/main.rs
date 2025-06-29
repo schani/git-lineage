@@ -104,7 +104,7 @@ async fn run_interactive() -> Result<()> {
     let tick_rate = Duration::from_millis(250);
     loop {
         // Draw UI
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Handle events with timeout
         let timeout = tick_rate;
