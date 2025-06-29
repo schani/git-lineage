@@ -277,9 +277,11 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
             let commit_date = app.commit_list[selected].date.clone();
             let commit_subject = app.commit_list[selected].subject.clone();
             
-            // Save current cursor position AND line for mapping BEFORE setting new commit
+            // Save current cursor position AND viewport position for visual consistency
             let old_cursor_line = app.cursor_line;
             let old_commit_hash = app.selected_commit_hash.clone();
+            let old_scroll_vertical = app.inspector_scroll_vertical;
+            let old_cursor_viewport_offset = old_cursor_line.saturating_sub(old_scroll_vertical as usize);
             
             app.selected_commit_hash = Some(commit_hash.clone());
 
@@ -310,12 +312,19 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
                 ) {
                     Ok(content) => {
                         app.current_content = content;
-                        app.inspector_scroll_vertical = 0; // Reset scroll to top
                         app.inspector_scroll_horizontal = 0;
                         
                         // Restore the cursor line for mapping, then apply smart positioning
                         app.cursor_line = old_cursor_line;
                         let positioning_message = app.apply_smart_cursor_positioning(&commit_hash, &file_path);
+                        
+                        // Restore viewport position: try to keep cursor at same visual position
+                        let new_cursor_line = app.cursor_line;
+                        let desired_scroll = new_cursor_line.saturating_sub(old_cursor_viewport_offset);
+                        app.inspector_scroll_vertical = desired_scroll as u16;
+                        
+                        // Ensure the viewport is valid (cursor is still visible)
+                        app.ensure_inspector_cursor_visible();
                         
                         // Combine file loading info with cursor positioning info
                         let file_info = format!(

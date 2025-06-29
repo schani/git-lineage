@@ -619,11 +619,9 @@ impl App {
                 // No previous commit - try to restore saved position or default to 0
                 if let Some(saved_line) = self.restore_cursor_position(new_commit_hash, file_path) {
                     self.cursor_line = saved_line.min(self.current_content.len().saturating_sub(1));
-                    self.ensure_inspector_cursor_visible();
                     return format!("Restored cursor to saved position (line {})", self.cursor_line + 1);
                 } else {
                     self.cursor_line = 0;
-                    self.ensure_inspector_cursor_visible();
                     return "Positioned cursor at top of file".to_string();
                 }
             }
@@ -637,7 +635,6 @@ impl App {
 
         // Apply the new cursor position
         self.cursor_line = mapped_line.min(self.current_content.len().saturating_sub(1));
-        self.ensure_inspector_cursor_visible();
 
         // Update the tracking state
         self.last_commit_for_mapping = Some(new_commit_hash.to_string());
