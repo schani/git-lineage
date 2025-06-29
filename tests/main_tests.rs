@@ -279,6 +279,61 @@ mod task_result_handling {
     }
 
     #[test]
+    fn test_handle_commit_history_loaded_race_condition_protection() {
+        let mut app = create_test_app();
+        app.is_loading = true;
+        
+        // Start with empty commit list to test race condition properly
+        app.commit_list.clear();
+        app.commit_list_state.select(None);
+        
+        // Simulate race condition: User was viewing file A, but has now moved to directory B
+        // The active_file_context is None (directory selected), but we receive stale 
+        // async result for file A
+        app.active_file_context = None; // Directory or no selection
+        
+        let commits = vec![
+            CommitInfo {
+                hash: "stale123".to_string(),
+                short_hash: "stale123".to_string(),
+                author: "Stale Author".to_string(),
+                date: "2023-01-01".to_string(),
+                subject: "Stale commit from previous file".to_string(),
+            },
+        ];
+
+        // This result is for "old_file.rs" but user has moved away from it
+        let stale_result = TaskResult::CommitHistoryLoaded {
+            file_path: "old_file.rs".to_string(),
+            commits: commits.clone(),
+        };
+
+        git_lineage::main_lib::handle_task_result(&mut app, stale_result);
+
+        // The stale result should be IGNORED:
+        assert!(!app.is_loading);
+        assert_eq!(app.commit_list.len(), 0); // Should remain empty
+        assert_eq!(app.commit_list_state.selected(), None); // Should remain None
+        assert!(app.status_message.contains("ignored")); // Should indicate result was ignored
+        
+        // Now test that valid results are still processed when context matches
+        app.active_file_context = Some(std::path::PathBuf::from("current_file.rs"));
+        app.is_loading = true; // Reset loading state for second test
+        
+        let valid_result = TaskResult::CommitHistoryLoaded {
+            file_path: "current_file.rs".to_string(),
+            commits: commits.clone(),
+        };
+
+        git_lineage::main_lib::handle_task_result(&mut app, valid_result);
+
+        // Valid result should be applied:
+        assert_eq!(app.commit_list.len(), 1); // Should contain the commit
+        assert_eq!(app.commit_list_state.selected(), Some(0)); // Should select first commit
+        assert!(app.status_message.contains("Loaded 1 commits")); // Should show success
+    }
+
+    #[test]
     fn test_handle_file_content_loaded() {
         let mut app = create_test_app();
         app.is_loading = true;
