@@ -146,9 +146,9 @@ fn handle_navigator_event(
                     };
                     handle_file_selection_change(app, task_sender);
                 } else {
-                    // For files, Enter could switch to the History panel since the history is already loaded
-                    app.active_panel = crate::app::PanelFocus::History;
-                    app.status_message = format!("Viewing history for {}", selected_path.display());
+                    // For files, Enter switches to the Inspector panel to view content
+                    app.active_panel = crate::app::PanelFocus::Inspector;
+                    app.status_message = format!("Viewing content for {}", selected_path.display());
                 }
             }
         }
@@ -783,7 +783,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn test_enter_on_file_switches_to_history() {
+        async fn test_enter_on_file_switches_to_inspector() {
             let mut app = create_test_app();
             app.active_panel = PanelFocus::Navigator;
             app.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
@@ -793,8 +793,8 @@ mod tests {
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            assert_eq!(app.active_panel, PanelFocus::History);
-            assert!(app.status_message.contains("Viewing history"));
+            assert_eq!(app.active_panel, PanelFocus::Inspector);
+            assert!(app.status_message.contains("Viewing content"));
         }
     }
 
