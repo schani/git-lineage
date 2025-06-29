@@ -1,12 +1,13 @@
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
 
 use crate::app::{App, PanelFocus};
+use crate::theme::get_theme;
 
 pub fn draw(frame: &mut Frame, app: &App) {
     let chunks = Layout::default()
@@ -32,11 +33,12 @@ pub fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = get_theme();
     let is_active = app.active_panel == PanelFocus::Navigator;
     let border_style = if is_active {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(theme.active_border)
     } else {
-        Style::default()
+        Style::default().fg(theme.inactive_border)
     };
 
     let title = if app.in_search_mode {
@@ -54,7 +56,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     if app.file_tree.root.is_empty() {
         let paragraph = Paragraph::new("No files found")
             .block(block)
-            .style(Style::default().fg(Color::Gray));
+            .style(Style::default().fg(theme.panel_title));
         frame.render_widget(paragraph, area);
         return;
     }
@@ -129,21 +131,21 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 let padded_name = format!("{}{}", display_name, " ".repeat(padding_needed));
                 Line::from(vec![
                     Span::styled(padded_name, Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::White)
+                        .fg(theme.file_selected_fg)
+                        .bg(theme.file_selected_bg)
                         .add_modifier(ratatui::style::Modifier::BOLD))
                 ])
             } else {
                 // Style based on git status and type with moderate, readable colors
                 let style = if node.is_dir {
-                    Style::default().fg(Color::Blue).add_modifier(ratatui::style::Modifier::BOLD)
+                    Style::default().fg(theme.file_directory).add_modifier(ratatui::style::Modifier::BOLD)
                 } else {
                     match node.git_status {
-                        Some('M') => Style::default().fg(Color::Yellow),
-                        Some('A') => Style::default().fg(Color::Green), 
-                        Some('D') => Style::default().fg(Color::Red),
-                        Some('?') => Style::default().fg(Color::Magenta),
-                        _ => Style::default().fg(Color::Reset), // Default terminal color
+                        Some('M') => Style::default().fg(theme.file_git_modified),
+                        Some('A') => Style::default().fg(theme.file_git_added), 
+                        Some('D') => Style::default().fg(theme.file_git_deleted),
+                        Some('?') => Style::default().fg(theme.file_git_untracked),
+                        _ => Style::default().fg(theme.file_default), // Default terminal color
                     }
                 };
                 Line::from(vec![Span::styled(display_name, style)])
@@ -155,7 +157,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(Color::White).fg(Color::Black).add_modifier(ratatui::style::Modifier::BOLD))
+        .highlight_style(Style::default().bg(theme.file_selected_bg).fg(theme.file_selected_fg).add_modifier(ratatui::style::Modifier::BOLD))
         .highlight_symbol("");
 
     // Don't use ListState selection for highlighting - we handle it manually with cursor position
@@ -167,11 +169,12 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = get_theme();
     let is_active = app.active_panel == PanelFocus::History;
     let border_style = if is_active {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(theme.active_border)
     } else {
-        Style::default()
+        Style::default().fg(theme.inactive_border)
     };
 
     let title = if let Some(ref path) = app.file_tree.current_selection {
@@ -188,7 +191,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     if app.commit_list.is_empty() {
         let paragraph = Paragraph::new("Select a file to view its history")
             .block(block)
-            .style(Style::default().fg(Color::Gray));
+            .style(Style::default().fg(theme.panel_title));
         frame.render_widget(paragraph, area);
         return;
     }
@@ -197,11 +200,11 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|commit| {
             let line = Line::from(vec![
-                Span::styled(&commit.short_hash, Style::default().fg(Color::Yellow)),
+                Span::styled(&commit.short_hash, Style::default().fg(theme.commit_hash)),
                 Span::raw(" "),
-                Span::styled(&commit.date, Style::default().fg(Color::Blue)),
+                Span::styled(&commit.date, Style::default().fg(theme.commit_date)),
                 Span::raw(" "),
-                Span::styled(&commit.author, Style::default().fg(Color::Green)),
+                Span::styled(&commit.author, Style::default().fg(theme.commit_author)),
                 Span::raw(" "),
                 Span::raw(&commit.subject),
             ]);
@@ -211,7 +214,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(Color::DarkGray))
+        .highlight_style(Style::default().bg(theme.commit_selected_bg))
         .highlight_symbol(">> ");
 
     let mut list_state = app.commit_list_state.clone();
@@ -219,11 +222,12 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = get_theme();
     let is_active = app.active_panel == PanelFocus::Inspector;
     let border_style = if is_active {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(theme.active_border)
     } else {
-        Style::default()
+        Style::default().fg(theme.inactive_border)
     };
 
     // Create a more informative title
@@ -255,7 +259,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
 
         let paragraph = Paragraph::new(message)
             .block(block)
-            .style(Style::default().fg(Color::Gray));
+            .style(Style::default().fg(theme.panel_title));
         frame.render_widget(paragraph, area);
         return;
     }
@@ -274,12 +278,12 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
             
             if line_num == app.cursor_line {
                 Line::from(vec![
-                    Span::styled(line_number, Style::default().fg(Color::Yellow).add_modifier(ratatui::style::Modifier::BOLD)),
-                    Span::styled(line, line_style.bg(Color::DarkGray)),
+                    Span::styled(line_number, Style::default().fg(theme.line_numbers_current).add_modifier(ratatui::style::Modifier::BOLD)),
+                    Span::styled(line, line_style.bg(theme.code_background_current)),
                 ])
             } else {
                 Line::from(vec![
-                    Span::styled(line_number, Style::default().fg(Color::Blue)),
+                    Span::styled(line_number, Style::default().fg(theme.line_numbers)),
                     Span::styled(line, line_style),
                 ])
             }
@@ -295,16 +299,17 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Basic syntax highlighting based on file content and extension
 fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
+    let theme = get_theme();
     let trimmed = line.trim();
     
     // Comments (works for most languages)
     if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
-        return Style::default().fg(Color::Green);
+        return Style::default().fg(theme.syntax_comment);
     }
     
     // Strings (basic detection)
     if trimmed.contains('"') || trimmed.contains('\'') {
-        return Style::default().fg(Color::Yellow);
+        return Style::default().fg(theme.syntax_string);
     }
     
     // Keywords based on file extension
@@ -315,20 +320,20 @@ fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
                     if trimmed.starts_with("use ") || trimmed.starts_with("pub ") || 
                        trimmed.starts_with("fn ") || trimmed.starts_with("struct ") ||
                        trimmed.starts_with("enum ") || trimmed.starts_with("impl ") {
-                        return Style::default().fg(Color::Magenta).add_modifier(ratatui::style::Modifier::BOLD);
+                        return Style::default().fg(theme.syntax_keyword).add_modifier(ratatui::style::Modifier::BOLD);
                     }
                 }
                 "js" | "ts" => {
                     if trimmed.starts_with("function ") || trimmed.starts_with("const ") ||
                        trimmed.starts_with("let ") || trimmed.starts_with("var ") ||
                        trimmed.starts_with("import ") || trimmed.starts_with("export ") {
-                        return Style::default().fg(Color::Magenta).add_modifier(ratatui::style::Modifier::BOLD);
+                        return Style::default().fg(theme.syntax_keyword).add_modifier(ratatui::style::Modifier::BOLD);
                     }
                 }
                 "py" => {
                     if trimmed.starts_with("def ") || trimmed.starts_with("class ") ||
                        trimmed.starts_with("import ") || trimmed.starts_with("from ") {
-                        return Style::default().fg(Color::Magenta).add_modifier(ratatui::style::Modifier::BOLD);
+                        return Style::default().fg(theme.syntax_keyword).add_modifier(ratatui::style::Modifier::BOLD);
                     }
                 }
                 _ => {}
@@ -337,10 +342,11 @@ fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
     }
     
     // Default style
-    Style::default().fg(Color::Reset)
+    Style::default().fg(theme.code_default)
 }
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = get_theme();
     let status_text = if app.is_loading {
         format!("Loading... | {}", app.status_message)
     } else {
@@ -354,13 +360,13 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let status_line = Line::from(vec![
-        Span::styled(status_text, Style::default().fg(Color::White)),
+        Span::styled(status_text, Style::default().fg(theme.status_bar_fg)),
         Span::raw(" | "),
-        Span::styled(help_text, Style::default().fg(Color::Gray)),
+        Span::styled(help_text, Style::default().fg(theme.status_help_text)),
     ]);
 
     let paragraph = Paragraph::new(status_line)
-        .style(Style::default().bg(Color::DarkGray));
+        .style(Style::default().bg(theme.status_bar_bg));
 
     frame.render_widget(paragraph, area);
 }

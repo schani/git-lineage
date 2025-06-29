@@ -25,6 +25,7 @@ mod screenshot;
 mod command;
 mod executor;
 mod tree;
+mod theme;
 
 use app::App;
 use async_task::{Task, TaskResult};
