@@ -10,13 +10,14 @@ use ratatui::{
 use std::{io, time::Duration};
 use tokio::sync::mpsc;
 use clap::Parser;
+use crate::error::GitLineageError;
 
 mod app;
 mod ui;
+mod error;
 mod event;
 mod async_task;
 mod git_utils;
-mod error;
 mod config;
 mod cli;
 mod test_config;
@@ -53,7 +54,7 @@ async fn main() -> Result<()> {
 
 async fn run_interactive() -> Result<()> {
     // Initialize Git repository
-    let repo = git_utils::open_repository(".")?;
+    let repo = git_utils::open_repository(".").map_err(|e| GitLineageError::from(e.to_string()))?;
     
     // Initialize application state
     let mut app = App::new(repo);
@@ -139,8 +140,15 @@ fn handle_task_result(app: &mut App, result: TaskResult) {
             app.status_message = "File tree loaded".to_string();
         }
         TaskResult::CommitHistoryLoaded { commits } => {
+            let commit_count = commits.len();
             app.commit_list = commits;
-            app.status_message = "Commit history loaded".to_string();
+            // Reset commit list selection when new commits are loaded
+            app.commit_list_state.select(if commit_count == 0 { None } else { Some(0) });
+            app.status_message = if commit_count == 0 {
+                "No commits found for this file".to_string()
+            } else {
+                format!("Loaded {} commits", commit_count)
+            };
         }
         TaskResult::FileContentLoaded { content, blame_info: _ } => {
             app.current_content = content;

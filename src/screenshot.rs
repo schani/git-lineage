@@ -17,7 +17,7 @@ pub fn generate_screenshot(
     let config = TestConfig::load_from_file(config_path)?;
     
     // Create a dummy repository (we won't use it for screenshots)
-    let repo = git_utils::open_repository(".")?;
+    let repo = git_utils::open_repository(".").map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error>)?;
     
     // Create app from test config
     let app = App::from_test_config(&config, repo);

@@ -51,7 +51,7 @@ fn discover_rendering_tests() -> Vec<RenderingTest> {
 /// Generate a screenshot from a test configuration
 fn generate_test_screenshot(config: &TestConfig) -> Result<String, Box<dyn std::error::Error>> {
     // Create a dummy repository (we won't use it for screenshots)
-    let repo = git_utils::open_repository(".")?;
+    let repo = git_utils::open_repository(".").map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error>)?;
     
     // Create app from test config
     let app = App::from_test_config(config, repo);

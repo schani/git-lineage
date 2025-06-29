@@ -47,7 +47,7 @@ pub fn handle_event(
 fn handle_navigator_event(
     app: &mut App,
     key: KeyCode,
-    _async_sender: &mpsc::Sender<Task>,
+    task_sender: &mpsc::Sender<Task>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if app.in_search_mode {
         match key {
@@ -109,7 +109,16 @@ fn handle_navigator_event(
                     };
                 } else {
                     app.status_message = format!("Selected: {}", selected_path.display());
-                    // TODO: Load commit history for this file
+                    
+                    // Load commit history for this file
+                    let file_path = selected_path.to_string_lossy().to_string();
+                    if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory { 
+                        file_path 
+                    }) {
+                        app.status_message = format!("Failed to load commit history: {}", e);
+                    } else {
+                        app.status_message = format!("Loading commit history for {}", selected_path.display());
+                    }
                 }
             }
         }

@@ -91,34 +91,19 @@ pub async fn load_file_tree(repo_path: &str) -> Result<crate::tree::FileTree, Bo
 }
 
 async fn load_commit_history(
-    _repo_path: &str,
-    _file_path: &str,
-) -> Result<Vec<crate::app::CommitInfo>, Box<dyn std::error::Error>> {
-    // TODO: Implement using gix rev-walk filtered by file path
-    // For now, return mock data
-    Ok(vec![
-        crate::app::CommitInfo {
-            hash: "a1b2c3d4e5f6789012345678901234567890abcd".to_string(),
-            short_hash: "a1b2c3d".to_string(),
-            author: "John Doe".to_string(),
-            date: "2 hours ago".to_string(),
-            subject: "Add new feature".to_string(),
-        },
-        crate::app::CommitInfo {
-            hash: "b2c3d4e5f6789012345678901234567890abcdef".to_string(),
-            short_hash: "b2c3d4e".to_string(),
-            author: "Jane Smith".to_string(),
-            date: "1 day ago".to_string(),
-            subject: "Fix bug in parser".to_string(),
-        },
-        crate::app::CommitInfo {
-            hash: "c3d4e5f6789012345678901234567890abcdef01".to_string(),
-            short_hash: "c3d4e5f".to_string(),
-            author: "Bob Johnson".to_string(),
-            date: "3 days ago".to_string(),
-            subject: "Initial commit".to_string(),
-        },
-    ])
+    repo_path: &str,
+    file_path: &str,
+) -> Result<Vec<crate::app::CommitInfo>, Box<dyn std::error::Error + Send + Sync>> {
+    // Run in blocking task since git operations are sync
+    let repo_path = repo_path.to_string();
+    let file_path = file_path.to_string();
+    
+    tokio::task::spawn_blocking(move || -> Result<Vec<crate::app::CommitInfo>, Box<dyn std::error::Error + Send + Sync>> {
+        let repo = crate::git_utils::open_repository(&repo_path)
+            .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>)?;
+        crate::git_utils::get_commit_history_for_file(&repo, &file_path)
+            .map_err(|e| Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())) as Box<dyn std::error::Error + Send + Sync>)
+    }).await?
 }
 
 async fn load_file_content(
