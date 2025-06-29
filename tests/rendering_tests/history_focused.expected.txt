@@ -22,4 +22,4 @@
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
-Ready | Tab: Switch panel | ↑↓: Navigate | Enter: Select commit────────────────┘
+Ready | Tab: Switch panel | 1/2/3: Direct panel focus | ↑↓: Navigate | Enter: Se

@@ -22,4 +22,4 @@
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
-Loading... | Searching for next change... | Tab: Switch panel | ↑↓: Navigate | p
+Loading... | Searching for next change... | Tab: Switch panel | 1/2/3: Direct pa

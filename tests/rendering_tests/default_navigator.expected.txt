@@ -22,4 +22,4 @@
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
-Ready | Tab: Switch panel | /: Search | ↑↓: Navigate | →←: Expand/Collapse─────┘
+Ready | Tab: Switch panel | 1/2/3: Direct panel focus | /: Search | ↑↓: Navigate

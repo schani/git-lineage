@@ -32,6 +32,18 @@ pub fn handle_event(
                     }
                     return Ok(());
                 }
+                KeyCode::Char('1') => {
+                    app.active_panel = PanelFocus::Navigator;
+                    return Ok(());
+                }
+                KeyCode::Char('2') => {
+                    app.active_panel = PanelFocus::History;
+                    return Ok(());
+                }
+                KeyCode::Char('3') => {
+                    app.active_panel = PanelFocus::Inspector;
+                    return Ok(());
+                }
                 _ => {}
             }
 

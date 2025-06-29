@@ -21,6 +21,35 @@ cargo run
 git-lineage
 ```
 
+## Keybindings
+
+### Global Navigation
+- **Tab** / **Shift+Tab** - Cycle between panels (forward/backward)
+- **1** - Focus File Navigator panel (left)
+- **2** - Focus Commit History panel (middle)  
+- **3** - Focus Code Inspector panel (right)
+- **q** / **Esc** - Quit application
+
+### File Navigator Panel
+- **↑** / **↓** - Navigate up/down through files
+- **→** / **←** - Expand/collapse directories
+- **Enter** - Select file and switch to History panel
+- **/** - Start search mode
+- **Esc** - Exit search mode
+
+### Commit History Panel  
+- **↑** / **↓** - Navigate through commit history
+- **Enter** - Select commit and load file content
+
+### Code Inspector Panel
+- **↑** / **↓** - Navigate up/down through lines
+- **PageUp** / **PageDown** - Move by 10 lines
+- **Home** / **End** - Go to first/last line
+- **g** / **G** - Go to top/bottom of file
+- **p** - Jump to previous change (blame navigation)
+- **n** - Find next change for current line
+- **d** - Toggle diff view
+
 ### Screenshot Mode (Visual Testing)
 
 Generate text-based screenshots of UI configurations for testing and documentation:

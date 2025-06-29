@@ -22,4 +22,4 @@
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
-Search: config | Tab: Switch panel | /: Search | ↑↓: Navigate | →←: Expand/Colla
+Search: config | Tab: Switch panel | 1/2/3: Direct panel focus | /: Search | ↑↓:
