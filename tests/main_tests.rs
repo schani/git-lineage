@@ -1,54 +1,60 @@
-use git_lineage::*;
-use tempfile::TempDir;
-use tokio_test::{assert_ok, assert_err};
-use std::path::PathBuf;
-use std::fs;
-use git_lineage::app::{App, PanelFocus, CommitInfo};
+use git_lineage::app::{App, CommitInfo, PanelFocus};
 use git_lineage::async_task::TaskResult;
-use git_lineage::tree::{FileTree, TreeNode};
-use git_lineage::test_config::TestConfig;
 use git_lineage::cli::{Cli, Commands};
+use git_lineage::test_config::TestConfig;
+use git_lineage::tree::{FileTree, TreeNode};
+use git_lineage::*;
 use serial_test::serial;
+use std::fs;
+use std::path::PathBuf;
+use tempfile::TempDir;
+use tokio_test::{assert_err, assert_ok};
 
 // Test utilities
 fn create_test_git_repo(temp_dir: &TempDir) -> std::result::Result<(), Box<dyn std::error::Error>> {
     use std::process::Command as StdCommand;
-    
+
     let repo_path = temp_dir.path();
-    
+
     // Initialize git repo
     StdCommand::new("git")
         .args(&["init"])
         .current_dir(repo_path)
         .output()?;
-    
+
     // Set up git config
     StdCommand::new("git")
         .args(&["config", "user.name", "Test User"])
         .current_dir(repo_path)
         .output()?;
-    
+
     StdCommand::new("git")
         .args(&["config", "user.email", "test@example.com"])
         .current_dir(repo_path)
         .output()?;
-    
+
     // Create test files
     fs::create_dir_all(repo_path.join("src"))?;
-    fs::write(repo_path.join("src/main.rs"), "fn main() { println!(\"Hello\"); }")?;
-    fs::write(repo_path.join("Cargo.toml"), "[package]\nname = \"test\"\nversion = \"0.1.0\"")?;
-    
+    fs::write(
+        repo_path.join("src/main.rs"),
+        "fn main() { println!(\"Hello\"); }",
+    )?;
+    fs::write(
+        repo_path.join("Cargo.toml"),
+        "[package]\nname = \"test\"\nversion = \"0.1.0\"",
+    )?;
+
     // Add and commit files
     StdCommand::new("git")
         .args(&["add", "."])
         .current_dir(repo_path)
         .output()?;
-    
+
     StdCommand::new("git")
         .args(&["commit", "-m", "Initial commit"])
         .current_dir(repo_path)
         .output()?;
-    
+
     Ok(())
 }
 
@@ -56,27 +62,28 @@ fn create_test_app() -> App {
     let repo = git_lineage::git_utils::open_repository(".")
         .unwrap_or_else(|_| panic!("Failed to open test repository"));
     let mut app = App::new(repo);
-    
+
     // Add test data
     let mut tree = FileTree::new();
     let src_node = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
     tree.root.push(src_node);
     app.file_tree = tree;
-    
-    app.commit_list = vec![
-        CommitInfo {
-            hash: "abc123".to_string(),
-            short_hash: "abc123".to_string(),
-            author: "Test Author".to_string(),
-            date: "2023-01-01".to_string(),
-            subject: "Test commit".to_string(),
-        },
-    ];
-    
+
+    app.commit_list = vec![CommitInfo {
+        hash: "abc123".to_string(),
+        short_hash: "abc123".to_string(),
+        author: "Test Author".to_string(),
+        date: "2023-01-01".to_string(),
+        subject: "Test commit".to_string(),
+    }];
+
     app
 }
 
-fn create_test_config_file(temp_dir: &TempDir, config: &TestConfig) -> std::result::Result<PathBuf, Box<dyn std::error::Error>> {
+fn create_test_config_file(
+    temp_dir: &TempDir,
+    config: &TestConfig,
+) -> std::result::Result<PathBuf, Box<dyn std::error::Error>> {
     let config_path = temp_dir.path().join("test_config.json");
     let config_json = serde_json::to_string_pretty(config)?;
     fs::write(&config_path, config_json)?;
@@ -93,7 +100,7 @@ mod cli_integration {
         let args = vec!["git-lineage"];
         let cli = Cli::try_parse_from(args);
         assert_ok!(&cli);
-        
+
         let cli = cli.unwrap();
         assert_eq!(cli.command, None); // Defaults to Run
     }
@@ -103,7 +110,7 @@ mod cli_integration {
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("config.json");
         fs::write(&config_path, "{}").unwrap();
-        
+
         let args = vec![
             "git-lineage",
             "screenshot",
@@ -114,15 +121,20 @@ mod cli_integration {
             "--width",
             "120",
             "--height",
-            "40"
+            "40",
         ];
-        
+
         let cli = Cli::try_parse_from(args);
         assert_ok!(&cli);
-        
+
         let cli = cli.unwrap();
         match cli.command.unwrap() {
-            Commands::Screenshot { config, output, width, height } => {
+            Commands::Screenshot {
+                config,
+                output,
+                width,
+                height,
+            } => {
                 assert!(config.contains("config.json"));
                 assert_eq!(output, Some("test.txt".to_string()));
                 assert_eq!(width, 120);
@@ -142,15 +154,22 @@ mod cli_integration {
             "--command",
             "quit",
             "--output",
-            "result.json"
+            "result.json",
         ];
-        
+
         let cli = Cli::try_parse_from(args);
         assert_ok!(&cli);
-        
+
         let cli = cli.unwrap();
         match cli.command.unwrap() {
-            Commands::Execute { config, command, output, screenshot, width, height } => {
+            Commands::Execute {
+                config,
+                command,
+                output,
+                screenshot,
+                width,
+                height,
+            } => {
                 assert_eq!(config, "config.json");
                 assert_eq!(command, "quit");
                 assert_eq!(output, Some("result.json".to_string()));
@@ -164,16 +183,11 @@ mod cli_integration {
 
     #[test]
     fn test_cli_parsing_save_state_command() {
-        let args = vec![
-            "git-lineage",
-            "save-state",
-            "--output",
-            "state.json"
-        ];
-        
+        let args = vec!["git-lineage", "save-state", "--output", "state.json"];
+
         let cli = Cli::try_parse_from(args);
         assert_ok!(&cli);
-        
+
         let cli = cli.unwrap();
         match cli.command.unwrap() {
             Commands::SaveState { output } => {
@@ -191,15 +205,15 @@ mod task_result_handling {
     fn test_handle_file_tree_loaded() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
+
         let mut tree = FileTree::new();
         let test_node = TreeNode::new_file("test.rs".to_string(), PathBuf::from("test.rs"));
         tree.root.push(test_node);
-        
+
         let result = TaskResult::FileTreeLoaded { files: tree };
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert_eq!(app.file_tree.root.len(), 1);
         assert_eq!(app.file_navigator_scroll_offset, 0);
@@ -211,7 +225,7 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_with_commits() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
+
         let commits = vec![
             CommitInfo {
                 hash: "abc123".to_string(),
@@ -228,11 +242,13 @@ mod task_result_handling {
                 subject: "Another commit".to_string(),
             },
         ];
-        
-        let result = TaskResult::CommitHistoryLoaded { commits: commits.clone() };
-        
+
+        let result = TaskResult::CommitHistoryLoaded {
+            commits: commits.clone(),
+        };
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert_eq!(app.commit_list.len(), 2);
         assert_eq!(app.commit_list_state.selected(), Some(0));
@@ -243,11 +259,11 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_empty() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
+
         let result = TaskResult::CommitHistoryLoaded { commits: vec![] };
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert_eq!(app.commit_list.len(), 0);
         assert_eq!(app.commit_list_state.selected(), None);
@@ -258,20 +274,20 @@ mod task_result_handling {
     fn test_handle_file_content_loaded() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
+
         let content = vec![
             "fn main() {".to_string(),
             "    println!(\"Hello, world!\");".to_string(),
             "}".to_string(),
         ];
-        
-        let result = TaskResult::FileContentLoaded { 
-            content: content.clone(), 
-            blame_info: Some("Test blame".to_string()) 
+
+        let result = TaskResult::FileContentLoaded {
+            content: content.clone(),
+            blame_info: Some("Test blame".to_string()),
         };
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert_eq!(app.current_content, content);
         assert!(app.status_message.contains("File content loaded"));
@@ -282,13 +298,13 @@ mod task_result_handling {
         let mut app = create_test_app();
         app.is_loading = true;
         app.active_panel = PanelFocus::Navigator;
-        
-        let result = TaskResult::NextChangeFound { 
-            commit_hash: "abc123".to_string() 
+
+        let result = TaskResult::NextChangeFound {
+            commit_hash: "abc123".to_string(),
         };
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert_eq!(app.commit_list_state.selected(), Some(0));
         assert_eq!(app.active_panel, PanelFocus::History);
@@ -299,13 +315,13 @@ mod task_result_handling {
     fn test_handle_next_change_found_commit_not_in_history() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
-        let result = TaskResult::NextChangeFound { 
-            commit_hash: "nonexistent".to_string() 
+
+        let result = TaskResult::NextChangeFound {
+            commit_hash: "nonexistent".to_string(),
         };
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert!(app.status_message.contains("commit not in history"));
     }
@@ -314,11 +330,11 @@ mod task_result_handling {
     fn test_handle_next_change_not_found() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
+
         let result = TaskResult::NextChangeNotFound;
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert!(app.status_message.contains("No subsequent changes found"));
     }
@@ -327,13 +343,13 @@ mod task_result_handling {
     fn test_handle_error_result() {
         let mut app = create_test_app();
         app.is_loading = true;
-        
-        let result = TaskResult::Error { 
-            message: "Test error message".to_string() 
+
+        let result = TaskResult::Error {
+            message: "Test error message".to_string(),
         };
-        
+
         git_lineage::main_lib::handle_task_result(&mut app, result);
-        
+
         assert!(!app.is_loading);
         assert!(app.status_message.contains("Error: Test error message"));
     }
@@ -346,29 +362,29 @@ mod command_execution {
     #[serial]
     fn test_execute_command_with_output_file() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test config
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let output_path = temp_dir.path().join("result.json");
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "quit",
             Some(output_path.to_str().unwrap()),
             false,
             120,
-            40
+            40,
         );
-        
+
         assert_ok!(&result);
         assert!(output_path.exists());
-        
+
         // Verify output content
         let content = fs::read_to_string(&output_path).unwrap();
         assert!(!content.is_empty());
-        
+
         // Should be valid JSON
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert!(parsed.is_object());
@@ -379,16 +395,16 @@ mod command_execution {
     fn test_execute_command_with_screenshot() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
-        
+
         // Create test config in the temp directory with the git repo
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let output_path = temp_dir.path().join("result.json");
-        
+
         // Change to the test directory only for the duration of the execute_command call
         let original_dir = std::env::current_dir().unwrap();
-        
+
         // Use a guard to ensure directory is always restored
         struct DirGuard {
             original_dir: std::path::PathBuf,
@@ -398,29 +414,31 @@ mod command_execution {
                 let _ = std::env::set_current_dir(&self.original_dir);
             }
         }
-        
-        let _guard = DirGuard { original_dir: original_dir.clone() };
+
+        let _guard = DirGuard {
+            original_dir: original_dir.clone(),
+        };
         std::env::set_current_dir(temp_dir.path()).unwrap();
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "quit",
             Some(output_path.to_str().unwrap()),
             true,
             80,
-            30
+            30,
         );
-        
+
         // Restore original directory before asserting (guard will also do this)
         std::env::set_current_dir(&original_dir).unwrap();
-        
+
         assert_ok!(&result);
         assert!(output_path.exists());
-        
+
         // Screenshot should also be created
         let screenshot_path = temp_dir.path().join("result.screenshot.txt");
         assert!(screenshot_path.exists());
-        
+
         drop(temp_dir);
     }
 
@@ -433,9 +451,9 @@ mod command_execution {
             None,
             false,
             120,
-            40
+            40,
         );
-        
+
         assert_err!(&result);
     }
 
@@ -443,24 +461,24 @@ mod command_execution {
     #[serial]
     fn test_execute_command_invalid_command() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test config
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "invalid_command_syntax",
             None,
             false,
             120,
-            40
+            40,
         );
-        
+
         // Should handle gracefully - commands are parsed leniently
         match result {
-            Ok(_) => {}, // Command parsing might succeed with default handling
-            Err(_) => {}, // Or it might fail, both are acceptable
+            Ok(_) => {}  // Command parsing might succeed with default handling
+            Err(_) => {} // Or it might fail, both are acceptable
         }
     }
 
@@ -468,13 +486,13 @@ mod command_execution {
     #[serial]
     fn test_execute_command_complex_sequence() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test config
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let output_path = temp_dir.path().join("complex_result.json");
-        
+
         // Use proper sequence format
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
@@ -482,9 +500,9 @@ mod command_execution {
             Some(output_path.to_str().unwrap()),
             false,
             120,
-            40
+            40,
         );
-        
+
         assert_ok!(&result);
         assert!(output_path.exists());
     }
@@ -498,25 +516,26 @@ mod state_management {
     async fn test_save_current_state_to_file() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
-        
+
         // Change to the test directory
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
-        
+
         let output_path = temp_dir.path().join("saved_state.json");
-        
-        let result = git_lineage::main_lib::save_current_state(Some(output_path.to_str().unwrap())).await;
-        
+
+        let result =
+            git_lineage::main_lib::save_current_state(Some(output_path.to_str().unwrap())).await;
+
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
-        
+
         assert_ok!(&result);
         assert!(output_path.exists());
-        
+
         // Verify output content
         let content = fs::read_to_string(&output_path).unwrap();
         assert!(!content.is_empty());
-        
+
         // Should be valid JSON that can be parsed as TestConfig
         let parsed: TestConfig = serde_json::from_str(&content).unwrap();
         assert!(!parsed.status_message.is_empty());
@@ -527,16 +546,16 @@ mod state_management {
     async fn test_save_current_state_to_stdout() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
-        
+
         // Change to the test directory
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
-        
+
         let result = git_lineage::main_lib::save_current_state(None).await;
-        
+
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
-        
+
         assert_ok!(&result);
     }
 
@@ -545,16 +564,16 @@ mod state_management {
     async fn test_save_current_state_invalid_repo() {
         let temp_dir = TempDir::new().unwrap();
         // Don't create a git repo
-        
+
         // Change to the test directory
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
-        
+
         let result = git_lineage::main_lib::save_current_state(None).await;
-        
+
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
-        
+
         assert_err!(&result);
     }
 
@@ -563,19 +582,20 @@ mod state_management {
     async fn test_save_current_state_file_tree_error() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
-        
-        // Change to the test directory  
+
+        // Change to the test directory
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
-        
+
         let output_path = temp_dir.path().join("saved_state.json");
-        
+
         // This should still succeed even if file tree loading has issues
-        let result = git_lineage::main_lib::save_current_state(Some(output_path.to_str().unwrap())).await;
-        
+        let result =
+            git_lineage::main_lib::save_current_state(Some(output_path.to_str().unwrap())).await;
+
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
-        
+
         assert_ok!(&result);
         assert!(output_path.exists());
     }
@@ -588,32 +608,32 @@ mod integration_scenarios {
     #[serial]
     fn test_command_execution_output_formats() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test config
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         // Test different output file extensions
         let output_formats = vec![
             ("result.json", false),
             ("result.txt", true), // Should generate screenshot
         ];
-        
+
         for (filename, should_screenshot) in output_formats {
             let output_path = temp_dir.path().join(filename);
-            
+
             let result = git_lineage::main_lib::execute_command(
                 config_path.to_str().unwrap(),
                 "quit",
                 Some(output_path.to_str().unwrap()),
                 should_screenshot,
                 100,
-                30
+                30,
             );
-            
+
             assert_ok!(&result);
             assert!(output_path.exists());
-            
+
             if should_screenshot {
                 let screenshot_path = temp_dir.path().join("result.txt.screenshot.txt");
                 assert!(screenshot_path.exists());
@@ -625,24 +645,24 @@ mod integration_scenarios {
     #[serial]
     fn test_temp_file_cleanup() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create test config
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let output_path = temp_dir.path().join("result.json");
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "quit",
             Some(output_path.to_str().unwrap()),
             true, // Generate screenshot to test cleanup
             120,
-            40
+            40,
         );
-        
+
         assert_ok!(&result);
-        
+
         // Temp config file should be cleaned up
         let temp_config_path = std::env::current_dir().unwrap().join("temp_config.json");
         assert!(!temp_config_path.exists());
@@ -653,17 +673,18 @@ mod integration_scenarios {
     async fn test_state_serialization_roundtrip() {
         let temp_dir = TempDir::new().unwrap();
         create_test_git_repo(&temp_dir).unwrap();
-        
+
         // Change to the test directory
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
-        
+
         let state_path = temp_dir.path().join("state.json");
-        
+
         // Save current state
-        let save_result = git_lineage::main_lib::save_current_state(Some(state_path.to_str().unwrap())).await;
+        let save_result =
+            git_lineage::main_lib::save_current_state(Some(state_path.to_str().unwrap())).await;
         assert_ok!(&save_result);
-        
+
         // Load and execute command using saved state - use proper sequence format
         let execute_result = git_lineage::main_lib::execute_command(
             state_path.to_str().unwrap(),
@@ -671,14 +692,14 @@ mod integration_scenarios {
             None,
             false,
             120,
-            40
+            40,
         );
-        
+
         // Restore original directory before asserting (and before temp_dir drops)
         std::env::set_current_dir(&original_dir).unwrap();
-        
+
         assert_ok!(&execute_result);
-        
+
         // Keep temp_dir alive until the end
         drop(temp_dir);
     }
@@ -686,23 +707,14 @@ mod integration_scenarios {
     #[test]
     fn test_error_handling_chain() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Test cascade of potential errors
-        let test_cases = vec![
-            ("/nonexistent/config.json", "quit"),
-            ("", "quit"),
-        ];
-        
+        let test_cases = vec![("/nonexistent/config.json", "quit"), ("", "quit")];
+
         for (config_path, command) in test_cases {
-            let result = git_lineage::main_lib::execute_command(
-                config_path,
-                command,
-                None,
-                false,
-                120,
-                40
-            );
-            
+            let result =
+                git_lineage::main_lib::execute_command(config_path, command, None, false, 120, 40);
+
             // Should fail gracefully
             assert_err!(&result);
         }
@@ -716,10 +728,10 @@ mod edge_cases {
     #[serial]
     fn test_very_large_dimensions() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "quit",
@@ -728,11 +740,11 @@ mod edge_cases {
             9999, // Very large width
             9999, // Very large height
         );
-        
+
         // Should handle gracefully
         match result {
-            Ok(_) => {},
-            Err(_) => {}, // Both outcomes acceptable for extreme dimensions
+            Ok(_) => {}
+            Err(_) => {} // Both outcomes acceptable for extreme dimensions
         }
     }
 
@@ -740,10 +752,10 @@ mod edge_cases {
     #[serial]
     fn test_zero_dimensions() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "quit",
@@ -752,11 +764,11 @@ mod edge_cases {
             0, // Zero width
             0, // Zero height
         );
-        
+
         // Should handle gracefully
         match result {
-            Ok(_) => {},
-            Err(_) => {}, // Both outcomes acceptable for zero dimensions
+            Ok(_) => {}
+            Err(_) => {} // Both outcomes acceptable for zero dimensions
         }
     }
 
@@ -764,19 +776,19 @@ mod edge_cases {
     #[serial]
     fn test_empty_command_string() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             "", // Empty command
             None,
             false,
             120,
-            40
+            40,
         );
-        
+
         // Empty commands should fail with an error
         assert_err!(&result);
     }
@@ -785,22 +797,22 @@ mod edge_cases {
     #[serial]
     fn test_very_long_command_string() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         // Create a very long command string - comma separated format should fail
         let long_command = "down,".repeat(1000) + "quit";
-        
+
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
             &long_command,
             None,
             false,
             120,
-            40
+            40,
         );
-        
+
         // Comma-separated commands should fail
         assert_err!(&result);
     }
@@ -809,7 +821,7 @@ mod edge_cases {
     async fn test_save_state_permission_denied() {
         // Try to save to a location that would cause permission issues
         let result = git_lineage::main_lib::save_current_state(Some("/root/forbidden.json")).await;
-        
+
         // Should fail gracefully
         assert_err!(&result);
     }
@@ -818,10 +830,10 @@ mod edge_cases {
     #[serial]
     fn test_screenshot_path_generation() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let config = TestConfig::default();
         let config_path = create_test_config_file(&temp_dir, &config).unwrap();
-        
+
         // Test screenshot path generation without output file
         let result = git_lineage::main_lib::execute_command(
             config_path.to_str().unwrap(),
@@ -829,13 +841,15 @@ mod edge_cases {
             None,
             true, // Generate screenshot
             120,
-            40
+            40,
         );
-        
+
         assert_ok!(&result);
-        
+
         // Default screenshot should be created - don't fail if cleanup fails
-        let default_screenshot = std::env::current_dir().unwrap().join("command_result_screenshot.txt");
+        let default_screenshot = std::env::current_dir()
+            .unwrap()
+            .join("command_result_screenshot.txt");
         if default_screenshot.exists() {
             // Ignore cleanup errors to prevent race conditions between tests
             let _ = fs::remove_file(default_screenshot);

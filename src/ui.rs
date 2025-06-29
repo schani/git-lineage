@@ -63,23 +63,25 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 
     // Get visible nodes with their display depths from the file tree
     let all_visible_nodes = app.file_tree.get_visible_nodes_with_depth();
-    
+
     // Calculate viewport bounds based on scroll offset
     let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders
     let scroll_offset = app.file_navigator_scroll_offset;
     let _viewport_end = (scroll_offset + viewport_height).min(all_visible_nodes.len());
-    
+
     // Get only the nodes that should be visible in the current viewport
     let visible_nodes_with_depth: Vec<_> = all_visible_nodes
         .iter()
         .skip(scroll_offset)
         .take(viewport_height)
         .collect();
-    
+
     // CRITICAL FAILSAFE: The actual rendered viewport is the minimum of calculated height and available nodes
     let actual_rendered_height = visible_nodes_with_depth.len();
-    let safe_cursor_position = app.file_navigator_cursor_position.min(actual_rendered_height.saturating_sub(1));
-    
+    let safe_cursor_position = app
+        .file_navigator_cursor_position
+        .min(actual_rendered_height.saturating_sub(1));
+
     // Convert visible nodes to list items with proper highlighting
     let items: Vec<ListItem> = visible_nodes_with_depth
         .iter()
@@ -87,19 +89,24 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .map(|(viewport_index, (node, display_depth))| {
             let status_char = match node.git_status {
                 Some('M') => 'M',
-                Some('A') => 'A', 
+                Some('A') => 'A',
                 Some('D') => 'D',
                 Some('?') => '?',
                 _ => ' ',
             };
-            
+
             // Use display depth for indentation (how deep in the currently visible tree)
             let display_name = if node.is_dir {
                 let expand_char = if node.is_expanded { "▼" } else { "▶" };
                 if *display_depth == 0 {
                     format!("{} {}", expand_char, node.name)
                 } else {
-                    format!("{}{} {}", " ".repeat(display_depth * 2), expand_char, node.name)
+                    format!(
+                        "{}{} {}",
+                        " ".repeat(display_depth * 2),
+                        expand_char,
+                        node.name
+                    )
                 }
             } else {
                 if *display_depth == 0 {
@@ -114,35 +121,42 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                     if status_char == ' ' {
                         format!("{}  {}", " ".repeat(display_depth * 2), node.name)
                     } else {
-                        format!("{}{} {}", " ".repeat(display_depth * 2), status_char, node.name)
+                        format!(
+                            "{}{} {}",
+                            " ".repeat(display_depth * 2),
+                            status_char,
+                            node.name
+                        )
                     }
                 }
             };
-            
-            
+
             // Check if this node is at the cursor position within the viewport
             let is_selected = viewport_index == safe_cursor_position;
-            
+
             let line = if is_selected {
                 // Highlight selected item with high contrast - pad to full width
                 let content_width = (area.width as usize).saturating_sub(2); // Account for borders
                 let display_len = display_name.chars().count();
                 let padding_needed = content_width.saturating_sub(display_len);
                 let padded_name = format!("{}{}", display_name, " ".repeat(padding_needed));
-                Line::from(vec![
-                    Span::styled(padded_name, Style::default()
+                Line::from(vec![Span::styled(
+                    padded_name,
+                    Style::default()
                         .fg(theme.file_selected_fg)
                         .bg(theme.file_selected_bg)
-                        .add_modifier(ratatui::style::Modifier::BOLD))
-                ])
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                )])
             } else {
                 // Style based on git status and type with moderate, readable colors
                 let style = if node.is_dir {
-                    Style::default().fg(theme.file_directory).add_modifier(ratatui::style::Modifier::BOLD)
+                    Style::default()
+                        .fg(theme.file_directory)
+                        .add_modifier(ratatui::style::Modifier::BOLD)
                 } else {
                     match node.git_status {
                         Some('M') => Style::default().fg(theme.file_git_modified),
-                        Some('A') => Style::default().fg(theme.file_git_added), 
+                        Some('A') => Style::default().fg(theme.file_git_added),
                         Some('D') => Style::default().fg(theme.file_git_deleted),
                         Some('?') => Style::default().fg(theme.file_git_untracked),
                         _ => Style::default().fg(theme.file_default), // Default terminal color
@@ -150,21 +164,26 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 };
                 Line::from(vec![Span::styled(display_name, style)])
             };
-            
+
             ListItem::new(line)
         })
         .collect();
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(theme.file_selected_bg).fg(theme.file_selected_fg).add_modifier(ratatui::style::Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .bg(theme.file_selected_bg)
+                .fg(theme.file_selected_fg)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        )
         .highlight_symbol("");
 
     // Don't use ListState selection for highlighting - we handle it manually with cursor position
     // Set no selection to prevent automatic scrolling
     let mut list_state = ListState::default();
     list_state.select(None);
-    
+
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
@@ -196,7 +215,8 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let items: Vec<ListItem> = app.commit_list
+    let items: Vec<ListItem> = app
+        .commit_list
         .iter()
         .map(|commit| {
             let line = Line::from(vec![
@@ -214,7 +234,11 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(Style::default().bg(theme.commit_selected_bg))
+        .highlight_style(
+            Style::default()
+                .bg(theme.commit_selected_bg)
+                .fg(theme.commit_selected_fg),
+        )
         .highlight_symbol(">> ");
 
     let mut list_state = app.commit_list_state.clone();
@@ -233,10 +257,14 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
     // Create a more informative title
     let title = if app.show_diff_view {
         " Code Inspector (Diff View) ".to_string()
-    } else if let (Some(file_path), Some(commit_hash)) = (&app.file_tree.current_selection, &app.selected_commit_hash) {
-        format!(" Code Inspector - {} @ {} ", 
+    } else if let (Some(file_path), Some(commit_hash)) =
+        (&app.file_tree.current_selection, &app.selected_commit_hash)
+    {
+        format!(
+            " Code Inspector - {} @ {} ",
             file_path.file_name().unwrap_or_default().to_string_lossy(),
-            &commit_hash[..8])
+            &commit_hash[..8]
+        )
     } else {
         " Code Inspector ".to_string()
     };
@@ -265,21 +293,32 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     // Enhanced content display with syntax-aware styling
-    let content_lines: Vec<Line> = app.current_content
+    let content_lines: Vec<Line> = app
+        .current_content
         .iter()
         .enumerate()
         .skip(app.inspector_scroll_vertical as usize)
         .take((area.height - 2) as usize) // Account for borders
         .map(|(line_num, line)| {
             let line_number = format!("{:4} ", line_num + 1);
-            
+
             // Basic syntax highlighting for common file types
             let line_style = get_line_style(line, &app.file_tree.current_selection);
-            
+
             if line_num == app.cursor_line {
                 Line::from(vec![
-                    Span::styled(line_number, Style::default().fg(theme.line_numbers_current).add_modifier(ratatui::style::Modifier::BOLD)),
-                    Span::styled(line, line_style.bg(theme.code_background_current)),
+                    Span::styled(
+                        line_number,
+                        Style::default()
+                            .fg(theme.line_numbers_current)
+                            .add_modifier(ratatui::style::Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        line,
+                        line_style
+                            .bg(theme.code_background_current)
+                            .fg(theme.code_foreground_current),
+                    ),
                 ])
             } else {
                 Line::from(vec![
@@ -301,46 +340,63 @@ fn draw_code_inspector(frame: &mut Frame, app: &App, area: Rect) {
 fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
     let theme = get_theme();
     let trimmed = line.trim();
-    
+
     // Comments (works for most languages)
     if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
         return Style::default().fg(theme.syntax_comment);
     }
-    
+
     // Strings (basic detection)
     if trimmed.contains('"') || trimmed.contains('\'') {
         return Style::default().fg(theme.syntax_string);
     }
-    
+
     // Keywords based on file extension
     if let Some(path) = file_path {
         if let Some(extension) = path.extension() {
             match extension.to_string_lossy().as_ref() {
                 "rs" => {
-                    if trimmed.starts_with("use ") || trimmed.starts_with("pub ") || 
-                       trimmed.starts_with("fn ") || trimmed.starts_with("struct ") ||
-                       trimmed.starts_with("enum ") || trimmed.starts_with("impl ") {
-                        return Style::default().fg(theme.syntax_keyword).add_modifier(ratatui::style::Modifier::BOLD);
+                    if trimmed.starts_with("use ")
+                        || trimmed.starts_with("pub ")
+                        || trimmed.starts_with("fn ")
+                        || trimmed.starts_with("struct ")
+                        || trimmed.starts_with("enum ")
+                        || trimmed.starts_with("impl ")
+                    {
+                        return Style::default()
+                            .fg(theme.syntax_keyword)
+                            .add_modifier(ratatui::style::Modifier::BOLD);
                     }
                 }
                 "js" | "ts" => {
-                    if trimmed.starts_with("function ") || trimmed.starts_with("const ") ||
-                       trimmed.starts_with("let ") || trimmed.starts_with("var ") ||
-                       trimmed.starts_with("import ") || trimmed.starts_with("export ") {
-                        return Style::default().fg(theme.syntax_keyword).add_modifier(ratatui::style::Modifier::BOLD);
+                    if trimmed.starts_with("function ")
+                        || trimmed.starts_with("const ")
+                        || trimmed.starts_with("let ")
+                        || trimmed.starts_with("var ")
+                        || trimmed.starts_with("import ")
+                        || trimmed.starts_with("export ")
+                    {
+                        return Style::default()
+                            .fg(theme.syntax_keyword)
+                            .add_modifier(ratatui::style::Modifier::BOLD);
                     }
                 }
                 "py" => {
-                    if trimmed.starts_with("def ") || trimmed.starts_with("class ") ||
-                       trimmed.starts_with("import ") || trimmed.starts_with("from ") {
-                        return Style::default().fg(theme.syntax_keyword).add_modifier(ratatui::style::Modifier::BOLD);
+                    if trimmed.starts_with("def ")
+                        || trimmed.starts_with("class ")
+                        || trimmed.starts_with("import ")
+                        || trimmed.starts_with("from ")
+                    {
+                        return Style::default()
+                            .fg(theme.syntax_keyword)
+                            .add_modifier(ratatui::style::Modifier::BOLD);
                     }
                 }
                 _ => {}
             }
         }
     }
-    
+
     // Default style
     Style::default().fg(theme.code_default)
 }
@@ -365,8 +421,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(help_text, Style::default().fg(theme.status_help_text)),
     ]);
 
-    let paragraph = Paragraph::new(status_line)
-        .style(Style::default().bg(theme.status_bar_bg));
+    let paragraph = Paragraph::new(status_line).style(Style::default().bg(theme.status_bar_bg));
 
     frame.render_widget(paragraph, area);
 }

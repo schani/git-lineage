@@ -7,7 +7,7 @@ use std::fs;
 
 pub fn handle_task_result(app: &mut App, result: TaskResult) {
     app.is_loading = false;
-    
+
     match result {
         TaskResult::FileTreeLoaded { files } => {
             app.file_tree = files;
@@ -24,14 +24,18 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             let commit_count = commits.len();
             app.commit_list = commits;
             // Reset commit list selection when new commits are loaded
-            app.commit_list_state.select(if commit_count == 0 { None } else { Some(0) });
+            app.commit_list_state
+                .select(if commit_count == 0 { None } else { Some(0) });
             app.status_message = if commit_count == 0 {
                 "No commits found for this file".to_string()
             } else {
                 format!("Loaded {} commits", commit_count)
             };
         }
-        TaskResult::FileContentLoaded { content, blame_info: _ } => {
+        TaskResult::FileContentLoaded {
+            content,
+            blame_info: _,
+        } => {
             app.current_content = content;
             app.status_message = "File content loaded".to_string();
         }
@@ -64,17 +68,17 @@ pub fn execute_command(
 ) -> Result<()> {
     // Load the configuration
     let config = crate::test_config::TestConfig::load_from_file(config_path)?;
-    
+
     // Parse the command
     let command = crate::command::Command::from_string(command_str)
         .map_err(|e| crate::error::GitLineageError::Generic(e))?;
-    
+
     // Execute the command
     let result = crate::executor::Executor::execute(&config, command);
-    
+
     // Convert result to JSON
     let result_json = serde_json::to_string_pretty(&result.config)?;
-    
+
     // Output the result
     match output_path {
         Some(path) => {
@@ -85,7 +89,7 @@ pub fn execute_command(
             println!("{}", result_json);
         }
     }
-    
+
     // Show execution summary
     if let Some(status) = result.status_message {
         eprintln!("Status: {}", status);
@@ -93,35 +97,40 @@ pub fn execute_command(
     if result.should_quit {
         eprintln!("Command resulted in quit");
     }
-    
+
     // Generate screenshot if requested
     if generate_screenshot {
         let screenshot_path = output_path
             .map(|p| format!("{}.screenshot.txt", p.trim_end_matches(".json")))
             .unwrap_or_else(|| "command_result_screenshot.txt".to_string());
-            
+
         // Save the result config temporarily for screenshot generation
         let temp_config_path = "temp_config.json";
         fs::write(temp_config_path, &result_json)?;
-        
-        crate::screenshot::generate_screenshot(&temp_config_path, Some(&screenshot_path), width, height)?;
-        
+
+        crate::screenshot::generate_screenshot(
+            &temp_config_path,
+            Some(&screenshot_path),
+            width,
+            height,
+        )?;
+
         // Clean up temp file
         let _ = fs::remove_file(temp_config_path);
-        
+
         eprintln!("Screenshot saved to: {}", screenshot_path);
     }
-    
+
     Ok(())
 }
 
 pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
     // Initialize Git repository - use open instead of discover to get the right error type
     let repo = gix::open(".").map_err(|e| crate::error::GitLineageError::from(e))?;
-    
+
     // Create initial app state
     let mut app = App::new(repo);
-    
+
     // Load the file tree directly
     match crate::async_task::load_file_tree(".").await {
         Ok(tree) => {
@@ -140,13 +149,13 @@ pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
             app.status_message = format!("Error loading file tree: {}", e);
         }
     }
-    
+
     // Convert app state to TestConfig format
     let config = crate::test_config::TestConfig::from_app(&app);
-    
+
     // Convert to JSON
     let config_json = serde_json::to_string_pretty(&config)?;
-    
+
     // Output the result
     match output_path {
         Some(path) => {
@@ -157,6 +166,6 @@ pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
             println!("{}", config_json);
         }
     }
-    
+
     Ok(())
 }

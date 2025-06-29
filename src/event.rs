@@ -103,15 +103,19 @@ fn handle_navigator_event(
         }
         KeyCode::Enter => {
             if let Some(selected_path) = app.get_selected_file_path() {
-                let is_dir = app.file_tree.find_node(&selected_path)
+                let is_dir = app
+                    .file_tree
+                    .find_node(&selected_path)
                     .map(|node| node.is_dir)
                     .unwrap_or(false);
-                
+
                 if is_dir {
-                    let was_expanded = app.file_tree.find_node(&selected_path)
+                    let was_expanded = app
+                        .file_tree
+                        .find_node(&selected_path)
                         .map(|node| node.is_expanded)
                         .unwrap_or(false);
-                    
+
                     app.toggle_selected_node();
                     app.status_message = if was_expanded {
                         "Collapsed directory".to_string()
@@ -198,7 +202,8 @@ fn handle_inspector_event(
             app.inspector_scroll_vertical = app.cursor_line as u16;
         }
         KeyCode::PageDown => {
-            app.cursor_line = (app.cursor_line + 10).min(app.current_content.len().saturating_sub(1));
+            app.cursor_line =
+                (app.cursor_line + 10).min(app.current_content.len().saturating_sub(1));
         }
         KeyCode::Home => {
             app.cursor_line = 0;
@@ -244,18 +249,20 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
         if selected < app.commit_list.len() {
             let commit = &app.commit_list[selected];
             app.selected_commit_hash = Some(commit.hash.clone());
-            
+
             // Load actual file content at this commit if we have a selected file
             if let Some(ref file_path) = app.file_tree.current_selection {
                 app.is_loading = true;
-                app.status_message = format!("Loading {} at commit {}...", 
+                app.status_message = format!(
+                    "Loading {} at commit {}...",
                     file_path.file_name().unwrap_or_default().to_string_lossy(),
-                    &commit.short_hash);
+                    &commit.short_hash
+                );
 
                 match crate::git_utils::get_file_content_at_commit(
                     &app.repo,
                     &file_path.to_string_lossy(),
-                    &commit.hash
+                    &commit.hash,
                 ) {
                     Ok(content) => {
                         app.current_content = content;
@@ -263,7 +270,7 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
                         app.inspector_scroll_horizontal = 0;
                         app.cursor_line = 0;
                         app.status_message = format!(
-                            "Loaded {} ({} lines) at commit {}", 
+                            "Loaded {} ({} lines) at commit {}",
                             file_path.file_name().unwrap_or_default().to_string_lossy(),
                             app.current_content.len(),
                             &commit.short_hash
@@ -310,9 +317,9 @@ fn handle_next_change(
     app: &mut App,
     async_sender: &mpsc::Sender<Task>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let (Some(ref file_path), Some(ref commit_hash)) = 
-        (&app.get_selected_file_path(), &app.selected_commit_hash) {
-        
+    if let (Some(ref file_path), Some(ref commit_hash)) =
+        (&app.get_selected_file_path(), &app.selected_commit_hash)
+    {
         let task = Task::FindNextChange {
             file_path: file_path.to_string_lossy().to_string(),
             current_commit: commit_hash.clone(),
@@ -333,25 +340,29 @@ fn handle_next_change(
     Ok(())
 }
 
-fn handle_file_selection_change(
-    app: &mut App,
-    task_sender: &mpsc::Sender<Task>,
-) {
+fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>) {
     if let Some(selected_path) = app.get_selected_file_path() {
-        let is_dir = app.file_tree.find_node(&selected_path)
+        let is_dir = app
+            .file_tree
+            .find_node(&selected_path)
             .map(|node| node.is_dir)
             .unwrap_or(false);
-        
+
         if !is_dir {
             // It's a file - load commit history for this file
             let file_path = selected_path.to_string_lossy().to_string();
-            if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory { 
-                file_path: file_path.clone()
+            if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory {
+                file_path: file_path.clone(),
             }) {
                 app.status_message = format!("Failed to load commit history: {}", e);
             } else {
-                app.status_message = format!("Loading history for {}", 
-                    selected_path.file_name().unwrap_or_default().to_string_lossy());
+                app.status_message = format!(
+                    "Loading history for {}",
+                    selected_path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                );
             }
         }
     }
@@ -363,32 +374,32 @@ mod tests {
     use crate::app::{App, PanelFocus};
     use crate::async_task::Task;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-    use tokio::sync::mpsc;
     use std::path::PathBuf;
+    use tokio::sync::mpsc;
 
     // Test utilities
     fn create_test_app() -> App {
         let repo = crate::git_utils::open_repository(".")
             .unwrap_or_else(|_| panic!("Failed to open test repository"));
         let mut app = App::new(repo);
-        
+
         // Set up a basic file tree for testing by building nodes manually
         use crate::tree::TreeNode;
-        
+
         // Create root level nodes
         let src_main = TreeNode::new_file("main.rs".to_string(), "src/main.rs".into());
         let src_lib = TreeNode::new_file("lib.rs".to_string(), "src/lib.rs".into());
         let mut tests_dir = TreeNode::new_dir("tests".to_string(), "tests".into());
         let test_file = TreeNode::new_file("test.rs".to_string(), "tests/test.rs".into());
-        
+
         // Add test file to tests directory
         tests_dir.add_child(test_file);
-        
+
         // Add nodes to the file tree root
         app.file_tree.root.push(src_main);
         app.file_tree.root.push(src_lib);
         app.file_tree.root.push(tests_dir);
-        
+
         // Add some commits for testing
         app.commit_list = vec![
             crate::app::CommitInfo {
@@ -406,7 +417,7 @@ mod tests {
                 subject: "Another commit".to_string(),
             },
         ];
-        
+
         app
     }
 
@@ -628,7 +639,7 @@ mod tests {
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            
+
             // Check that a task was sent due to navigation triggering auto-load
             let task = rx.try_recv();
             assert!(task.is_ok());
@@ -703,7 +714,7 @@ mod tests {
 
             // Go to last commit
             app.commit_list_state.select(Some(1));
-            
+
             // Try to go down from last commit
             let event = create_key_event(KeyCode::Down);
             let result = handle_event(event, &mut app, &tx);
@@ -753,7 +764,11 @@ mod tests {
         async fn test_cursor_up_down_movement() {
             let mut app = create_test_app();
             app.active_panel = PanelFocus::Inspector;
-            app.current_content = vec!["line1".to_string(), "line2".to_string(), "line3".to_string()];
+            app.current_content = vec![
+                "line1".to_string(),
+                "line2".to_string(),
+                "line3".to_string(),
+            ];
             app.cursor_line = 1;
             let (tx, _rx) = create_test_channel().await;
 
@@ -829,7 +844,7 @@ mod tests {
 
             // Go to last line
             app.cursor_line = 1;
-            
+
             // Try to go down from last line
             let event = create_key_event(KeyCode::Down);
             let result = handle_event(event, &mut app, &tx);
@@ -907,7 +922,11 @@ mod tests {
             let task = rx.try_recv();
             assert!(task.is_ok());
             match task.unwrap() {
-                Task::FindNextChange { file_path, current_commit, line_number } => {
+                Task::FindNextChange {
+                    file_path,
+                    current_commit,
+                    line_number,
+                } => {
                     assert!(file_path.contains("main.rs"));
                     assert_eq!(current_commit, "abc123");
                     assert_eq!(line_number, 5);
@@ -979,7 +998,7 @@ mod tests {
             app.active_panel = PanelFocus::Navigator;
             // Start with no selection to trigger navigation
             app.file_tree.current_selection = None;
-            
+
             // Create a channel and immediately drop the receiver to simulate failure
             let (tx, rx) = create_test_channel().await;
             drop(rx);
@@ -1022,13 +1041,13 @@ mod tests {
             let (tx, _rx) = create_test_channel().await;
 
             let special_chars = vec!['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+'];
-            
+
             for ch in special_chars {
                 let event = create_key_event(KeyCode::Char(ch));
                 let result = handle_event(event, &mut app, &tx);
                 assert!(result.is_ok());
             }
-            
+
             assert_eq!(app.search_query.len(), 12);
         }
 
@@ -1046,7 +1065,7 @@ mod tests {
                 let result = handle_event(event, &mut app, &tx);
                 assert!(result.is_ok());
             }
-            
+
             assert!(app.search_query.is_empty());
         }
     }

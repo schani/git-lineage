@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::fs;
-use serde::{Deserialize, Serialize};
 use ignore::WalkBuilder;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Represents a single node in the file tree
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,12 +51,10 @@ impl TreeNode {
         if self.is_dir {
             self.children.push(child);
             // Keep children sorted: directories first, then files, both alphabetically
-            self.children.sort_by(|a, b| {
-                match (a.is_dir, b.is_dir) {
-                    (true, false) => std::cmp::Ordering::Less,
-                    (false, true) => std::cmp::Ordering::Greater,
-                    _ => a.name.cmp(&b.name),
-                }
+            self.children.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.cmp(&b.name),
             });
         }
     }
@@ -170,75 +168,77 @@ impl FileTree {
     /// Scan a directory and build the tree structure
     fn scan_directory(&mut self, dir_path: &Path) -> Result<(), std::io::Error> {
         let entries = fs::read_dir(dir_path)?;
-        
+
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            
+
             // Skip hidden files and directories (starting with .)
             if name.starts_with('.') {
                 continue;
             }
-            
+
             let is_dir = path.is_dir();
             let mut node = TreeNode::new(name, path.clone(), is_dir);
-            
+
             // Apply git status if available
             if let Some(&status) = self.git_status_map.get(&path) {
                 node.git_status = Some(status);
             }
-            
+
             // Recursively scan subdirectories
             if is_dir {
                 self.scan_directory_into_node(&mut node, &path)?;
             }
-            
+
             self.root.push(node);
         }
-        
+
         // Sort root level
-        self.root.sort_by(|a, b| {
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.cmp(&b.name),
-            }
+        self.root.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
         });
-        
+
         Ok(())
     }
 
     /// Scan directory contents into a specific node
-    fn scan_directory_into_node(&mut self, parent: &mut TreeNode, dir_path: &Path) -> Result<(), std::io::Error> {
+    fn scan_directory_into_node(
+        &mut self,
+        parent: &mut TreeNode,
+        dir_path: &Path,
+    ) -> Result<(), std::io::Error> {
         let entries = fs::read_dir(dir_path)?;
-        
+
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            
+
             // Skip hidden files and directories
             if name.starts_with('.') {
                 continue;
             }
-            
+
             let is_dir = path.is_dir();
             let mut node = TreeNode::new(name, path.clone(), is_dir);
-            
+
             // Apply git status if available
             if let Some(&status) = self.git_status_map.get(&path) {
                 node.git_status = Some(status);
             }
-            
+
             // Recursively scan subdirectories
             if is_dir {
                 self.scan_directory_into_node(&mut node, &path)?;
             }
-            
+
             parent.add_child(node);
         }
-        
+
         Ok(())
     }
 
@@ -255,17 +255,17 @@ impl FileTree {
             .build();
 
         let mut entries = Vec::new();
-        
+
         for result in walk {
             match result {
                 Ok(entry) => {
                     let path = entry.path();
-                    
+
                     // Skip the root directory itself
                     if path == dir_path {
                         continue;
                     }
-                    
+
                     // Skip hidden files and directories (starting with .)
                     if let Some(name) = path.file_name() {
                         let name_str = name.to_string_lossy();
@@ -273,7 +273,7 @@ impl FileTree {
                             continue;
                         }
                     }
-                    
+
                     entries.push(path.to_path_buf());
                 }
                 Err(err) => {
@@ -282,52 +282,51 @@ impl FileTree {
                 }
             }
         }
-        
+
         // Process the collected entries
         for path in entries {
-            let name = path.file_name()
+            let name = path
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.to_string_lossy().to_string());
-            
+
             // Convert absolute path to relative path from repo root
             let relative_path = match path.strip_prefix(&self.repo_root) {
                 Ok(rel_path) => rel_path.to_path_buf(),
                 Err(_) => path.clone(), // Fallback to absolute path if strip fails
             };
-            
+
             let is_dir = path.is_dir();
             let mut node = TreeNode::new(name, relative_path.clone(), is_dir);
-            
+
             // Apply git status if available (using original absolute path for git status lookup)
             if let Some(&status) = self.git_status_map.get(&path) {
                 node.git_status = Some(status);
             }
-            
+
             // Recursively scan subdirectories with gitignore filtering
             if is_dir {
                 self.scan_directory_into_node_with_gitignore(&mut node, &path)?;
             }
-            
+
             self.root.push(node);
         }
-        
+
         // Sort root level
-        self.root.sort_by(|a, b| {
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.cmp(&b.name),
-            }
+        self.root.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
         });
-        
+
         Ok(())
     }
 
     /// Scan directory contents into a specific node with gitignore filtering
     fn scan_directory_into_node_with_gitignore(
-        &mut self, 
-        parent: &mut TreeNode, 
-        dir_path: &Path
+        &mut self,
+        parent: &mut TreeNode,
+        dir_path: &Path,
     ) -> Result<(), std::io::Error> {
         // Use ignore crate's WalkBuilder for this subdirectory
         let walk = WalkBuilder::new(dir_path)
@@ -340,17 +339,17 @@ impl FileTree {
             .build();
 
         let mut entries = Vec::new();
-        
+
         for result in walk {
             match result {
                 Ok(entry) => {
                     let path = entry.path();
-                    
+
                     // Skip the directory itself
                     if path == dir_path {
                         continue;
                     }
-                    
+
                     // Skip hidden files and directories (starting with .)
                     if let Some(name) = path.file_name() {
                         let name_str = name.to_string_lossy();
@@ -358,7 +357,7 @@ impl FileTree {
                             continue;
                         }
                     }
-                    
+
                     entries.push(path.to_path_buf());
                 }
                 Err(err) => {
@@ -367,35 +366,36 @@ impl FileTree {
                 }
             }
         }
-        
+
         // Process the collected entries
         for path in entries {
-            let name = path.file_name()
+            let name = path
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.to_string_lossy().to_string());
-            
+
             // Convert absolute path to relative path from repo root
             let relative_path = match path.strip_prefix(&self.repo_root) {
                 Ok(rel_path) => rel_path.to_path_buf(),
                 Err(_) => path.clone(), // Fallback to absolute path if strip fails
             };
-            
+
             let is_dir = path.is_dir();
             let mut node = TreeNode::new(name, relative_path, is_dir);
-            
+
             // Apply git status if available (using original absolute path for git status lookup)
             if let Some(&status) = self.git_status_map.get(&path) {
                 node.git_status = Some(status);
             }
-            
+
             // Recursively scan subdirectories with gitignore filtering
             if is_dir {
                 self.scan_directory_into_node_with_gitignore(&mut node, &path)?;
             }
-            
+
             parent.add_child(node);
         }
-        
+
         Ok(())
     }
 
@@ -414,11 +414,14 @@ impl FileTree {
     }
 
     /// Recursively apply git status to a node and its children (static version)
-    fn apply_git_status_to_node_static(node: &mut TreeNode, git_status_map: &HashMap<PathBuf, char>) {
+    fn apply_git_status_to_node_static(
+        node: &mut TreeNode,
+        git_status_map: &HashMap<PathBuf, char>,
+    ) {
         if let Some(&status) = git_status_map.get(&node.path) {
             node.git_status = Some(status);
         }
-        
+
         for child in &mut node.children {
             Self::apply_git_status_to_node_static(child, git_status_map);
         }
@@ -449,28 +452,31 @@ impl FileTree {
         if node.path == path {
             return Some(node);
         }
-        
+
         for child in &node.children {
             if let Some(found) = self.find_node_recursive(child, path) {
                 return Some(found);
             }
         }
-        
+
         None
     }
 
     /// Recursively search for a node (mutable, static version)
-    fn find_node_recursive_mut_static<'a>(node: &'a mut TreeNode, path: &Path) -> Option<&'a mut TreeNode> {
+    fn find_node_recursive_mut_static<'a>(
+        node: &'a mut TreeNode,
+        path: &Path,
+    ) -> Option<&'a mut TreeNode> {
         if node.path == path {
             return Some(node);
         }
-        
+
         for child in &mut node.children {
             if let Some(found) = Self::find_node_recursive_mut_static(child, path) {
                 return Some(found);
             }
         }
-        
+
         None
     }
 
@@ -519,7 +525,8 @@ impl FileTree {
 
     /// Get the currently selected node
     pub fn get_selected_node(&self) -> Option<&TreeNode> {
-        self.current_selection.as_ref()
+        self.current_selection
+            .as_ref()
             .and_then(|path| self.find_node(path))
     }
 
@@ -544,7 +551,7 @@ impl FileTree {
     /// Recursively collect visible nodes
     fn collect_visible_nodes<'a>(&self, node: &'a TreeNode, visible: &mut Vec<&'a TreeNode>) {
         visible.push(node);
-        
+
         if node.is_dir && node.is_expanded {
             for child in &node.children {
                 self.collect_visible_nodes(child, visible);
@@ -553,9 +560,14 @@ impl FileTree {
     }
 
     /// Recursively collect visible nodes with their display depth
-    fn collect_visible_nodes_with_depth<'a>(&self, node: &'a TreeNode, visible: &mut Vec<(&'a TreeNode, usize)>, depth: usize) {
+    fn collect_visible_nodes_with_depth<'a>(
+        &self,
+        node: &'a TreeNode,
+        visible: &mut Vec<(&'a TreeNode, usize)>,
+        depth: usize,
+    ) {
         visible.push((node, depth));
-        
+
         if node.is_dir && node.is_expanded {
             for child in &node.children {
                 self.collect_visible_nodes_with_depth(child, visible, depth + 1);
@@ -567,7 +579,8 @@ impl FileTree {
     pub fn get_next_node(&self) -> Option<&TreeNode> {
         let visible = self.get_visible_nodes();
         if let Some(current_path) = &self.current_selection {
-            if let Some(current_index) = visible.iter().position(|node| &node.path == current_path) {
+            if let Some(current_index) = visible.iter().position(|node| &node.path == current_path)
+            {
                 if current_index + 1 < visible.len() {
                     return Some(visible[current_index + 1]);
                 }
@@ -580,7 +593,8 @@ impl FileTree {
     pub fn get_previous_node(&self) -> Option<&TreeNode> {
         let visible = self.get_visible_nodes();
         if let Some(current_path) = &self.current_selection {
-            if let Some(current_index) = visible.iter().position(|node| &node.path == current_path) {
+            if let Some(current_index) = visible.iter().position(|node| &node.path == current_path)
+            {
                 if current_index > 0 {
                     return Some(visible[current_index - 1]);
                 }
@@ -643,20 +657,25 @@ impl FileTree {
     pub fn filter_nodes(&self, query: &str) -> Vec<&TreeNode> {
         let mut results = Vec::new();
         let lower_query = query.to_lowercase();
-        
+
         for node in &self.root {
             self.filter_nodes_recursive(node, &lower_query, &mut results);
         }
-        
+
         results
     }
 
     /// Recursively filter nodes
-    fn filter_nodes_recursive<'a>(&self, node: &'a TreeNode, query: &str, results: &mut Vec<&'a TreeNode>) {
+    fn filter_nodes_recursive<'a>(
+        &self,
+        node: &'a TreeNode,
+        query: &str,
+        results: &mut Vec<&'a TreeNode>,
+    ) {
         if node.name.to_lowercase().contains(query) {
             results.push(node);
         }
-        
+
         for child in &node.children {
             self.filter_nodes_recursive(child, query, results);
         }
@@ -776,7 +795,7 @@ mod tests {
         let mut parent = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
         let child = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
         let child_path = child.path.clone();
-        
+
         parent.add_child(child);
 
         let found = parent.find_child(&child_path);
@@ -792,7 +811,7 @@ mod tests {
         let mut parent = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
         let child = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
         let child_path = child.path.clone();
-        
+
         parent.add_child(child);
         assert_eq!(parent.children.len(), 1);
 
@@ -813,17 +832,26 @@ mod tests {
     #[test]
     fn test_file_tree_navigation() {
         let mut tree = FileTree::new();
-        
+
         // Create a simple tree structure
         let mut root_dir = TreeNode::new_dir("project".to_string(), PathBuf::from("project"));
         root_dir.expand(); // Expand to make children visible
-        root_dir.add_child(TreeNode::new_file("README.md".to_string(), PathBuf::from("project/README.md")));
-        root_dir.add_child(TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("project/Cargo.toml")));
-        
+        root_dir.add_child(TreeNode::new_file(
+            "README.md".to_string(),
+            PathBuf::from("project/README.md"),
+        ));
+        root_dir.add_child(TreeNode::new_file(
+            "Cargo.toml".to_string(),
+            PathBuf::from("project/Cargo.toml"),
+        ));
+
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("project/src"));
-        src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("project/src/main.rs")));
+        src_dir.add_child(TreeNode::new_file(
+            "main.rs".to_string(),
+            PathBuf::from("project/src/main.rs"),
+        ));
         root_dir.add_child(src_dir);
-        
+
         tree.root.push(root_dir);
 
         // Test initial selection
@@ -837,25 +865,37 @@ mod tests {
         assert_eq!(tree.current_selection, Some(PathBuf::from("project/src")));
 
         assert!(tree.navigate_down());
-        assert_eq!(tree.current_selection, Some(PathBuf::from("project/Cargo.toml")));
+        assert_eq!(
+            tree.current_selection,
+            Some(PathBuf::from("project/Cargo.toml"))
+        );
 
         assert!(tree.navigate_down());
-        assert_eq!(tree.current_selection, Some(PathBuf::from("project/README.md")));
+        assert_eq!(
+            tree.current_selection,
+            Some(PathBuf::from("project/README.md"))
+        );
 
         assert!(tree.navigate_up());
-        assert_eq!(tree.current_selection, Some(PathBuf::from("project/Cargo.toml")));
+        assert_eq!(
+            tree.current_selection,
+            Some(PathBuf::from("project/Cargo.toml"))
+        );
     }
 
     #[test]
     fn test_file_tree_expansion() {
         let mut tree = FileTree::new();
-        
+
         let mut root_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
-        root_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs")));
+        root_dir.add_child(TreeNode::new_file(
+            "main.rs".to_string(),
+            PathBuf::from("src/main.rs"),
+        ));
         tree.root.push(root_dir);
 
         let src_path = PathBuf::from("src");
-        
+
         // Initially collapsed
         let visible_before = tree.get_visible_nodes();
         assert_eq!(visible_before.len(), 1);
@@ -863,7 +903,7 @@ mod tests {
 
         // Expand the directory
         assert!(tree.expand_node(&src_path));
-        
+
         let visible_after = tree.get_visible_nodes();
         assert_eq!(visible_after.len(), 2);
         assert_eq!(visible_after[0].name, "src");
@@ -871,7 +911,7 @@ mod tests {
 
         // Collapse the directory
         assert!(tree.collapse_node(&src_path));
-        
+
         let visible_collapsed = tree.get_visible_nodes();
         assert_eq!(visible_collapsed.len(), 1);
         assert_eq!(visible_collapsed[0].name, "src");
@@ -880,15 +920,15 @@ mod tests {
     #[test]
     fn test_file_tree_git_status() {
         let mut tree = FileTree::new();
-        
+
         let root = TreeNode::new_file("main.rs".to_string(), PathBuf::from("main.rs"));
         tree.root.push(root);
 
         let mut git_status = HashMap::new();
         git_status.insert(PathBuf::from("main.rs"), 'M');
-        
+
         tree.set_git_status(git_status);
-        
+
         let node = tree.find_node(&PathBuf::from("main.rs")).unwrap();
         assert_eq!(node.git_status, Some('M'));
     }
@@ -896,10 +936,19 @@ mod tests {
     #[test]
     fn test_file_tree_search() {
         let mut tree = FileTree::new();
-        
-        tree.root.push(TreeNode::new_file("main.rs".to_string(), PathBuf::from("main.rs")));
-        tree.root.push(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("lib.rs")));
-        tree.root.push(TreeNode::new_file("config.toml".to_string(), PathBuf::from("config.toml")));
+
+        tree.root.push(TreeNode::new_file(
+            "main.rs".to_string(),
+            PathBuf::from("main.rs"),
+        ));
+        tree.root.push(TreeNode::new_file(
+            "lib.rs".to_string(),
+            PathBuf::from("lib.rs"),
+        ));
+        tree.root.push(TreeNode::new_file(
+            "config.toml".to_string(),
+            PathBuf::from("config.toml"),
+        ));
 
         let results = tree.filter_nodes("rs");
         assert_eq!(results.len(), 2);
@@ -917,18 +966,26 @@ mod tests {
     #[test]
     fn test_file_tree_stats() {
         let mut tree = FileTree::new();
-        
+
         let mut root_dir = TreeNode::new_dir("project".to_string(), PathBuf::from("project"));
         root_dir.expand();
-        
+
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("project/src"));
-        src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("project/src/main.rs"))
-            .with_git_status('M'));
-        src_dir.add_child(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("project/src/lib.rs")));
-        
+        src_dir.add_child(
+            TreeNode::new_file("main.rs".to_string(), PathBuf::from("project/src/main.rs"))
+                .with_git_status('M'),
+        );
+        src_dir.add_child(TreeNode::new_file(
+            "lib.rs".to_string(),
+            PathBuf::from("project/src/lib.rs"),
+        ));
+
         root_dir.add_child(src_dir);
-        root_dir.add_child(TreeNode::new_file("README.md".to_string(), PathBuf::from("project/README.md")));
-        
+        root_dir.add_child(TreeNode::new_file(
+            "README.md".to_string(),
+            PathBuf::from("project/README.md"),
+        ));
+
         tree.root.push(root_dir);
 
         let stats = tree.get_stats();
@@ -955,9 +1012,12 @@ mod tests {
     #[test]
     fn test_find_node() {
         let mut tree = FileTree::new();
-        
+
         let mut root = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
-        root.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs")));
+        root.add_child(TreeNode::new_file(
+            "main.rs".to_string(),
+            PathBuf::from("src/main.rs"),
+        ));
         tree.root.push(root);
 
         let found = tree.find_node(&PathBuf::from("src"));

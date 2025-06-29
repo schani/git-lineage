@@ -1,9 +1,9 @@
+use crate::tree::FileTree;
 use gix::Repository;
 use ratatui::widgets::ListState;
-use tui_tree_widget::TreeState;
 use serde::{Deserialize, Serialize};
-use crate::tree::FileTree;
 use std::path::PathBuf;
+use tui_tree_widget::TreeState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelFocus {
@@ -157,9 +157,10 @@ impl App {
         if let Some(ref current_selection) = self.file_tree.current_selection {
             // Get visible nodes with depth to find the current selection index
             let visible_nodes_with_depth = self.file_tree.get_visible_nodes_with_depth();
-            let selected_index = visible_nodes_with_depth.iter()
+            let selected_index = visible_nodes_with_depth
+                .iter()
                 .position(|(node, _)| &node.path == current_selection);
-            
+
             self.file_navigator_list_state.select(selected_index);
         } else {
             self.file_navigator_list_state.select(None);
@@ -172,18 +173,22 @@ impl App {
         if viewport_height == 0 {
             return false;
         }
-        
+
         let visible_nodes = self.file_tree.get_visible_nodes_with_depth();
         if visible_nodes.is_empty() {
             return false;
         }
 
         // Find current absolute position
-        let current_absolute_pos = if let Some(ref current_selection) = self.file_tree.current_selection {
-            visible_nodes.iter().position(|(node, _)| &node.path == current_selection).unwrap_or(0)
-        } else {
-            0
-        };
+        let current_absolute_pos =
+            if let Some(ref current_selection) = self.file_tree.current_selection {
+                visible_nodes
+                    .iter()
+                    .position(|(node, _)| &node.path == current_selection)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
 
         // Can't move up from the first item
         if current_absolute_pos == 0 {
@@ -193,8 +198,9 @@ impl App {
         let new_absolute_pos = current_absolute_pos - 1;
 
         // Calculate what the new cursor position should be within the viewport
-        let new_cursor_in_viewport = new_absolute_pos.saturating_sub(self.file_navigator_scroll_offset);
-        
+        let new_cursor_in_viewport =
+            new_absolute_pos.saturating_sub(self.file_navigator_scroll_offset);
+
         // Calculate the actual available viewport height (nodes that will be rendered)
         let visible_nodes_in_viewport = visible_nodes
             .iter()
@@ -214,7 +220,9 @@ impl App {
         }
 
         // CRITICAL: Ensure cursor position never exceeds actual rendered bounds
-        self.file_navigator_cursor_position = self.file_navigator_cursor_position.min(actual_viewport_height.saturating_sub(1));
+        self.file_navigator_cursor_position = self
+            .file_navigator_cursor_position
+            .min(actual_viewport_height.saturating_sub(1));
 
         // Update the actual file tree selection
         if let Some((node, _)) = visible_nodes.get(new_absolute_pos) {
@@ -232,18 +240,22 @@ impl App {
         if viewport_height == 0 {
             return false;
         }
-        
+
         let visible_nodes = self.file_tree.get_visible_nodes_with_depth();
         if visible_nodes.is_empty() {
             return false;
         }
 
         // Find current absolute position
-        let current_absolute_pos = if let Some(ref current_selection) = self.file_tree.current_selection {
-            visible_nodes.iter().position(|(node, _)| &node.path == current_selection).unwrap_or(0)
-        } else {
-            0
-        };
+        let current_absolute_pos =
+            if let Some(ref current_selection) = self.file_tree.current_selection {
+                visible_nodes
+                    .iter()
+                    .position(|(node, _)| &node.path == current_selection)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
 
         // Can't move down from the last item
         if current_absolute_pos >= visible_nodes.len() - 1 {
@@ -253,8 +265,9 @@ impl App {
         let new_absolute_pos = current_absolute_pos + 1;
 
         // Calculate what the new cursor position should be within the viewport
-        let new_cursor_in_viewport = new_absolute_pos.saturating_sub(self.file_navigator_scroll_offset);
-        
+        let new_cursor_in_viewport =
+            new_absolute_pos.saturating_sub(self.file_navigator_scroll_offset);
+
         // Calculate the actual available viewport height (nodes that will be rendered)
         let visible_nodes_in_viewport = visible_nodes
             .iter()
@@ -266,7 +279,8 @@ impl App {
         // Check if the new position would be outside the actual viewport
         if new_cursor_in_viewport >= actual_viewport_height {
             // Need to scroll down - move the viewport but keep cursor at bottom
-            self.file_navigator_scroll_offset = new_absolute_pos.saturating_sub(actual_viewport_height - 1);
+            self.file_navigator_scroll_offset =
+                new_absolute_pos.saturating_sub(actual_viewport_height - 1);
             self.file_navigator_cursor_position = actual_viewport_height - 1;
         } else {
             // New position is within viewport - just move cursor
@@ -274,7 +288,9 @@ impl App {
         }
 
         // CRITICAL: Ensure cursor position never exceeds actual rendered bounds
-        self.file_navigator_cursor_position = self.file_navigator_cursor_position.min(actual_viewport_height.saturating_sub(1));
+        self.file_navigator_cursor_position = self
+            .file_navigator_cursor_position
+            .min(actual_viewport_height.saturating_sub(1));
 
         // Update the actual file tree selection
         if let Some((node, _)) = visible_nodes.get(new_absolute_pos) {
@@ -292,7 +308,10 @@ impl App {
         // For now we'll calculate it dynamically in the navigation methods
     }
 
-    pub fn set_file_tree_from_directory(&mut self, path: &std::path::Path) -> Result<(), std::io::Error> {
+    pub fn set_file_tree_from_directory(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<(), std::io::Error> {
         self.file_tree = FileTree::from_directory(path)?;
         Ok(())
     }
@@ -328,8 +347,12 @@ impl App {
                 self.inspector_scroll_vertical = 0; // Reset scroll to top
                 self.inspector_scroll_horizontal = 0;
                 self.cursor_line = 0;
-                self.status_message = format!("Loaded {} ({} lines) at commit {}", 
-                    file_path, self.current_content.len(), &commit_hash[..8]);
+                self.status_message = format!(
+                    "Loaded {} ({} lines) at commit {}",
+                    file_path,
+                    self.current_content.len(),
+                    &commit_hash[..8]
+                );
             }
             Err(e) => {
                 self.current_content.clear();
@@ -342,19 +365,24 @@ impl App {
     }
 
     /// Update the selected commit and refresh Inspector content if applicable
-    pub fn set_selected_commit(&mut self, commit_hash: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn set_selected_commit(
+        &mut self,
+        commit_hash: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         self.selected_commit_hash = Some(commit_hash);
-        
+
         // Auto-load content if we have a file selected
         if self.file_tree.current_selection.is_some() {
             self.load_inspector_content()?;
         }
-        
+
         Ok(())
     }
 
     /// Load commit history for the currently selected file
-    pub fn load_commit_history_for_selected_file(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn load_commit_history_for_selected_file(
+        &mut self,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let file_path = match &self.file_tree.current_selection {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
@@ -376,8 +404,12 @@ impl App {
                     // Auto-select the first (most recent) commit
                     self.commit_list_state.select(Some(0));
                     self.selected_commit_hash = Some(self.commit_list[0].hash.clone());
-                    self.status_message = format!("Loaded {} commits for {}", self.commit_list.len(), file_path);
-                    
+                    self.status_message = format!(
+                        "Loaded {} commits for {}",
+                        self.commit_list.len(),
+                        file_path
+                    );
+
                     // Auto-load content for the most recent commit
                     self.load_inspector_content()?;
                 } else {
@@ -452,73 +484,73 @@ impl App {
 mod tests {
     use super::*;
     use crate::tree::{FileTree, TreeNode};
-    use std::path::PathBuf;
     use gix::Repository;
-    use tempfile::TempDir;
     use std::fs;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
 
     // Test utilities
     fn create_test_repo() -> Repository {
         let temp_dir = TempDir::new().unwrap();
         let repo_path = temp_dir.path().to_path_buf(); // Convert to owned PathBuf
-        
+
         // Initialize git repo
         std::process::Command::new("git")
             .args(&["init"])
             .current_dir(&repo_path)
             .output()
             .unwrap();
-            
+
         // Set up git config
         std::process::Command::new("git")
             .args(&["config", "user.name", "Test User"])
             .current_dir(&repo_path)
             .output()
             .unwrap();
-            
+
         std::process::Command::new("git")
             .args(&["config", "user.email", "test@example.com"])
             .current_dir(&repo_path)
             .output()
             .unwrap();
-            
+
         // Create test file
         fs::write(repo_path.join("test.txt"), "test content").unwrap();
-        
+
         // Add and commit
         std::process::Command::new("git")
             .args(&["add", "."])
             .current_dir(&repo_path)
             .output()
             .unwrap();
-            
+
         std::process::Command::new("git")
             .args(&["commit", "-m", "Initial commit"])
             .current_dir(&repo_path)
             .output()
             .unwrap();
-            
+
         // Keep temp_dir alive by leaking it (for test purposes)
         std::mem::forget(temp_dir);
-        
+
         gix::open(repo_path).unwrap()
     }
 
     fn create_test_file_tree() -> FileTree {
         let mut tree = FileTree::new();
-        
+
         // Create a simple directory structure
         let file1 = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
         let file2 = TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs"));
         let file3 = TreeNode::new_file("test.rs".to_string(), PathBuf::from("tests/test.rs"));
-        
+
         tree.root.push(file1);
         tree.root.push(file2);
         tree.root.push(file3);
-        
+
         // Set a current selection
         tree.current_selection = Some(PathBuf::from("src/main.rs"));
-        
+
         tree
     }
 
@@ -905,11 +937,14 @@ mod tests {
         fn test_navigate_file_navigator_with_viewport_scrolling() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            
+
             // Create a larger tree to test scrolling
             let mut tree = FileTree::new();
             for i in 0..20 {
-                let file = TreeNode::new_file(format!("file{}.rs", i), PathBuf::from(format!("src/file{}.rs", i)));
+                let file = TreeNode::new_file(
+                    format!("file{}.rs", i),
+                    PathBuf::from(format!("src/file{}.rs", i)),
+                );
                 tree.root.push(file);
             }
             tree.current_selection = Some(PathBuf::from("src/file10.rs"));
@@ -971,7 +1006,7 @@ mod tests {
             let repo = create_test_repo();
             let mut app = App::new(repo);
             let temp_dir = TempDir::new().unwrap();
-            
+
             // Create a test file in the directory
             fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
 

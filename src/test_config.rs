@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use crate::app::{PanelFocus, CommitInfo};
+use crate::app::{CommitInfo, PanelFocus};
 use crate::tree::{FileTree, TreeNode};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,21 +25,25 @@ pub struct TestConfig {
 impl Default for TestConfig {
     fn default() -> Self {
         let mut file_tree = FileTree::new();
-        
+
         // Create sample tree structure
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
         src_dir.expand(); // Make it expanded by default
-        src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"))
-            .with_git_status('M'));
-        src_dir.add_child(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs"))
-            .with_git_status('A'));
-        
+        src_dir.add_child(
+            TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"))
+                .with_git_status('M'),
+        );
+        src_dir.add_child(
+            TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs"))
+                .with_git_status('A'),
+        );
+
         let cargo_toml = TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml"))
             .with_git_status('M');
-        
+
         file_tree.root.push(src_dir);
         file_tree.root.push(cargo_toml);
-        
+
         // Select the main.rs file by default
         file_tree.select_node(&PathBuf::from("src/main.rs"));
 
@@ -79,7 +83,8 @@ impl Default for TestConfig {
                 "fn main() {".to_string(),
                 "    println!(\"Hello, world!\");".to_string(),
                 "    let mut input = String::new();".to_string(),
-                "    io::stdin().read_line(&mut input).expect(\"Failed to read line\");".to_string(),
+                "    io::stdin().read_line(&mut input).expect(\"Failed to read line\");"
+                    .to_string(),
                 "    println!(\"You entered: {}\", input.trim());".to_string(),
                 "}".to_string(),
             ],
@@ -106,7 +111,7 @@ impl TestConfig {
         std::fs::write(path, json)?;
         Ok(())
     }
-    
+
     pub fn from_app(app: &crate::app::App) -> Self {
         TestConfig {
             active_panel: app.active_panel.clone(),

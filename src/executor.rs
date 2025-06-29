@@ -1,8 +1,4 @@
-use crate::{
-    command::Command,
-    test_config::TestConfig,
-    app::PanelFocus,
-};
+use crate::{app::PanelFocus, command::Command, test_config::TestConfig};
 
 /// Result of executing a command
 #[derive(Debug, Clone)]
@@ -27,7 +23,7 @@ impl Executor {
                 should_quit = true;
                 status_message = Some("Goodbye!".to_string());
             }
-            
+
             Command::NextPanel => {
                 new_config.active_panel = match new_config.active_panel {
                     PanelFocus::Navigator => PanelFocus::History,
@@ -36,7 +32,7 @@ impl Executor {
                 };
                 status_message = Some(format!("Switched to {:?} panel", new_config.active_panel));
             }
-            
+
             Command::PreviousPanel => {
                 new_config.active_panel = match new_config.active_panel {
                     PanelFocus::Navigator => PanelFocus::Inspector,
@@ -52,31 +48,31 @@ impl Executor {
                     Self::execute_navigate_up(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::NavigateDown => {
                 if new_config.active_panel == PanelFocus::Navigator {
                     Self::execute_navigate_down(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::ExpandNode => {
                 if new_config.active_panel == PanelFocus::Navigator {
                     Self::execute_expand_node(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::CollapseNode => {
                 if new_config.active_panel == PanelFocus::Navigator {
                     Self::execute_collapse_node(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::SelectFile => {
                 if new_config.active_panel == PanelFocus::Navigator {
                     Self::execute_select_file(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::StartSearch => {
                 if new_config.active_panel == PanelFocus::Navigator {
                     new_config.in_search_mode = true;
@@ -84,7 +80,7 @@ impl Executor {
                     status_message = Some("Search mode activated".to_string());
                 }
             }
-            
+
             Command::EndSearch => {
                 if new_config.active_panel == PanelFocus::Navigator && new_config.in_search_mode {
                     new_config.in_search_mode = false;
@@ -92,14 +88,14 @@ impl Executor {
                     status_message = Some("Search mode deactivated".to_string());
                 }
             }
-            
+
             Command::SearchInput(ch) => {
                 if new_config.active_panel == PanelFocus::Navigator && new_config.in_search_mode {
                     new_config.search_query.push(ch);
                     status_message = Some(format!("Search: {}", new_config.search_query));
                 }
             }
-            
+
             Command::SearchBackspace => {
                 if new_config.active_panel == PanelFocus::Navigator && new_config.in_search_mode {
                     new_config.search_query.pop();
@@ -113,13 +109,13 @@ impl Executor {
                     Self::execute_history_up(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::HistoryDown => {
                 if new_config.active_panel == PanelFocus::History {
                     Self::execute_history_down(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::SelectCommit => {
                 if new_config.active_panel == PanelFocus::History {
                     Self::execute_select_commit(&mut new_config, &mut status_message);
@@ -132,25 +128,25 @@ impl Executor {
                     Self::execute_inspector_up(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::InspectorDown => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     Self::execute_inspector_down(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::InspectorPageUp => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     Self::execute_inspector_page_up(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::InspectorPageDown => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     Self::execute_inspector_page_down(&mut new_config, &mut status_message);
                 }
             }
-            
+
             Command::InspectorHome => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.cursor_line = 0;
@@ -158,28 +154,28 @@ impl Executor {
                     status_message = Some("Moved to beginning of file".to_string());
                 }
             }
-            
+
             Command::InspectorEnd => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.cursor_line = new_config.current_content.len().saturating_sub(1);
                     status_message = Some("Moved to end of file".to_string());
                 }
             }
-            
+
             Command::InspectorLeft => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.cursor_column = new_config.cursor_column.saturating_sub(1);
                     status_message = Some(format!("Column: {}", new_config.cursor_column));
                 }
             }
-            
+
             Command::InspectorRight => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.cursor_column += 1;
                     status_message = Some(format!("Column: {}", new_config.cursor_column));
                 }
             }
-            
+
             Command::GoToTop => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.cursor_line = 0;
@@ -187,28 +183,31 @@ impl Executor {
                     status_message = Some("Moved to top".to_string());
                 }
             }
-            
+
             Command::GoToBottom => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.cursor_line = new_config.current_content.len().saturating_sub(1);
                     status_message = Some("Moved to bottom".to_string());
                 }
             }
-            
+
             Command::PreviousChange => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     // Simulate finding previous change (would use Git blame in real implementation)
-                    status_message = Some(format!("Previous change for line {}", new_config.cursor_line + 1));
+                    status_message = Some(format!(
+                        "Previous change for line {}",
+                        new_config.cursor_line + 1
+                    ));
                 }
             }
-            
+
             Command::NextChange => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.is_loading = true;
                     status_message = Some("Searching for next change...".to_string());
                 }
             }
-            
+
             Command::ToggleDiff => {
                 if new_config.active_panel == PanelFocus::Inspector {
                     new_config.show_diff_view = !new_config.show_diff_view;
@@ -258,7 +257,7 @@ impl Executor {
             *status_message = Some("Already at top".to_string());
         }
     }
-    
+
     fn execute_navigate_down(config: &mut TestConfig, status_message: &mut Option<String>) {
         if config.file_tree.navigate_down() {
             *status_message = Some("Navigated down in file tree".to_string());
@@ -266,7 +265,7 @@ impl Executor {
             *status_message = Some("Already at bottom".to_string());
         }
     }
-    
+
     fn execute_expand_node(config: &mut TestConfig, status_message: &mut Option<String>) {
         if let Some(selected_path) = config.file_tree.current_selection.clone() {
             if config.file_tree.expand_node(&selected_path) {
@@ -276,7 +275,7 @@ impl Executor {
             }
         }
     }
-    
+
     fn execute_collapse_node(config: &mut TestConfig, status_message: &mut Option<String>) {
         if let Some(selected_path) = config.file_tree.current_selection.clone() {
             if config.file_tree.collapse_node(&selected_path) {
@@ -286,21 +285,25 @@ impl Executor {
             }
         }
     }
-    
+
     fn execute_select_file(config: &mut TestConfig, status_message: &mut Option<String>) {
         if let Some(selected_path) = config.file_tree.current_selection.clone() {
-            let is_dir = config.file_tree.find_node(&selected_path)
+            let is_dir = config
+                .file_tree
+                .find_node(&selected_path)
                 .map(|node| node.is_dir)
                 .unwrap_or(false);
-                
+
             if !is_dir {
                 *status_message = Some(format!("Selected file: {}", selected_path.display()));
             } else {
                 // Toggle directory expansion
-                let was_expanded = config.file_tree.find_node(&selected_path)
+                let was_expanded = config
+                    .file_tree
+                    .find_node(&selected_path)
                     .map(|n| n.is_expanded)
                     .unwrap_or(false);
-                    
+
                 config.file_tree.toggle_node(&selected_path);
                 *status_message = Some(if was_expanded {
                     "Collapsed directory".to_string()
@@ -312,7 +315,7 @@ impl Executor {
             *status_message = Some("No file selected".to_string());
         }
     }
-    
+
     fn execute_history_up(config: &mut TestConfig, status_message: &mut Option<String>) {
         if let Some(current) = config.selected_commit_index {
             if current > 0 {
@@ -328,7 +331,7 @@ impl Executor {
             }
         }
     }
-    
+
     fn execute_history_down(config: &mut TestConfig, status_message: &mut Option<String>) {
         if let Some(current) = config.selected_commit_index {
             if current < config.commit_list.len().saturating_sub(1) {
@@ -344,7 +347,7 @@ impl Executor {
             }
         }
     }
-    
+
     fn execute_select_commit(config: &mut TestConfig, status_message: &mut Option<String>) {
         if let Some(index) = config.selected_commit_index {
             if let Some(commit) = config.commit_list.get(index) {
@@ -353,7 +356,7 @@ impl Executor {
             }
         }
     }
-    
+
     fn execute_inspector_up(config: &mut TestConfig, status_message: &mut Option<String>) {
         if config.cursor_line > 0 {
             config.cursor_line -= 1;
@@ -363,22 +366,23 @@ impl Executor {
             *status_message = Some(format!("Line: {}", config.cursor_line + 1));
         }
     }
-    
+
     fn execute_inspector_down(config: &mut TestConfig, status_message: &mut Option<String>) {
         if config.cursor_line < config.current_content.len().saturating_sub(1) {
             config.cursor_line += 1;
             *status_message = Some(format!("Line: {}", config.cursor_line + 1));
         }
     }
-    
+
     fn execute_inspector_page_up(config: &mut TestConfig, status_message: &mut Option<String>) {
         config.cursor_line = config.cursor_line.saturating_sub(10);
         config.inspector_scroll_vertical = config.cursor_line as u16;
         *status_message = Some(format!("Page up - Line: {}", config.cursor_line + 1));
     }
-    
+
     fn execute_inspector_page_down(config: &mut TestConfig, status_message: &mut Option<String>) {
-        config.cursor_line = (config.cursor_line + 10).min(config.current_content.len().saturating_sub(1));
+        config.cursor_line =
+            (config.cursor_line + 10).min(config.current_content.len().saturating_sub(1));
         *status_message = Some(format!("Page down - Line: {}", config.cursor_line + 1));
     }
 }
@@ -386,26 +390,35 @@ impl Executor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::{FileTree, TreeNode};
     use crate::app::CommitInfo;
+    use crate::tree::{FileTree, TreeNode};
     use std::path::PathBuf;
 
     // Test utilities
     fn create_test_config_with_tree() -> TestConfig {
         let mut tree = FileTree::new();
-        
+
         // Create a test directory structure
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
         src_dir.expand();
-        src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs")));
-        src_dir.add_child(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs")));
-        
+        src_dir.add_child(TreeNode::new_file(
+            "main.rs".to_string(),
+            PathBuf::from("src/main.rs"),
+        ));
+        src_dir.add_child(TreeNode::new_file(
+            "lib.rs".to_string(),
+            PathBuf::from("src/lib.rs"),
+        ));
+
         tree.root.push(src_dir);
-        tree.root.push(TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml")));
-        
+        tree.root.push(TreeNode::new_file(
+            "Cargo.toml".to_string(),
+            PathBuf::from("Cargo.toml"),
+        ));
+
         // Select the first item (src directory)
         tree.navigate_to_first();
-        
+
         TestConfig {
             file_tree: tree,
             active_panel: PanelFocus::Navigator,
@@ -476,20 +489,20 @@ mod tests {
                 active_panel: PanelFocus::Navigator,
                 ..TestConfig::default()
             };
-            
+
             // Navigator -> History
             let result = Executor::execute(&config, Command::NextPanel);
             config = result.config;
             assert_eq!(config.active_panel, PanelFocus::History);
             assert!(result.status_message.unwrap().contains("History"));
             assert!(!result.should_quit);
-            
+
             // History -> Inspector
             let result = Executor::execute(&config, Command::NextPanel);
             config = result.config;
             assert_eq!(config.active_panel, PanelFocus::Inspector);
             assert!(result.status_message.unwrap().contains("Inspector"));
-            
+
             // Inspector -> Navigator (complete cycle)
             let result = Executor::execute(&config, Command::NextPanel);
             config = result.config;
@@ -503,19 +516,19 @@ mod tests {
                 active_panel: PanelFocus::Navigator,
                 ..TestConfig::default()
             };
-            
+
             // Navigator -> Inspector (reverse direction)
             let result = Executor::execute(&config, Command::PreviousPanel);
             config = result.config;
             assert_eq!(config.active_panel, PanelFocus::Inspector);
             assert!(result.status_message.unwrap().contains("Inspector"));
-            
+
             // Inspector -> History
             let result = Executor::execute(&config, Command::PreviousPanel);
             config = result.config;
             assert_eq!(config.active_panel, PanelFocus::History);
             assert!(result.status_message.unwrap().contains("History"));
-            
+
             // History -> Navigator (complete reverse cycle)
             let result = Executor::execute(&config, Command::PreviousPanel);
             config = result.config;
@@ -526,7 +539,7 @@ mod tests {
         #[test]
         fn test_quit_command() {
             let config = TestConfig::default();
-            
+
             let result = Executor::execute(&config, Command::Quit);
             assert!(result.should_quit);
             assert_eq!(result.status_message, Some("Goodbye!".to_string()));
@@ -539,12 +552,12 @@ mod tests {
         #[test]
         fn test_navigate_up_down() {
             let mut config = create_test_config_with_tree();
-            
+
             // Navigate down to main.rs
             let result = Executor::execute(&config, Command::NavigateDown);
             config = result.config;
             assert!(result.status_message.unwrap().contains("Navigated down"));
-            
+
             // Navigate back up
             let result = Executor::execute(&config, Command::NavigateUp);
             config = result.config;
@@ -554,7 +567,7 @@ mod tests {
         #[test]
         fn test_navigate_up_at_top() {
             let mut config = create_test_config_with_tree();
-            
+
             // Try to navigate up when already at top
             let result = Executor::execute(&config, Command::NavigateUp);
             assert!(result.status_message.unwrap().contains("Already at top"));
@@ -563,13 +576,13 @@ mod tests {
         #[test]
         fn test_navigate_down_at_bottom() {
             let mut config = create_test_config_with_tree();
-            
+
             // Navigate to the bottom
             while config.file_tree.navigate_down() {
                 let result = Executor::execute(&config, Command::NavigateDown);
                 config = result.config;
             }
-            
+
             // Try to navigate down when at bottom
             let result = Executor::execute(&config, Command::NavigateDown);
             assert!(result.status_message.unwrap().contains("Already at bottom"));
@@ -578,29 +591,35 @@ mod tests {
         #[test]
         fn test_expand_collapse_directory() {
             let mut config = create_test_config_with_tree();
-            
+
             // Expand the currently selected directory (src)
             let result = Executor::execute(&config, Command::ExpandNode);
             config = result.config;
-            assert!(result.status_message.unwrap().contains("Expanded directory"));
-            
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Expanded directory"));
+
             // Collapse the directory
             let result = Executor::execute(&config, Command::CollapseNode);
             config = result.config;
-            assert!(result.status_message.unwrap().contains("Collapsed directory"));
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Collapsed directory"));
         }
 
         #[test]
         fn test_expand_collapse_file() {
             let mut config = create_test_config_with_tree();
-            
+
             // Navigate to a file (Cargo.toml)
             config.file_tree.select_node(&PathBuf::from("Cargo.toml"));
-            
+
             // Try to expand a file (should fail)
             let result = Executor::execute(&config, Command::ExpandNode);
             assert!(result.status_message.unwrap().contains("Cannot expand"));
-            
+
             // Try to collapse a file (should fail)
             let result = Executor::execute(&config, Command::CollapseNode);
             assert!(result.status_message.unwrap().contains("Cannot collapse"));
@@ -609,31 +628,40 @@ mod tests {
         #[test]
         fn test_select_file() {
             let mut config = create_test_config_with_tree();
-            
+
             // Select a file
             config.file_tree.select_node(&PathBuf::from("Cargo.toml"));
             let result = Executor::execute(&config, Command::SelectFile);
-            assert!(result.status_message.unwrap().contains("Selected file: Cargo.toml"));
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Selected file: Cargo.toml"));
         }
 
         #[test]
         fn test_select_directory_toggles_expansion() {
             let mut config = create_test_config_with_tree();
-            
+
             // Start with collapsed src directory
             let src_path = PathBuf::from("src");
             config.file_tree.collapse_node(&src_path);
             config.file_tree.select_node(&src_path);
-            
+
             // Select directory should expand it
             let result = Executor::execute(&config, Command::SelectFile);
             config = result.config;
-            assert!(result.status_message.unwrap().contains("Expanded directory"));
-            
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Expanded directory"));
+
             // Select again should collapse it
             let result = Executor::execute(&config, Command::SelectFile);
             config = result.config;
-            assert!(result.status_message.unwrap().contains("Collapsed directory"));
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Collapsed directory"));
         }
 
         #[test]
@@ -645,7 +673,7 @@ mod tests {
             };
             // Ensure no selection
             config.file_tree.current_selection = None;
-            
+
             let result = Executor::execute(&config, Command::SelectFile);
             assert!(result.status_message.unwrap().contains("No file selected"));
         }
@@ -656,14 +684,14 @@ mod tests {
                 active_panel: PanelFocus::History,
                 ..TestConfig::default()
             };
-            
+
             // Navigator commands should be ignored when not on Navigator panel
             let result = Executor::execute(&config, Command::NavigateUp);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::NavigateDown);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::ExpandNode);
             assert!(result.status_message.is_none());
         }
@@ -680,51 +708,57 @@ mod tests {
                 search_query: String::new(),
                 ..TestConfig::default()
             };
-            
+
             // Start search
             let result = Executor::execute(&config, Command::StartSearch);
             config = result.config;
             assert!(config.in_search_mode);
-            assert_eq!(result.status_message, Some("Search mode activated".to_string()));
-            
+            assert_eq!(
+                result.status_message,
+                Some("Search mode activated".to_string())
+            );
+
             // Add search input
             let result = Executor::execute(&config, Command::SearchInput('t'));
             config = result.config;
             assert_eq!(config.search_query, "t");
             assert_eq!(result.status_message, Some("Search: t".to_string()));
-            
+
             // Add more input
             let result = Executor::execute(&config, Command::SearchInput('e'));
             config = result.config;
             assert_eq!(config.search_query, "te");
             assert_eq!(result.status_message, Some("Search: te".to_string()));
-            
+
             let result = Executor::execute(&config, Command::SearchInput('s'));
             config = result.config;
             assert_eq!(config.search_query, "tes");
             assert_eq!(result.status_message, Some("Search: tes".to_string()));
-            
+
             let result = Executor::execute(&config, Command::SearchInput('t'));
             config = result.config;
             assert_eq!(config.search_query, "test");
             assert_eq!(result.status_message, Some("Search: test".to_string()));
-            
+
             // Backspace
             let result = Executor::execute(&config, Command::SearchBackspace);
             config = result.config;
             assert_eq!(config.search_query, "tes");
             assert_eq!(result.status_message, Some("Search: tes".to_string()));
-            
+
             let result = Executor::execute(&config, Command::SearchBackspace);
             config = result.config;
             assert_eq!(config.search_query, "te");
-            
+
             // End search
             let result = Executor::execute(&config, Command::EndSearch);
             config = result.config;
             assert!(!config.in_search_mode);
             assert!(config.search_query.is_empty());
-            assert_eq!(result.status_message, Some("Search mode deactivated".to_string()));
+            assert_eq!(
+                result.status_message,
+                Some("Search mode deactivated".to_string())
+            );
         }
 
         #[test]
@@ -735,7 +769,7 @@ mod tests {
                 search_query: String::new(),
                 ..TestConfig::default()
             };
-            
+
             // Backspace on empty query
             let result = Executor::execute(&config, Command::SearchBackspace);
             config = result.config;
@@ -750,7 +784,7 @@ mod tests {
                 in_search_mode: false,
                 ..TestConfig::default()
             };
-            
+
             // Search commands should be ignored when not on Navigator panel
             let result = Executor::execute(&config, Command::StartSearch);
             assert!(!result.config.in_search_mode);
@@ -765,7 +799,7 @@ mod tests {
                 search_query: String::new(),
                 ..TestConfig::default()
             };
-            
+
             // Search input should be ignored when not in search mode
             let result = Executor::execute(&config, Command::SearchInput('x'));
             assert!(result.config.search_query.is_empty());
@@ -779,7 +813,7 @@ mod tests {
                 in_search_mode: false,
                 ..TestConfig::default()
             };
-            
+
             // End search when not searching should do nothing
             let result = Executor::execute(&config, Command::EndSearch);
             assert!(!result.config.in_search_mode);
@@ -793,33 +827,33 @@ mod tests {
         #[test]
         fn test_history_navigation() {
             let mut config = create_test_config_with_commits();
-            
+
             // Start at first commit (index 0)
             assert_eq!(config.selected_commit_index, Some(0));
-            
+
             // Navigate down to next commit
             let result = Executor::execute(&config, Command::HistoryDown);
             config = result.config;
             assert_eq!(config.selected_commit_index, Some(1));
             assert!(result.status_message.unwrap().contains("def456"));
-            
+
             // Navigate down again
             let result = Executor::execute(&config, Command::HistoryDown);
             config = result.config;
             assert_eq!(config.selected_commit_index, Some(2));
             assert!(result.status_message.unwrap().contains("ghi789"));
-            
+
             // Try to navigate down at bottom (should stay at last commit)
             let result = Executor::execute(&config, Command::HistoryDown);
             config = result.config;
             assert_eq!(config.selected_commit_index, Some(2));
-            
+
             // Navigate back up
             let result = Executor::execute(&config, Command::HistoryUp);
             config = result.config;
             assert_eq!(config.selected_commit_index, Some(1));
             assert!(result.status_message.unwrap().contains("def456"));
-            
+
             // Navigate up again
             let result = Executor::execute(&config, Command::HistoryUp);
             config = result.config;
@@ -830,29 +864,27 @@ mod tests {
         #[test]
         fn test_history_navigation_no_selection() {
             let mut config = TestConfig {
-                commit_list: vec![
-                    CommitInfo {
-                        hash: "abc123".to_string(),
-                        short_hash: "abc123".to_string(),
-                        author: "Test".to_string(),
-                        date: "2023-01-01".to_string(),
-                        subject: "Test commit".to_string(),
-                    },
-                ],
+                commit_list: vec![CommitInfo {
+                    hash: "abc123".to_string(),
+                    short_hash: "abc123".to_string(),
+                    author: "Test".to_string(),
+                    date: "2023-01-01".to_string(),
+                    subject: "Test commit".to_string(),
+                }],
                 selected_commit_index: None,
                 active_panel: PanelFocus::History,
                 ..TestConfig::default()
             };
-            
+
             // Navigate up when no selection should select first commit
             let result = Executor::execute(&config, Command::HistoryUp);
             config = result.config;
             assert_eq!(config.selected_commit_index, Some(0));
             assert!(result.status_message.unwrap().contains("abc123"));
-            
+
             // Reset to no selection
             config.selected_commit_index = None;
-            
+
             // Navigate down when no selection should also select first commit
             let result = Executor::execute(&config, Command::HistoryDown);
             config = result.config;
@@ -868,12 +900,12 @@ mod tests {
                 active_panel: PanelFocus::History,
                 ..TestConfig::default()
             };
-            
+
             // Navigation on empty list should do nothing
             let result = Executor::execute(&config, Command::HistoryUp);
             assert_eq!(result.config.selected_commit_index, None);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::HistoryDown);
             assert_eq!(result.config.selected_commit_index, None);
             assert!(result.status_message.is_none());
@@ -882,9 +914,12 @@ mod tests {
         #[test]
         fn test_select_commit() {
             let config = create_test_config_with_commits();
-            
+
             let result = Executor::execute(&config, Command::SelectCommit);
-            assert!(result.status_message.unwrap().contains("Viewing commit: abc123"));
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Viewing commit: abc123"));
         }
 
         #[test]
@@ -895,7 +930,7 @@ mod tests {
                 active_panel: PanelFocus::History,
                 ..TestConfig::default()
             };
-            
+
             let result = Executor::execute(&config, Command::SelectCommit);
             assert!(result.status_message.is_none());
         }
@@ -906,14 +941,14 @@ mod tests {
                 active_panel: PanelFocus::Navigator,
                 ..TestConfig::default()
             };
-            
+
             // History commands should be ignored when not on History panel
             let result = Executor::execute(&config, Command::HistoryUp);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::HistoryDown);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::SelectCommit);
             assert!(result.status_message.is_none());
         }
@@ -925,41 +960,41 @@ mod tests {
         #[test]
         fn test_inspector_cursor_movement() {
             let mut config = create_test_config_with_content();
-            
+
             // Start at line 3, column 4
             assert_eq!(config.cursor_line, 3);
             assert_eq!(config.cursor_column, 4);
-            
+
             // Move up
             let result = Executor::execute(&config, Command::InspectorUp);
             config = result.config;
             assert_eq!(config.cursor_line, 2);
             assert!(result.status_message.unwrap().contains("Line: 3")); // 1-indexed display
-            
+
             // Move down
             let result = Executor::execute(&config, Command::InspectorDown);
             config = result.config;
             assert_eq!(config.cursor_line, 3);
             assert!(result.status_message.unwrap().contains("Line: 4"));
-            
+
             // Move down again
             let result = Executor::execute(&config, Command::InspectorDown);
             config = result.config;
             assert_eq!(config.cursor_line, 4);
             assert!(result.status_message.unwrap().contains("Line: 5"));
-            
+
             // Move left
             let result = Executor::execute(&config, Command::InspectorLeft);
             config = result.config;
             assert_eq!(config.cursor_column, 3);
             assert!(result.status_message.unwrap().contains("Column: 3"));
-            
+
             // Move right
             let result = Executor::execute(&config, Command::InspectorRight);
             config = result.config;
             assert_eq!(config.cursor_column, 4);
             assert!(result.status_message.unwrap().contains("Column: 4"));
-            
+
             // Move right again
             let result = Executor::execute(&config, Command::InspectorRight);
             config = result.config;
@@ -972,22 +1007,22 @@ mod tests {
             let mut config = create_test_config_with_content();
             config.cursor_line = 0;
             config.cursor_column = 0;
-            
+
             // Try to move up at top
             let result = Executor::execute(&config, Command::InspectorUp);
             config = result.config;
             assert_eq!(config.cursor_line, 0);
             assert!(result.status_message.is_none());
-            
+
             // Move to bottom
             config.cursor_line = config.current_content.len() - 1;
-            
+
             // Try to move down at bottom
             let result = Executor::execute(&config, Command::InspectorDown);
             config = result.config;
             assert_eq!(config.cursor_line, config.current_content.len() - 1);
             assert!(result.status_message.is_none());
-            
+
             // Try to move left at column 0
             config.cursor_column = 0;
             let result = Executor::execute(&config, Command::InspectorLeft);
@@ -1000,17 +1035,17 @@ mod tests {
         fn test_inspector_page_movement() {
             let mut config = create_test_config_with_content();
             config.cursor_line = 5;
-            
+
             // Page up
             let result = Executor::execute(&config, Command::InspectorPageUp);
             config = result.config;
             assert_eq!(config.cursor_line, 0); // max(5-10, 0) = 0
             assert_eq!(config.inspector_scroll_vertical, 0);
             assert!(result.status_message.unwrap().contains("Page up - Line: 1"));
-            
+
             // Set cursor to middle again
             config.cursor_line = 4;
-            
+
             // Page down
             let result = Executor::execute(&config, Command::InspectorPageDown);
             config = result.config;
@@ -1025,14 +1060,14 @@ mod tests {
             config.cursor_line = 4;
             config.cursor_column = 10;
             config.inspector_scroll_vertical = 2;
-            
+
             // Home
             let result = Executor::execute(&config, Command::InspectorHome);
             config = result.config;
             assert_eq!(config.cursor_line, 0);
             assert_eq!(config.inspector_scroll_vertical, 0);
             assert!(result.status_message.unwrap().contains("beginning of file"));
-            
+
             // End
             let result = Executor::execute(&config, Command::InspectorEnd);
             config = result.config;
@@ -1045,14 +1080,14 @@ mod tests {
             let mut config = create_test_config_with_content();
             config.cursor_line = 4;
             config.inspector_scroll_vertical = 2;
-            
+
             // Go to top
             let result = Executor::execute(&config, Command::GoToTop);
             config = result.config;
             assert_eq!(config.cursor_line, 0);
             assert_eq!(config.inspector_scroll_vertical, 0);
             assert!(result.status_message.unwrap().contains("top"));
-            
+
             // Go to bottom
             let result = Executor::execute(&config, Command::GoToBottom);
             config = result.config;
@@ -1063,33 +1098,45 @@ mod tests {
         #[test]
         fn test_inspector_change_navigation() {
             let config = create_test_config_with_content();
-            
+
             // Previous change
             let result = Executor::execute(&config, Command::PreviousChange);
-            assert!(result.status_message.unwrap().contains("Previous change for line 4"));
-            
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Previous change for line 4"));
+
             // Next change
             let result = Executor::execute(&config, Command::NextChange);
             assert!(result.config.is_loading);
-            assert!(result.status_message.unwrap().contains("Searching for next change"));
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Searching for next change"));
         }
 
         #[test]
         fn test_inspector_toggle_diff() {
             let mut config = create_test_config_with_content();
             assert!(!config.show_diff_view);
-            
+
             // Toggle to diff view
             let result = Executor::execute(&config, Command::ToggleDiff);
             config = result.config;
             assert!(config.show_diff_view);
-            assert!(result.status_message.unwrap().contains("Switched to diff view"));
-            
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Switched to diff view"));
+
             // Toggle back to full file view
             let result = Executor::execute(&config, Command::ToggleDiff);
             config = result.config;
             assert!(!config.show_diff_view);
-            assert!(result.status_message.unwrap().contains("Switched to full file view"));
+            assert!(result
+                .status_message
+                .unwrap()
+                .contains("Switched to full file view"));
         }
 
         #[test]
@@ -1098,14 +1145,14 @@ mod tests {
                 active_panel: PanelFocus::Navigator,
                 ..TestConfig::default()
             };
-            
+
             // Inspector commands should be ignored when not on Inspector panel
             let result = Executor::execute(&config, Command::InspectorUp);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::InspectorDown);
             assert!(result.status_message.is_none());
-            
+
             let result = Executor::execute(&config, Command::ToggleDiff);
             assert!(result.status_message.is_none());
         }
@@ -1120,12 +1167,9 @@ mod tests {
                 active_panel: PanelFocus::Navigator,
                 ..TestConfig::default()
             };
-            
-            let sequence = Command::Sequence(vec![
-                Command::NextPanel,
-                Command::NextPanel,
-            ]);
-            
+
+            let sequence = Command::Sequence(vec![Command::NextPanel, Command::NextPanel]);
+
             let result = Executor::execute(&config, sequence);
             assert_eq!(result.config.active_panel, PanelFocus::Inspector);
             assert!(result.status_message.unwrap().contains("Inspector"));
@@ -1134,14 +1178,14 @@ mod tests {
         #[test]
         fn test_complex_sequence() {
             let config = create_test_config_with_tree();
-            
+
             let sequence = Command::Sequence(vec![
                 Command::NavigateDown,  // Move down in tree
                 Command::ExpandNode,    // Expand if it's a directory
                 Command::NextPanel,     // Switch to History panel
                 Command::PreviousPanel, // Switch back to Navigator
             ]);
-            
+
             let result = Executor::execute(&config, sequence);
             assert_eq!(result.config.active_panel, PanelFocus::Navigator);
         }
@@ -1149,13 +1193,13 @@ mod tests {
         #[test]
         fn test_sequence_with_quit() {
             let config = TestConfig::default();
-            
+
             let sequence = Command::Sequence(vec![
                 Command::NextPanel,
                 Command::Quit,
                 Command::NextPanel, // This should not execute
             ]);
-            
+
             let result = Executor::execute(&config, sequence);
             assert!(result.should_quit);
             assert_eq!(result.status_message, Some("Goodbye!".to_string()));
@@ -1167,7 +1211,7 @@ mod tests {
                 active_panel: PanelFocus::Navigator,
                 ..TestConfig::default()
             };
-            
+
             let sequence = Command::Sequence(vec![
                 Command::StartSearch,
                 Command::SearchInput('h'),
@@ -1179,19 +1223,22 @@ mod tests {
                 Command::SearchBackspace, // Remove 'l'
                 Command::EndSearch,
             ]);
-            
+
             let result = Executor::execute(&config, sequence);
             assert!(!result.config.in_search_mode);
             assert!(result.config.search_query.is_empty());
-            assert_eq!(result.status_message, Some("Search mode deactivated".to_string()));
+            assert_eq!(
+                result.status_message,
+                Some("Search mode deactivated".to_string())
+            );
         }
 
         #[test]
         fn test_empty_sequence() {
             let config = TestConfig::default();
-            
+
             let sequence = Command::Sequence(vec![]);
-            
+
             let result = Executor::execute(&config, sequence);
             assert_eq!(result.config.active_panel, config.active_panel);
             assert!(!result.should_quit);
@@ -1205,7 +1252,7 @@ mod tests {
         #[test]
         fn test_all_commands_preserve_config_integrity() {
             let original_config = create_test_config_with_content();
-            
+
             let commands = vec![
                 Command::NextPanel,
                 Command::PreviousPanel,
@@ -1235,15 +1282,15 @@ mod tests {
                 Command::NextChange,
                 Command::ToggleDiff,
             ];
-            
+
             for command in commands {
                 let is_quit_command = matches!(command, Command::Quit);
                 let result = Executor::execute(&original_config, command);
-                
+
                 // Config should always be valid after execution
                 assert!(!result.config.current_content.is_empty());
                 assert!(result.config.cursor_line < result.config.current_content.len());
-                
+
                 // Only quit command should set should_quit
                 if !is_quit_command {
                     assert!(!result.should_quit);
@@ -1254,9 +1301,9 @@ mod tests {
         #[test]
         fn test_status_message_propagation() {
             let config = TestConfig::default();
-            
+
             let result = Executor::execute(&config, Command::NextPanel);
-            
+
             // Status message should be set in both result and config
             assert!(result.status_message.is_some());
             assert_eq!(result.config.status_message, result.status_message.unwrap());
@@ -1265,9 +1312,9 @@ mod tests {
         #[test]
         fn test_execution_result_structure() {
             let config = TestConfig::default();
-            
+
             let result = Executor::execute(&config, Command::Quit);
-            
+
             // Verify ExecutionResult fields
             assert!(result.should_quit);
             assert!(result.status_message.is_some());
@@ -1281,17 +1328,17 @@ mod tests {
                 active_panel: PanelFocus::Inspector,
                 ..TestConfig::default()
             };
-            
+
             // Navigator commands should be ignored
             let result = Executor::execute(&config, Command::NavigateUp);
             assert_eq!(result.config.active_panel, PanelFocus::Inspector);
             assert!(result.status_message.is_none());
-            
+
             // History commands should be ignored
             let result = Executor::execute(&config, Command::HistoryUp);
             assert_eq!(result.config.active_panel, PanelFocus::Inspector);
             assert!(result.status_message.is_none());
-            
+
             // Inspector commands should work
             let result = Executor::execute(&config, Command::InspectorUp);
             assert_eq!(result.config.active_panel, PanelFocus::Inspector);
@@ -1303,13 +1350,16 @@ mod tests {
             let mut config = create_test_config_with_content();
             config.cursor_line = 5;
             config.inspector_scroll_vertical = 10;
-            
+
             // Moving up should adjust scroll if cursor goes above viewport
             let result = Executor::execute(&config, Command::InspectorUp);
             let final_config = result.config;
-            
+
             if final_config.cursor_line < final_config.inspector_scroll_vertical as usize {
-                assert_eq!(final_config.inspector_scroll_vertical, final_config.cursor_line as u16);
+                assert_eq!(
+                    final_config.inspector_scroll_vertical,
+                    final_config.cursor_line as u16
+                );
             }
         }
     }

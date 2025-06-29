@@ -104,7 +104,7 @@ impl Config {
         // For now, return default configuration
         Self::default()
     }
-    
+
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         // TODO: Save configuration to file
         Ok(())
