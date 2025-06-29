@@ -2,6 +2,7 @@ use crate::tree::FileTree;
 use gix::Repository;
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tui_tree_widget::TreeState;
 
@@ -67,6 +68,10 @@ pub struct App {
     // UI State
     pub status_message: String,
     pub is_loading: bool,
+
+    // Position Tracking for Same-Line Feature
+    pub per_commit_cursor_positions: HashMap<(String, PathBuf), usize>,
+    pub last_commit_for_mapping: Option<String>,
 }
 
 impl App {
@@ -101,6 +106,9 @@ impl App {
 
             status_message: "Ready".to_string(),
             is_loading: false,
+
+            per_commit_cursor_positions: HashMap::new(),
+            last_commit_for_mapping: None,
         }
     }
 
@@ -495,6 +503,9 @@ impl App {
 
             status_message: config.status_message.clone(),
             is_loading: config.is_loading,
+
+            per_commit_cursor_positions: HashMap::new(),
+            last_commit_for_mapping: None,
         };
 
         // Set the selected commit if specified
@@ -524,6 +535,121 @@ impl App {
         }
 
         app
+    }
+
+    // Position tracking methods for same-line feature
+
+    /// Save the current cursor position for the given commit and file
+    pub fn save_cursor_position(&mut self, commit_hash: &str, file_path: &PathBuf) {
+        let key = (commit_hash.to_string(), file_path.clone());
+        self.per_commit_cursor_positions.insert(key, self.cursor_line);
+    }
+
+    /// Restore a previously saved cursor position for the given commit and file
+    pub fn restore_cursor_position(&mut self, commit_hash: &str, file_path: &PathBuf) -> Option<usize> {
+        let key = (commit_hash.to_string(), file_path.clone());
+        self.per_commit_cursor_positions.get(&key).copied()
+    }
+
+    /// Get the mapped line position using line mapping between commits with fallback strategies
+    pub fn get_mapped_line(
+        &self,
+        old_commit: &str,
+        new_commit: &str,
+        file_path: &PathBuf,
+        old_line: usize,
+    ) -> usize {
+        // If commits are the same, no mapping needed
+        if old_commit == new_commit {
+            return old_line;
+        }
+
+        // Try to compute line mapping
+        match crate::line_mapping::map_lines_between_commits(
+            &self.repo,
+            old_commit,
+            new_commit,
+            file_path,
+        ) {
+            Ok(mapping) => {
+                // Try exact mapping first
+                if let Some(mapped_line) = mapping.map_line(old_line) {
+                    return mapped_line;
+                }
+
+                // Fallback 1: Nearest neighbor search (±5 lines)
+                if let Some(nearest_line) = mapping.find_nearest_mapped_line(old_line, 5) {
+                    return nearest_line;
+                }
+
+                // Fallback 2: Proportional mapping
+                let proportional_line = mapping.proportional_map(old_line);
+                if proportional_line < self.current_content.len() {
+                    return proportional_line;
+                }
+
+                // Fallback 3: Default to top of file
+                0
+            }
+            Err(_) => {
+                // Fallback 4: If mapping fails, try proportional mapping manually
+                if !self.current_content.is_empty() && old_line > 0 {
+                    // Simple proportional fallback: assume some reasonable old file size
+                    let estimated_old_size = (old_line + 1).max(self.current_content.len());
+                    let proportion = old_line as f64 / estimated_old_size as f64;
+                    let new_line = (proportion * self.current_content.len() as f64) as usize;
+                    new_line.min(self.current_content.len().saturating_sub(1))
+                } else {
+                    0
+                }
+            }
+        }
+    }
+
+    /// Smart cursor positioning when switching commits
+    pub fn apply_smart_cursor_positioning(
+        &mut self,
+        new_commit_hash: &str,
+        file_path: &PathBuf,
+    ) -> String {
+        // If we don't have a previous commit, just use any saved position or default to 0
+        let old_commit_hash = match &self.last_commit_for_mapping {
+            Some(hash) => hash.clone(),
+            None => {
+                // No previous commit - try to restore saved position or default to 0
+                if let Some(saved_line) = self.restore_cursor_position(new_commit_hash, file_path) {
+                    self.cursor_line = saved_line.min(self.current_content.len().saturating_sub(1));
+                    self.ensure_inspector_cursor_visible();
+                    return format!("Restored cursor to saved position (line {})", self.cursor_line + 1);
+                } else {
+                    self.cursor_line = 0;
+                    self.ensure_inspector_cursor_visible();
+                    return "Positioned cursor at top of file".to_string();
+                }
+            }
+        };
+
+        // Save the current position before mapping
+        let old_line = self.cursor_line;
+
+        // Calculate the mapped line position
+        let mapped_line = self.get_mapped_line(&old_commit_hash, new_commit_hash, file_path, old_line);
+
+        // Apply the new cursor position
+        self.cursor_line = mapped_line.min(self.current_content.len().saturating_sub(1));
+        self.ensure_inspector_cursor_visible();
+
+        // Update the tracking state
+        self.last_commit_for_mapping = Some(new_commit_hash.to_string());
+
+        // Return status message based on how the mapping was determined
+        if mapped_line == old_line {
+            "Cursor position unchanged".to_string()
+        } else if mapped_line == 0 && old_line != 0 {
+            format!("Line moved to top (was line {})", old_line + 1)
+        } else {
+            format!("Line {} → {} (same content)", old_line + 1, mapped_line + 1)
+        }
     }
 }
 
@@ -1118,6 +1244,117 @@ mod tests {
 
             assert_eq!(app.commit_list_state.selected(), None);
             assert_eq!(app.selected_commit_hash, None);
+        }
+    }
+
+    mod position_tracking {
+        use super::*;
+
+        #[test]
+        fn test_save_and_restore_cursor_position() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            let commit_hash = "abc123";
+
+            // Set cursor to line 5
+            app.cursor_line = 5;
+
+            // Save position
+            app.save_cursor_position(commit_hash, &file_path);
+
+            // Change cursor position
+            app.cursor_line = 10;
+
+            // Restore should return the saved position
+            let restored = app.restore_cursor_position(commit_hash, &file_path);
+            assert_eq!(restored, Some(5));
+
+            // Different commit should return None
+            let not_found = app.restore_cursor_position("different_hash", &file_path);
+            assert_eq!(not_found, None);
+
+            // Different file should return None
+            let different_file = PathBuf::from("other.txt");
+            let not_found_file = app.restore_cursor_position(commit_hash, &different_file);
+            assert_eq!(not_found_file, None);
+        }
+
+        #[test]
+        fn test_get_mapped_line_same_commit() {
+            let repo = create_test_repo();
+            let app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            let commit_hash = "abc123";
+
+            // Same commit should return same line
+            let mapped_line = app.get_mapped_line(commit_hash, commit_hash, &file_path, 10);
+            assert_eq!(mapped_line, 10);
+        }
+
+        #[test]
+        fn test_apply_smart_cursor_positioning_no_previous_commit() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            let commit_hash = "abc123";
+
+            // Set up some content
+            app.current_content = vec![
+                "line 0".to_string(),
+                "line 1".to_string(),
+                "line 2".to_string(),
+            ];
+
+            // No previous commit, should position at top
+            let message = app.apply_smart_cursor_positioning(commit_hash, &file_path);
+            assert_eq!(app.cursor_line, 0);
+            assert_eq!(app.last_commit_for_mapping, None); // No mapping was done
+            assert_eq!(message, "Positioned cursor at top of file");
+        }
+
+        #[test]
+        fn test_apply_smart_cursor_positioning_with_saved_position() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            let commit_hash = "abc123";
+
+            // Set up some content
+            app.current_content = vec![
+                "line 0".to_string(),
+                "line 1".to_string(),
+                "line 2".to_string(),
+            ];
+
+            // Save a position for this commit
+            app.save_cursor_position(commit_hash, &file_path);
+            app.cursor_line = 2; // Set to different line to save
+
+            // Apply positioning should restore saved position
+            let message = app.apply_smart_cursor_positioning(commit_hash, &file_path);
+            assert_eq!(app.cursor_line, 0); // Should restore the saved position (was 0 when saved)
+            assert_eq!(message, "Restored cursor to saved position (line 1)");
+        }
+
+        #[test]
+        fn test_apply_smart_cursor_positioning_bounds_checking() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            let commit_hash = "abc123";
+
+            // Set up small content
+            app.current_content = vec!["line 0".to_string()];
+
+            // Save a position beyond file bounds
+            app.cursor_line = 100;
+            app.save_cursor_position(commit_hash, &file_path);
+
+            // Apply positioning should clamp to file bounds
+            let message = app.apply_smart_cursor_positioning(commit_hash, &file_path);
+            assert_eq!(app.cursor_line, 0); // Should be clamped to file bounds
+            assert!(message.contains("Restored cursor to saved position"));
         }
     }
 }
