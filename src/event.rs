@@ -44,6 +44,16 @@ pub fn handle_event(
                     app.active_panel = PanelFocus::Inspector;
                     return Ok(());
                 }
+                KeyCode::Char('[') => {
+                    if navigate_to_older_commit(app) {
+                        return Ok(());
+                    }
+                }
+                KeyCode::Char(']') => {
+                    if navigate_to_younger_commit(app) {
+                        return Ok(());
+                    }
+                }
                 _ => {}
             }
 
@@ -402,6 +412,89 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
         app.cursor_line = 0;
         app.inspector_scroll_vertical = 0;
         app.status_message = "No file selected".to_string();
+    }
+}
+
+/// Navigate to the previous (younger) commit in the history
+/// Returns true if navigation occurred, false if no file context or at boundary
+fn navigate_to_younger_commit(app: &mut App) -> bool {
+    // Only navigate if there's an active file context
+    if app.active_file_context.is_none() {
+        app.status_message = "No file selected".to_string();
+        return false;
+    }
+
+    if app.commit_list.is_empty() {
+        app.status_message = "No commit history available".to_string();
+        return false;
+    }
+
+    let current_selection = app.commit_list_state.selected();
+    
+    match current_selection {
+        Some(index) if index > 0 => {
+            // Move to previous commit (younger)
+            app.commit_list_state.select(Some(index - 1));
+            update_code_inspector_for_commit(app);
+            let commit = &app.commit_list[index - 1];
+            app.status_message = format!("Moved to younger commit: {}", commit.short_hash);
+            true
+        }
+        Some(_) => {
+            // Already at the youngest commit (index 0) or any other index
+            app.status_message = "Already at youngest commit".to_string();
+            false
+        }
+        None => {
+            // No commit selected, select the first (youngest) one
+            app.commit_list_state.select(Some(0));
+            update_code_inspector_for_commit(app);
+            let commit = &app.commit_list[0];
+            app.status_message = format!("Selected youngest commit: {}", commit.short_hash);
+            true
+        }
+    }
+}
+
+/// Navigate to the next (older) commit in the history  
+/// Returns true if navigation occurred, false if no file context or at boundary
+fn navigate_to_older_commit(app: &mut App) -> bool {
+    // Only navigate if there's an active file context
+    if app.active_file_context.is_none() {
+        app.status_message = "No file selected".to_string();
+        return false;
+    }
+
+    if app.commit_list.is_empty() {
+        app.status_message = "No commit history available".to_string();
+        return false;
+    }
+
+    let current_selection = app.commit_list_state.selected();
+    let max_index = app.commit_list.len() - 1;
+    
+    match current_selection {
+        Some(index) if index < max_index => {
+            // Move to next commit (older)
+            app.commit_list_state.select(Some(index + 1));
+            update_code_inspector_for_commit(app);
+            let commit = &app.commit_list[index + 1];
+            app.status_message = format!("Moved to older commit: {}", commit.short_hash);
+            true
+        }
+        Some(_) => {
+            // Already at the oldest commit or at max_index
+            app.status_message = "Already at oldest commit".to_string();
+            false
+        }
+        None => {
+            // No commit selected, select the first (youngest) one
+            app.commit_list_state.select(Some(0));
+            update_code_inspector_for_commit(app);
+            let commit = &app.commit_list[0];
+            app.status_message = format!("Selected youngest commit: {}", commit.short_hash);
+            true
+        }
     }
 }
 
@@ -1046,6 +1139,104 @@ mod tests {
 
             assert!(result.is_ok());
             assert!(app.status_message.contains("Failed to load commit history"));
+        }
+
+        #[tokio::test]
+        async fn test_commit_navigation_global_keybindings() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Navigator; // Test from navigator panel
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(Some(0)); // Start at first commit
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test [ (next older commit)
+            let event = create_key_event(KeyCode::Char('['));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(1));
+            assert!(app.status_message.contains("older commit"));
+
+            // Test ] (next younger commit)
+            let event = create_key_event(KeyCode::Char(']'));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("younger commit"));
+        }
+
+        #[tokio::test]
+        async fn test_commit_navigation_without_file_context() {
+            let mut app = create_test_app();
+            app.active_panel = PanelFocus::Inspector;
+            app.active_file_context = None; // No file selected
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test [ should not work without file context
+            let event = create_key_event(KeyCode::Char('['));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert!(app.status_message.contains("No file selected"));
+
+            // Test ] should not work without file context
+            let event = create_key_event(KeyCode::Char(']'));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert!(app.status_message.contains("No file selected"));
+        }
+
+        #[tokio::test]
+        async fn test_commit_navigation_boundary_conditions() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            let (tx, _rx) = create_test_channel().await;
+
+            // Test at youngest commit (index 0) - ] should not move further
+            app.commit_list_state.select(Some(0));
+            let event = create_key_event(KeyCode::Char(']'));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(0)); // Should stay at 0
+            assert!(app.status_message.contains("youngest commit"));
+
+            // Test at oldest commit (last index) - [ should not move further
+            app.commit_list_state.select(Some(1)); // Last commit in our test data
+            let event = create_key_event(KeyCode::Char('['));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(1)); // Should stay at last
+            assert!(app.status_message.contains("oldest commit"));
+        }
+
+        #[tokio::test]
+        async fn test_commit_navigation_from_no_selection() {
+            let mut app = create_test_app();
+            app.active_file_context = Some(std::path::PathBuf::from("src/main.rs"));
+            app.commit_list_state.select(None); // No commit selected
+            let (tx, _rx) = create_test_channel().await;
+
+            // Both [ and ] should select the first commit when none is selected
+            let event = create_key_event(KeyCode::Char('['));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("youngest commit"));
+
+            // Reset to no selection
+            app.commit_list_state.select(None);
+
+            let event = create_key_event(KeyCode::Char(']'));
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert_eq!(app.commit_list_state.selected(), Some(0));
+            assert!(app.status_message.contains("youngest commit"));
         }
 
         #[tokio::test]

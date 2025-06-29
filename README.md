@@ -28,6 +28,7 @@ git-lineage
 - **1** - Focus File Navigator panel (left)
 - **2** - Focus Commit History panel (middle)  
 - **3** - Focus Code Inspector panel (right)
+- **[** / **]** - Navigate to older/younger commit (works from any panel)
 - **q** / **Esc** - Quit application
 
 ### File Navigator Panel

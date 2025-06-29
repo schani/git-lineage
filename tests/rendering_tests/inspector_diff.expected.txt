@@ -1,25 +1,40 @@
-┌ File Navigator ──────────┐┌ Code Inspector (Diff View) ──────────────────────┐
-│M example.py              ││   1 def hello_world():                           │
-│                          ││   2     print('Hello, World!')                   │
-│                          ││   3                                              │
-│                          ││   4 def main():                                  │
-│                          ││   5     hello_world()                            │
-│                          ││   6                                              │
-│                          ││   7 if __name__ == '__main__':                   │
-│                          ││   8     main()                                   │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-└──────────────────────────┘│                                                  │
-┌ Commit History (./example┐│                                                  │
-│>> xyz123a 10 mins ago Dev││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-Diff view enabled | Tab: Switch panel | 1/2/3: Direct panel focus | ↑↓: Navigate
+┌ File Navigator ────────────────────────┐┌ Code Inspector (Diff View) ────────────────────────────────────────────────┐
+│M example.py                            ││   1 def hello_world():                                                     │
+│                                        ││   2     print('Hello, World!')                                             │
+│                                        ││   3                                                                        │
+│                                        ││   4 def main():                                                            │
+│                                        ││   5     hello_world()                                                      │
+│                                        ││   6                                                                        │
+│                                        ││   7 if __name__ == '__main__':                                             │
+│                                        ││   8     main()                                                             │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+└────────────────────────────────────────┘│                                                                            │
+┌ Commit History (./example.py) ─────────┐│                                                                            │
+│>> xyz123a 10 mins ago Dev User Refactor││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+Diff view enabled | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate | p: Previou

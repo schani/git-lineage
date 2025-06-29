@@ -421,9 +421,9 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let help_text = match app.active_panel {
-        PanelFocus::Navigator => "Tab: Switch panel | 1/2/3: Direct panel focus | /: Search | ↑↓: Navigate | →←: Expand/Collapse",
-        PanelFocus::History => "Tab: Switch panel | 1/2/3: Direct panel focus | ↑↓: Navigate | Enter: Select commit",
-        PanelFocus::Inspector => "Tab: Switch panel | 1/2/3: Direct panel focus | ↑↓: Navigate | p: Previous change | n: Next change | d: Toggle diff",
+        PanelFocus::Navigator => "Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navigate | →←: Expand/Collapse",
+        PanelFocus::History => "Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate | Enter: Select commit",
+        PanelFocus::Inspector => "Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate | p: Previous change | n: Next change | d: Toggle diff",
     };
 
     let status_line = Line::from(vec![
