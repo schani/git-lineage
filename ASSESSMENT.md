@@ -53,6 +53,7 @@ Here are actionable recommendations, prioritized from high to low.
 *   **What**: Implement the testing plan outlined in `TESTING.md`. Focus first on `event.rs` to test user interactions and state changes. Then, cover `async_task.rs` to validate the behavior of background jobs.
 *   **Why**: This is the highest-impact action to improve code health. It will prevent regressions, validate logic, and give developers confidence to refactor and add features.
 *   **Action**: Add the testing dependencies from `TESTING.md` to `Cargo.toml` and begin writing unit and integration tests for the uncovered modules.
+*   **Status**: DONE
 
 #### 2. **Refactor `event.rs`**
 *   **What**: Break down the `update_code_inspector_for_commit` function into smaller, single-purpose functions. For example:
