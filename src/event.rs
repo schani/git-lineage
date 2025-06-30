@@ -84,7 +84,7 @@ fn handle_navigator_event(
         match key {
             KeyCode::Char(c) => {
                 app.navigator.search_query.push(c);
-                // TODO: Filter file tree based on search query
+                // Filtering happens automatically in UI rendering
             }
             KeyCode::Backspace => {
                 app.navigator.search_query.pop();

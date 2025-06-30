@@ -62,7 +62,11 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     // Get visible nodes with their display depths from the file tree
-    let all_visible_nodes = app.navigator.file_tree.get_visible_nodes_with_depth();
+    let all_visible_nodes = if !app.navigator.search_query.is_empty() {
+        app.navigator.file_tree.get_fuzzy_filtered_visible_nodes(&app.navigator.search_query)
+    } else {
+        app.navigator.file_tree.get_visible_nodes_with_depth()
+    };
 
     // Calculate viewport bounds based on scroll offset
     let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders

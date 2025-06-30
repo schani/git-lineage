@@ -53,6 +53,13 @@ The application will use a persistent three-panel layout rendered in the termina
     *   `tui-tree-widget::TreeState` or similar to manage selection and expansion.
     *   Current search/filter query.
 
+##### Search
+
+- When I press `/` it should go into search string entry mode (that's already implemented)
+- When I start typing it should filter down the tree with fuzzy search
+- When I press Enter, it should focus back on the panel, but the search should stay active
+- When I press Esc when entering the search, it should clear the search string and focus back on the panel
+
 #### **Panel 2: Commit History**
 
 *   **Content:** A chronological list (newest first) of all commits that have modified the file currently selected in Panel 1.

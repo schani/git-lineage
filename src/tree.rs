@@ -1,6 +1,8 @@
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -698,6 +700,79 @@ impl FileTree {
         }
     }
 
+    /// Get visible nodes filtered by fuzzy search query
+    pub fn get_fuzzy_filtered_visible_nodes(&self, query: &str) -> Vec<(&TreeNode, usize)> {
+        if query.is_empty() {
+            return self.get_visible_nodes_with_depth();
+        }
+
+        let matcher = SkimMatcherV2::default();
+        let mut matching_paths = HashSet::new();
+
+        // First pass: find all matches in the entire tree (including non-visible nodes)
+        for root_node in &self.root {
+            self.find_matching_nodes_recursive(root_node, &matcher, query, &mut matching_paths);
+        }
+
+        // Second pass: collect all visible nodes that should be shown
+        let all_visible_nodes = self.get_visible_nodes_with_depth();
+        let mut scored_nodes: Vec<((&TreeNode, usize), i64)> = all_visible_nodes
+            .into_iter()
+            .filter_map(|(node, depth)| {
+                if matching_paths.contains(&node.path) {
+                    // Direct match gets the actual score, parent directories get lower score
+                    let score = matcher.fuzzy_match(&node.name, query).unwrap_or(0);
+                    Some(((node, depth), score))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sort by score (higher score = better match), then by name for stability
+        scored_nodes.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| a.0.0.name.cmp(&b.0.0.name))
+        });
+
+        // Extract the nodes, preserving their original depth for display
+        let mut filtered = Vec::new();
+        for ((node, depth), _score) in scored_nodes {
+            filtered.push((node, depth));
+        }
+
+        filtered
+    }
+
+    /// Recursively find all nodes that match the query, including their parent paths
+    fn find_matching_nodes_recursive(
+        &self,
+        node: &TreeNode,
+        matcher: &SkimMatcherV2,
+        query: &str,
+        matching_paths: &mut HashSet<PathBuf>,
+    ) {
+        // Check if this node matches
+        if matcher.fuzzy_match(&node.name, query).is_some() {
+            matching_paths.insert(node.path.clone());
+            
+            // Also include all parent directories for this match
+            let mut current_path = node.path.as_path();
+            while let Some(parent) = current_path.parent() {
+                if !parent.as_os_str().is_empty() && parent != std::path::Path::new(".") {
+                    matching_paths.insert(parent.to_path_buf());
+                    current_path = parent;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Recursively check children (even if the parent directory is collapsed)
+        for child in &node.children {
+            self.find_matching_nodes_recursive(child, matcher, query, matching_paths);
+        }
+    }
+
     /// Get tree statistics
     pub fn get_stats(&self) -> TreeStats {
         let mut stats = TreeStats::default();
@@ -978,6 +1053,43 @@ mod tests {
 
         let results = tree.filter_nodes("nonexistent");
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_fuzzy_filtered_visible_nodes() {
+        let mut tree = FileTree::new();
+
+        // Create test structure: config.toml and src/config.rs
+        let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
+        src_dir.add_child(TreeNode::new_file(
+            "config.rs".to_string(),
+            PathBuf::from("src/config.rs"),
+        ));
+        src_dir.expand(); // Make children visible
+
+        tree.root.push(TreeNode::new_file(
+            "config.toml".to_string(),
+            PathBuf::from("config.toml"),
+        ));
+        tree.root.push(src_dir);
+
+        // Test fuzzy search for "config"
+        let results = tree.get_fuzzy_filtered_visible_nodes("config");
+        
+        // Should find both config.toml and src directory (because it contains config.rs)
+        assert!(results.len() >= 2, "Should find at least 2 matches, found {}", results.len());
+        
+        let names: Vec<&str> = results.iter().map(|(node, _)| node.name.as_str()).collect();
+        assert!(names.contains(&"config.toml"), "Should find config.toml");
+        assert!(names.contains(&"src"), "Should find src directory");
+
+        // Test with "c" - should also match
+        let results = tree.get_fuzzy_filtered_visible_nodes("c");
+        assert!(results.len() >= 2, "Should find matches for 'c'");
+        
+        let names: Vec<&str> = results.iter().map(|(node, _)| node.name.as_str()).collect();
+        assert!(names.contains(&"config.toml"), "Should find config.toml for 'c'");
+        assert!(names.contains(&"src"), "Should find src directory for 'c'");
     }
 
     #[test]
