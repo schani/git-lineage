@@ -199,8 +199,8 @@ mod tests {
         mpsc::Sender<TaskResult>,
         mpsc::Receiver<TaskResult>,
     ) {
-        let (task_tx, task_rx) = mpsc::channel(10);
-        let (result_tx, result_rx) = mpsc::channel(10);
+        let (task_tx, task_rx) = mpsc::channel(1000);
+        let (result_tx, result_rx) = mpsc::channel(1000);
         (task_tx, task_rx, result_tx, result_rx)
     }
 
