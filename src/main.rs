@@ -33,6 +33,18 @@ use error::Result;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logger to write to /tmp/lineage.log
+    env_logger::Builder::new()
+        .target(env_logger::Target::Pipe(Box::new(std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/lineage.log")
+            .expect("Failed to open log file"))))
+        .filter_level(log::LevelFilter::Debug)
+        .init();
+    
+    log::info!("Git Lineage starting up");
+    
     let cli = Cli::parse();
 
     match cli.command.unwrap_or(Commands::Run) {

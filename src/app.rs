@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tui_tree_widget::TreeState;
+use log::{debug, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelFocus {
@@ -553,8 +554,12 @@ impl App {
         file_path: &PathBuf,
         old_line: usize,
     ) -> usize {
+        info!("get_mapped_line: Mapping line {} from {} to {} in file {:?}", 
+              old_line, old_commit, new_commit, file_path);
+        
         // If commits are the same, no mapping needed
         if old_commit == new_commit {
+            debug!("get_mapped_line: Same commit, returning original line {}", old_line);
             return old_line;
         }
 
@@ -566,45 +571,85 @@ impl App {
             file_path,
         ) {
             Ok(mapping) => {
+                debug!("get_mapped_line: Successfully created line mapping");
+                
                 // Try exact mapping first
                 if let Some(mapped_line) = mapping.map_line(old_line) {
+                    info!("get_mapped_line: SUCCESS via exact mapping - line {} -> {}", old_line, mapped_line);
                     return mapped_line;
                 }
+                debug!("get_mapped_line: Exact mapping failed for line {}", old_line);
 
-                // Fallback 1: Nearest neighbor search (±5 lines)
-                if let Some(nearest_line) = mapping.find_nearest_mapped_line(old_line, 5) {
-                    return nearest_line;
+                // Fallback 1: Content-aware nearest neighbor search (±5 lines)
+                debug!("get_mapped_line: Trying content-aware nearest neighbor search");
+                match mapping.find_content_aware_nearest_mapped_line(
+                    old_line,
+                    5,
+                    &self.repo,
+                    old_commit,
+                    new_commit,
+                    file_path,
+                ) {
+                    Ok(Some(nearest_line)) => {
+                        info!("get_mapped_line: SUCCESS via content-aware nearest neighbor - line {} -> {}", old_line, nearest_line);
+                        return nearest_line;
+                    },
+                    Ok(None) => {
+                        debug!("get_mapped_line: Content-aware nearest neighbor search failed for line {}", old_line);
+                    },
+                    Err(e) => {
+                        warn!("get_mapped_line: Content-aware nearest neighbor search failed with error: {:?}", e);
+                    }
                 }
 
-                // Fallback 1.5: Exact content matching
-                if let Ok(Some(content_match)) = mapping.find_exact_content_match(
+                // Fallback 1.5: Exact content matching (broader search)
+                debug!("get_mapped_line: Trying exact content matching fallback");
+                match mapping.find_exact_content_match(
                     old_line,
                     &self.repo,
                     old_commit,
                     new_commit,
                     file_path,
                 ) {
-                    return content_match;
+                    Ok(Some(content_match)) => {
+                        info!("get_mapped_line: SUCCESS via exact content match - line {} -> {}", old_line, content_match);
+                        return content_match;
+                    },
+                    Ok(None) => {
+                        debug!("get_mapped_line: Exact content matching failed - no unique match found");
+                    },
+                    Err(e) => {
+                        warn!("get_mapped_line: Exact content matching failed with error: {:?}", e);
+                    }
                 }
 
                 // Fallback 2: Proportional mapping
                 let proportional_line = mapping.proportional_map(old_line);
                 if proportional_line < self.inspector.current_content.len() {
+                    info!("get_mapped_line: SUCCESS via proportional mapping - line {} -> {}", old_line, proportional_line);
                     return proportional_line;
                 }
+                debug!("get_mapped_line: Proportional mapping out of bounds: {} >= {}", 
+                       proportional_line, self.inspector.current_content.len());
 
                 // Fallback 3: Default to top of file
+                warn!("get_mapped_line: All mapping strategies failed, defaulting to line 0");
                 0
             }
-            Err(_) => {
+            Err(e) => {
+                warn!("get_mapped_line: Line mapping creation failed: {:?}", e);
+                
                 // Fallback 4: If mapping fails, try proportional mapping manually
                 if !self.inspector.current_content.is_empty() && old_line > 0 {
                     // Simple proportional fallback: assume some reasonable old file size
                     let estimated_old_size = (old_line + 1).max(self.inspector.current_content.len());
                     let proportion = old_line as f64 / estimated_old_size as f64;
                     let new_line = (proportion * self.inspector.current_content.len() as f64) as usize;
-                    new_line.min(self.inspector.current_content.len().saturating_sub(1))
+                    let result = new_line.min(self.inspector.current_content.len().saturating_sub(1));
+                    info!("get_mapped_line: SUCCESS via manual proportional fallback - line {} -> {}", old_line, result);
+                    result
                 } else {
+                    warn!("get_mapped_line: Empty content or line 0, defaulting to line 0");
                     0
                 }
             }
@@ -617,16 +662,25 @@ impl App {
         new_commit_hash: &str,
         file_path: &PathBuf,
     ) -> String {
+        info!("apply_smart_cursor_positioning: Switching to commit {} for file {:?}", 
+              new_commit_hash, file_path);
+        
         // If we don't have a previous commit, just use any saved position or default to 0
         let old_commit_hash = match &self.last_commit_for_mapping {
-            Some(hash) => hash.clone(),
+            Some(hash) => {
+                debug!("apply_smart_cursor_positioning: Previous commit found: {}", hash);
+                hash.clone()
+            },
             None => {
+                debug!("apply_smart_cursor_positioning: No previous commit for mapping");
                 // No previous commit - try to restore saved position or default to 0
                 if let Some(saved_line) = self.restore_cursor_position(new_commit_hash, file_path) {
                     self.inspector.cursor_line = saved_line.min(self.inspector.current_content.len().saturating_sub(1));
+                    info!("apply_smart_cursor_positioning: Restored saved position to line {}", self.inspector.cursor_line);
                     return format!("Restored cursor to saved position (line {})", self.inspector.cursor_line + 1);
                 } else {
                     self.inspector.cursor_line = 0;
+                    info!("apply_smart_cursor_positioning: No saved position, defaulting to line 0");
                     return "Positioned cursor at top of file".to_string();
                 }
             }
@@ -634,23 +688,31 @@ impl App {
 
         // Save the current position before mapping
         let old_line = self.inspector.cursor_line;
+        info!("apply_smart_cursor_positioning: Current cursor at line {} (0-based), attempting to map from {} to {}", 
+              old_line, old_commit_hash, new_commit_hash);
 
         // Calculate the mapped line position
         let mapped_line = self.get_mapped_line(&old_commit_hash, new_commit_hash, file_path, old_line);
 
         // Apply the new cursor position
-        self.inspector.cursor_line = mapped_line.min(self.inspector.current_content.len().saturating_sub(1));
+        let final_line = mapped_line.min(self.inspector.current_content.len().saturating_sub(1));
+        self.inspector.cursor_line = final_line;
+        info!("apply_smart_cursor_positioning: Final cursor position set to line {}", final_line);
 
         // Update the tracking state
         self.last_commit_for_mapping = Some(new_commit_hash.to_string());
 
         // Return status message based on how the mapping was determined
-        if mapped_line == old_line {
+        // Use final_line instead of mapped_line for accurate display, and use the original old_line
+        info!("apply_smart_cursor_positioning: Status calculation - old_line={} (0-based), final_line={} (0-based), display will be {} → {}", 
+              old_line, final_line, old_line + 1, final_line + 1);
+        
+        if final_line == old_line {
             "Cursor position unchanged".to_string()
-        } else if mapped_line == 0 && old_line != 0 {
+        } else if final_line == 0 && old_line != 0 {
             format!("Line moved to top (was line {})", old_line + 1)
         } else {
-            format!("Line {} → {} (same content)", old_line + 1, mapped_line + 1)
+            format!("Line {} → {} (same content)", old_line + 1, final_line + 1)
         }
     }
 }

@@ -1,5 +1,6 @@
 use std::path::Path;
 use gix::Repository;
+use log::{debug, info, warn};
 
 /// Represents the mapping of lines from one version of a file to another
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +58,7 @@ impl LineMapping {
     pub fn find_nearest_mapped_line(&self, old_line: usize, search_radius: usize) -> Option<usize> {
         // First try exact mapping
         if let Some(mapped) = self.map_line(old_line) {
+            debug!("find_nearest_mapped_line: Found exact mapping for line {} -> {}", old_line, mapped);
             return Some(mapped);
         }
 
@@ -65,6 +67,8 @@ impl LineMapping {
             // Try lines before
             if old_line >= radius {
                 if let Some(mapped) = self.map_line(old_line - radius) {
+                    debug!("find_nearest_mapped_line: Found nearest mapping at radius {} before: line {} -> {}", 
+                           radius, old_line - radius, mapped);
                     return Some(mapped);
                 }
             }
@@ -72,11 +76,14 @@ impl LineMapping {
             // Try lines after
             if old_line + radius < self.old_file_size {
                 if let Some(mapped) = self.map_line(old_line + radius) {
+                    debug!("find_nearest_mapped_line: Found nearest mapping at radius {} after: line {} -> {}", 
+                           radius, old_line + radius, mapped);
                     return Some(mapped);
                 }
             }
         }
 
+        debug!("find_nearest_mapped_line: No mapping found within radius {} for line {}", search_radius, old_line);
         None
     }
 
@@ -103,19 +110,27 @@ impl LineMapping {
         to_commit: &str,
         file_path: &Path,
     ) -> Result<Option<usize>, LineMappingError> {
+        debug!("find_exact_content_match: Searching for line {} in file {:?} from {} to {}", 
+               old_line, file_path, from_commit, to_commit);
+        
         // Get the content of the line we're trying to map
         let old_content = get_file_content_at_commit(repo, from_commit, file_path)?;
         let old_lines: Vec<&str> = old_content.lines().collect();
         
         if old_line >= old_lines.len() {
+            debug!("find_exact_content_match: old_line {} >= old_lines.len() {}, returning None", 
+                   old_line, old_lines.len());
             return Ok(None);
         }
         
         let target_line_content = old_lines[old_line];
+        debug!("find_exact_content_match: Target line content: '{}'", target_line_content);
         
         // Get the content of the target commit
         let new_content = get_file_content_at_commit(repo, to_commit, file_path)?;
         let new_lines: Vec<&str> = new_content.lines().collect();
+        
+        debug!("find_exact_content_match: Searching through {} new lines", new_lines.len());
         
         // Find all matching lines
         let matches: Vec<usize> = new_lines
@@ -123,6 +138,7 @@ impl LineMapping {
             .enumerate()
             .filter_map(|(idx, &line)| {
                 if line == target_line_content {
+                    debug!("find_exact_content_match: Found match at line {}: '{}'", idx, line);
                     Some(idx)
                 } else {
                     None
@@ -130,11 +146,103 @@ impl LineMapping {
             })
             .collect();
         
+        debug!("find_exact_content_match: Found {} matches: {:?}", matches.len(), matches);
+        
         // Return the match only if there's exactly one
         match matches.len() {
-            1 => Ok(Some(matches[0])),
-            _ => Ok(None), // 0 matches or multiple matches (ambiguous)
+            1 => {
+                info!("find_exact_content_match: SUCCESS - Found unique match at line {}", matches[0]);
+                Ok(Some(matches[0]))
+            },
+            0 => {
+                debug!("find_exact_content_match: No matches found");
+                Ok(None)
+            },
+            _ => {
+                warn!("find_exact_content_match: Multiple matches found ({}), returning None to avoid ambiguity", matches.len());
+                Ok(None) // multiple matches (ambiguous)
+            }
         }
+    }
+
+    /// Content-aware nearest neighbor that verifies the mapped line has the same content
+    pub fn find_content_aware_nearest_mapped_line(
+        &self,
+        old_line: usize,
+        search_radius: usize,
+        repo: &Repository,
+        from_commit: &str,
+        to_commit: &str,
+        file_path: &Path,
+    ) -> Result<Option<usize>, LineMappingError> {
+        debug!("find_content_aware_nearest_mapped_line: Starting search for line {} with radius {}", old_line, search_radius);
+        
+        // Get the content we're looking for
+        let old_content = get_file_content_at_commit(repo, from_commit, file_path)?;
+        let old_lines: Vec<&str> = old_content.lines().collect();
+        
+        if old_line >= old_lines.len() {
+            debug!("find_content_aware_nearest_mapped_line: old_line {} >= old_lines.len() {}, returning None", 
+                   old_line, old_lines.len());
+            return Ok(None);
+        }
+        
+        let target_content = old_lines[old_line];
+        debug!("find_content_aware_nearest_mapped_line: Looking for content: '{}'", target_content);
+        
+        let new_content = get_file_content_at_commit(repo, to_commit, file_path)?;
+        let new_lines: Vec<&str> = new_content.lines().collect();
+        
+        // First try exact mapping
+        if let Some(mapped) = self.map_line(old_line) {
+            if mapped < new_lines.len() && new_lines[mapped] == target_content {
+                debug!("find_content_aware_nearest_mapped_line: Exact mapping verified - line {} -> {} with same content", old_line, mapped);
+                return Ok(Some(mapped));
+            } else {
+                debug!("find_content_aware_nearest_mapped_line: Exact mapping found but content differs - line {} -> {} ('{}' != '{}')", 
+                       old_line, mapped, 
+                       new_lines.get(mapped).unwrap_or(&"<out of bounds>"), 
+                       target_content);
+            }
+        }
+
+        // Search in expanding radius, but verify content matches
+        for radius in 1..=search_radius {
+            // Try lines before
+            if old_line >= radius {
+                if let Some(mapped) = self.map_line(old_line - radius) {
+                    if mapped < new_lines.len() && new_lines[mapped] == target_content {
+                        debug!("find_content_aware_nearest_mapped_line: Content-verified nearest mapping at radius {} before: line {} -> {} with same content", 
+                               radius, old_line - radius, mapped);
+                        return Ok(Some(mapped));
+                    } else {
+                        debug!("find_content_aware_nearest_mapped_line: Mapping found at radius {} before but content differs: line {} -> {} ('{}' != '{}')", 
+                               radius, old_line - radius, mapped,
+                               new_lines.get(mapped).unwrap_or(&"<out of bounds>"), 
+                               target_content);
+                    }
+                }
+            }
+            
+            // Try lines after
+            if old_line + radius < self.old_file_size {
+                if let Some(mapped) = self.map_line(old_line + radius) {
+                    if mapped < new_lines.len() && new_lines[mapped] == target_content {
+                        debug!("find_content_aware_nearest_mapped_line: Content-verified nearest mapping at radius {} after: line {} -> {} with same content", 
+                               radius, old_line + radius, mapped);
+                        return Ok(Some(mapped));
+                    } else {
+                        debug!("find_content_aware_nearest_mapped_line: Mapping found at radius {} after but content differs: line {} -> {} ('{}' != '{}')", 
+                               radius, old_line + radius, mapped,
+                               new_lines.get(mapped).unwrap_or(&"<out of bounds>"), 
+                               target_content);
+                    }
+                }
+            }
+        }
+
+        debug!("find_content_aware_nearest_mapped_line: No content-verified mapping found within radius {}", search_radius);
+        Ok(None)
     }
 
     /// Enhanced version of find_nearest_mapped_line that includes exact content fallback
@@ -183,10 +291,14 @@ pub fn map_lines_between_commits(
     to_commit: &str,
     file_path: &Path,
 ) -> std::result::Result<LineMapping, LineMappingError> {
+    debug!("map_lines_between_commits: Creating mapping for {:?} from {} to {}", 
+           file_path, from_commit, to_commit);
+    
     // Handle same commit case
     if from_commit == to_commit {
         let content = get_file_content_at_commit(repo, from_commit, file_path)?;
         let line_count = content.lines().count();
+        debug!("map_lines_between_commits: Same commit, creating identity mapping with {} lines", line_count);
         return Ok(LineMapping::identity(line_count));
     }
 
@@ -194,16 +306,22 @@ pub fn map_lines_between_commits(
     let old_content = get_file_content_at_commit(repo, from_commit, file_path)?;
     let new_content = get_file_content_at_commit(repo, to_commit, file_path)?;
 
-    // Use similar crate for diffing (already in dependencies)
-    let diff = similar::TextDiff::from_lines(&old_content, &new_content);
-    
     let old_lines: Vec<&str> = old_content.lines().collect();
     let new_lines: Vec<&str> = new_content.lines().collect();
+    
+    debug!("map_lines_between_commits: Old content has {} lines, new content has {} lines", 
+           old_lines.len(), new_lines.len());
+
+    // Use similar crate for diffing (already in dependencies)
+    let diff = similar::TextDiff::from_lines(&old_content, &new_content);
     
     let mut mapping = LineMapping::new(old_lines.len(), new_lines.len());
     
     let mut old_line_idx = 0;
     let mut new_line_idx = 0;
+    let mut equal_count = 0;
+    let mut delete_count = 0;
+    let mut insert_count = 0;
 
     // Process diff operations to build mapping
     for change in diff.iter_all_changes() {
@@ -214,19 +332,25 @@ pub fn map_lines_between_commits(
                 mapping.reverse_mapping[new_line_idx] = Some(old_line_idx);
                 old_line_idx += 1;
                 new_line_idx += 1;
+                equal_count += 1;
             }
             similar::ChangeTag::Delete => {
                 // Line was deleted - no mapping for this old line
                 // mapping[old_line_idx] remains None
                 old_line_idx += 1;
+                delete_count += 1;
             }
             similar::ChangeTag::Insert => {
                 // Line was inserted - no reverse mapping for this new line  
                 // reverse_mapping[new_line_idx] remains None
                 new_line_idx += 1;
+                insert_count += 1;
             }
         }
     }
+
+    debug!("map_lines_between_commits: Diff analysis - {} equal, {} deleted, {} inserted", 
+           equal_count, delete_count, insert_count);
 
     Ok(mapping)
 }
@@ -691,5 +815,213 @@ mod tests {
             }
             _ => panic!("Expected to find exact content match"),
         }
+    }
+
+    #[test]
+    fn test_content_aware_nearest_neighbor_success() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - original content
+        let content1 = "line_A\nline_B\nTARGET_LINE\nline_C\nline_D\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - add a line before TARGET_LINE, shifting it down by 1
+        let content2 = "line_A\nline_B\nINSERTED_LINE\nTARGET_LINE\nline_C\nline_D\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Insert line");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // Line 2 (TARGET_LINE) should map correctly via content-aware nearest neighbor
+        let result = mapping.find_content_aware_nearest_mapped_line(
+            2, 2, &repo, &commit1, &commit2, Path::new("test.txt")
+        );
+        
+        assert_eq!(result.unwrap(), Some(3)); // TARGET_LINE moved from line 2 to line 3
+    }
+
+    #[test]
+    fn test_content_aware_nearest_neighbor_rejects_wrong_content() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit
+        let content1 = "line_A\nTARGET_LINE\nline_B\nline_C\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - TARGET_LINE deleted, nearby lines map to different content
+        let content2 = "line_A\nCOMPLETELY_DIFFERENT\nline_B\nline_C\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Replace target line");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // Line 1 (TARGET_LINE) should NOT map via content-aware nearest neighbor
+        // because nearby lines don't have the same content
+        let result = mapping.find_content_aware_nearest_mapped_line(
+            1, 2, &repo, &commit1, &commit2, Path::new("test.txt")
+        );
+        
+        assert_eq!(result.unwrap(), None); // Should reject the mapping
+    }
+
+    #[test]
+    fn test_content_aware_nearest_neighbor_finds_correct_nearby_match() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit
+        let content1 = "line_A\nDELETED_LINE\nTARGET_LINE\nline_B\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - delete one line, TARGET_LINE shifts up
+        let content2 = "line_A\nTARGET_LINE\nline_B\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Delete line");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // Line 2 (TARGET_LINE) exact mapping fails, but content-aware neighbor should find it at line 1
+        let result = mapping.find_content_aware_nearest_mapped_line(
+            2, 2, &repo, &commit1, &commit2, Path::new("test.txt")
+        );
+        
+        assert_eq!(result.unwrap(), Some(1)); // TARGET_LINE found at its new location
+    }
+
+    #[test]
+    fn test_content_aware_vs_standard_nearest_neighbor() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit
+        let content1 = "func_A()\nTARGET_FUNC()\nfunc_B()\nfunc_C()\n";
+        let commit1 = commit_file(repo_path, "code.txt", content1, "Initial code");
+        
+        // Second commit - TARGET_FUNC deleted, but nearby functions map incorrectly
+        let content2 = "func_A()\ncompletely_different()\nfunc_B()\nfunc_C()\n";
+        let commit2 = commit_file(repo_path, "code.txt", content2, "Replace function");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("code.txt")
+        ).unwrap();
+        
+        // Standard nearest neighbor would find a mapping (probably line 1 -> line 1)
+        let standard_result = mapping.find_nearest_mapped_line(1, 2);
+        assert!(standard_result.is_some()); // Finds a mapping, but wrong content
+        
+        // Content-aware nearest neighbor should reject it
+        let content_aware_result = mapping.find_content_aware_nearest_mapped_line(
+            1, 2, &repo, &commit1, &commit2, Path::new("code.txt")
+        );
+        assert_eq!(content_aware_result.unwrap(), None); // Correctly rejects wrong content
+    }
+
+    #[test]
+    fn test_content_aware_exact_mapping_verification() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit
+        let content1 = "struct App {\n    field1: String,\n    field2: i32,\n}\n";
+        let commit1 = commit_file(repo_path, "struct.rs", content1, "Initial struct");
+        
+        // Second commit - modify struct but keep struct declaration
+        let content2 = "struct App {\n    field1: String,\n    field2: i64,\n    field3: bool,\n}\n";
+        let commit2 = commit_file(repo_path, "struct.rs", content2, "Modify struct");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("struct.rs")
+        ).unwrap();
+        
+        // Line 0 (struct App {) should have exact mapping that gets verified
+        let result = mapping.find_content_aware_nearest_mapped_line(
+            0, 2, &repo, &commit1, &commit2, Path::new("struct.rs")
+        );
+        
+        assert_eq!(result.unwrap(), Some(0)); // struct App { stays at line 0
+        
+        // Line 2 (field2: i32) should not map to line 2 (field2: i64) due to content difference
+        let result2 = mapping.find_content_aware_nearest_mapped_line(
+            2, 2, &repo, &commit1, &commit2, Path::new("struct.rs")
+        );
+        
+        assert_eq!(result2.unwrap(), None); // Content differs, no match
+    }
+
+    #[test] 
+    fn test_end_to_end_content_aware_fallback_integration() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - simple scenario where we can control the mapping
+        let content1 = "header_line\npub struct App {\n    field: String,\n}\nfooter_line\n";
+        let commit1 = commit_file(repo_path, "simple.rs", content1, "Initial struct");
+        
+        // Second commit - completely restructured, struct moved to different location
+        let content2 = "new_header\nsome_function() {\n}\ncompletely_different_content\nanother_line\npub struct App {\n    field: String,\n    new_field: i32,\n}\nend_content\n";
+        let commit2 = commit_file(repo_path, "simple.rs", content2, "Major restructure");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("simple.rs")
+        ).unwrap();
+        
+        // Line 1 (pub struct App {) from first commit:
+        // - Should be found by content-aware nearest neighbor (struct moved to line 5)
+        let content_aware_result = mapping.find_content_aware_nearest_mapped_line(
+            1, 5, &repo, &commit1, &commit2, Path::new("simple.rs")
+        );
+        assert_eq!(content_aware_result.unwrap(), Some(5)); // Found at new location
+        
+        // Test with radius too small - should fail
+        let small_radius_result = mapping.find_content_aware_nearest_mapped_line(
+            1, 2, &repo, &commit1, &commit2, Path::new("simple.rs")
+        );
+        // The algorithm might find it within radius 2 depending on diff, so let's verify
+        // that it either finds it correctly or fails - both are acceptable
+        if let Some(result) = small_radius_result.unwrap() {
+            // If found, verify the content actually matches
+            let old_content = get_file_content_at_commit(&repo, &commit1, Path::new("simple.rs")).unwrap();
+            let new_content = get_file_content_at_commit(&repo, &commit2, Path::new("simple.rs")).unwrap();
+            let old_lines: Vec<&str> = old_content.lines().collect();
+            let new_lines: Vec<&str> = new_content.lines().collect();
+            assert_eq!(old_lines[1], new_lines[result]);
+        }
+        
+        // Test exact content match also succeeds  
+        let exact_result = mapping.find_exact_content_match(
+            1, &repo, &commit1, &commit2, Path::new("simple.rs")
+        );
+        assert_eq!(exact_result.unwrap(), Some(5)); // Found at line 5
+        
+        // Verify the content actually matches
+        let old_content = get_file_content_at_commit(&repo, &commit1, Path::new("simple.rs")).unwrap();
+        let new_content = get_file_content_at_commit(&repo, &commit2, Path::new("simple.rs")).unwrap();
+        let old_lines: Vec<&str> = old_content.lines().collect();
+        let new_lines: Vec<&str> = new_content.lines().collect();
+        assert_eq!(old_lines[1], new_lines[5]); // Both should be "pub struct App {"
+        assert_eq!(old_lines[1], "pub struct App {");
     }
 }

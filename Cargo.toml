@@ -18,6 +18,8 @@ serde_json = "1.0"
 ignore = "0.4"
 chrono = "0.4"
 thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
 
 [dev-dependencies]
 # Testing framework enhancements

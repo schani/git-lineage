@@ -1,5 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
+use log::{debug, info};
 
 use crate::app::{App, PanelFocus};
 use crate::async_task::Task;
@@ -403,8 +404,10 @@ fn restore_cursor_position(
     commit_data: &CommitData,
     file_path: &std::path::PathBuf,
 ) {
+    info!("restore_cursor_position: Setting cursor to line {} before smart positioning", cursor_state.old_cursor_line);
     app.inspector.cursor_line = cursor_state.old_cursor_line;
-    let _positioning_message = app.apply_smart_cursor_positioning(&commit_data.hash, file_path);
+    let positioning_message = app.apply_smart_cursor_positioning(&commit_data.hash, file_path);
+    debug!("restore_cursor_position: Smart positioning result: {}", positioning_message);
 }
 
 fn restore_viewport_position(app: &mut App, cursor_state: &CursorState) {
@@ -418,7 +421,9 @@ fn update_success_status_message(
     commit_data: &CommitData,
     file_path: &std::path::PathBuf,
 ) {
+    info!("update_success_status_message: Applying smart cursor positioning for commit {}", &commit_data.hash);
     let positioning_message = app.apply_smart_cursor_positioning(&commit_data.hash, file_path);
+    debug!("update_success_status_message: Positioning result: {}", positioning_message);
     let file_info = format!(
         "Loaded {} ({} lines) at commit {}",
         file_path.file_name().unwrap_or_default().to_string_lossy(),
