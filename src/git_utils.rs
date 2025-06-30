@@ -1,7 +1,7 @@
 use gix::Repository;
 use std::path::Path;
 use std::time::Instant;
-use tokio_util::sync::CancellationToken;
+use chrono::{Local, TimeZone};
 
 use crate::app::{CommitInfo, FileTreeNode};
 
@@ -112,8 +112,15 @@ pub fn get_commit_history_for_file(
             let author = &commit_obj.author;
             let message = commit_obj.message.to_string();
 
-            // Format date
-            let date = format!("{}", author.time);
+            // Parse Git timestamp format: "timestamp timezone" (e.g., "1751295482 -0400")
+            let timestamp = match author.time.split_whitespace().next() {
+                Some(ts_str) => ts_str.parse::<i64>().unwrap_or(0),
+                None => 0,
+            };
+            
+            // Format date as human-readable
+            let datetime = Local.timestamp_opt(timestamp, 0).single().unwrap_or_else(|| Local::now());
+            let date = datetime.format("%Y-%m-%d %H:%M").to_string();
 
             let commit_hash = commit_info.id.to_string();
             let short_hash = commit_hash[..8].to_string();
@@ -243,8 +250,15 @@ pub fn get_commit_history_chunk(
             let author = &commit_obj.author;
             let message = commit_obj.message.to_string();
 
-            // Format date
-            let date = format!("{}", author.time);
+            // Parse Git timestamp format: "timestamp timezone" (e.g., "1751295482 -0400")
+            let timestamp = match author.time.split_whitespace().next() {
+                Some(ts_str) => ts_str.parse::<i64>().unwrap_or(0),
+                None => 0,
+            };
+            
+            // Format date as human-readable
+            let datetime = Local.timestamp_opt(timestamp, 0).single().unwrap_or_else(|| Local::now());
+            let date = datetime.format("%Y-%m-%d %H:%M").to_string();
 
             let commit_hash = commit_info.id.to_string();
             let short_hash = commit_hash[..8].to_string();
@@ -369,8 +383,15 @@ where
             let author = &commit_obj.author;
             let message = commit_obj.message.to_string();
 
-            // Format date
-            let date = format!("{}", author.time);
+            // Parse Git timestamp format: "timestamp timezone" (e.g., "1751295482 -0400")
+            let timestamp = match author.time.split_whitespace().next() {
+                Some(ts_str) => ts_str.parse::<i64>().unwrap_or(0),
+                None => 0,
+            };
+            
+            // Format date as human-readable
+            let datetime = Local.timestamp_opt(timestamp, 0).single().unwrap_or_else(|| Local::now());
+            let date = datetime.format("%Y-%m-%d %H:%M").to_string();
 
             let commit_hash = commit_info.id.to_string();
             let short_hash = commit_hash[..8].to_string();
@@ -598,6 +619,45 @@ mod tests {
             commits.is_empty(),
             "Should have no commits for nonexistent file"
         );
+    }
+
+    #[test]
+    fn test_gix_author_time_parsing() {
+        // Test that we can properly parse gix author time format
+        let repo = open_repository(".").expect("Should be able to open repository");
+        let commits = get_commit_history_for_file(&repo, "src/main.rs").expect("Should get commit history");
+        
+        if !commits.is_empty() {
+            let commit = &commits[0];
+            
+            // Check that the date is properly formatted (should be in YYYY-MM-DD HH:MM format)
+            assert!(!commit.date.is_empty(), "Date should not be empty");
+            assert!(commit.date.contains("-"), "Date should contain dash separators");
+            assert!(commit.date.contains(":"), "Date should contain time separators");
+            
+            // Check that the date string is reasonable length (should be like "2025-06-30 14:30")
+            assert!(commit.date.len() >= 16, "Date should be at least 16 characters long");
+            assert!(commit.date.len() <= 20, "Date should be at most 20 characters long");
+            
+            // Verify the date format matches expected pattern (YYYY-MM-DD HH:MM)
+            let parts: Vec<&str> = commit.date.split_whitespace().collect();
+            assert_eq!(parts.len(), 2, "Date should have date and time parts");
+            
+            let date_part = parts[0];
+            let time_part = parts[1];
+            
+            // Date part should be YYYY-MM-DD
+            assert_eq!(date_part.len(), 10, "Date part should be 10 characters");
+            assert_eq!(date_part.chars().nth(4), Some('-'), "Year-month separator should be dash");
+            assert_eq!(date_part.chars().nth(7), Some('-'), "Month-day separator should be dash");
+            
+            // Time part should be HH:MM
+            assert_eq!(time_part.len(), 5, "Time part should be 5 characters");
+            assert_eq!(time_part.chars().nth(2), Some(':'), "Hour-minute separator should be colon");
+            
+            // Uncomment for debugging:
+            // println!("Parsed date: {}", commit.date);
+        }
     }
 
     #[test]
