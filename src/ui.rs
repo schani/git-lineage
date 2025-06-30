@@ -198,7 +198,14 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let title = if let Some(ref path) = app.active_file_context {
-        format!(" Commit History ({}) ", path.display())
+        let filename = path.file_name().unwrap_or_default().to_string_lossy();
+        if app.history.is_loading_more && !app.history.history_complete {
+            format!(" Commit History ({}) - Loading... ", filename)
+        } else if !app.history.history_complete {
+            format!(" Commit History ({}) - {} commits (loading more...) ", filename, app.history.commit_list.len())
+        } else {
+            format!(" Commit History ({}) - {} commits ", filename, app.history.commit_list.len())
+        }
     } else {
         " Commit History ".to_string()
     };
@@ -216,7 +223,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let items: Vec<ListItem> = app
+    let mut items: Vec<ListItem> = app
         .history
         .commit_list
         .iter()
@@ -233,6 +240,16 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
             ListItem::new(line)
         })
         .collect();
+
+    // Add a loading indicator at the bottom if more commits are being loaded
+    if !app.history.history_complete {
+        let loading_line = if app.history.is_loading_more {
+            Line::from(Span::styled("⏳ Loading more commits...", Style::default().fg(theme.panel_title)))
+        } else {
+            Line::from(Span::styled("📥 More commits available (scroll to load)", Style::default().fg(theme.panel_title)))
+        };
+        items.push(ListItem::new(loading_line));
+    }
 
     let list = List::new(items)
         .block(block)

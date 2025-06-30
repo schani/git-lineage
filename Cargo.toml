@@ -8,6 +8,7 @@ ratatui = "0.28"
 crossterm = "0.28"
 gix = "0.72"
 tokio = { version = "1.0", features = ["full"] }
+tokio-util = "0.7"
 syntect = "5.2"
 tui-tree-widget = "0.22"
 similar = "2.6"

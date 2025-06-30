@@ -1,4 +1,5 @@
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use std::time::Instant;
 
 #[derive(Debug, Clone)]
@@ -6,6 +7,15 @@ pub enum Task {
     LoadFileTree,
     LoadCommitHistory {
         file_path: String,
+    },
+    LoadCommitHistoryProgressive {
+        file_path: String,
+        chunk_size: usize,
+        start_offset: usize,
+    },
+    LoadCommitHistoryStreaming {
+        file_path: String,
+        cancellation_token: CancellationToken,
     },
     LoadFileContent {
         file_path: String,
@@ -26,6 +36,21 @@ pub enum TaskResult {
     CommitHistoryLoaded {
         file_path: String,
         commits: Vec<crate::app::CommitInfo>,
+    },
+    CommitHistoryChunkLoaded {
+        file_path: String,
+        commits: Vec<crate::app::CommitInfo>,
+        is_complete: bool,
+        chunk_offset: usize,
+    },
+    CommitFound {
+        file_path: String,
+        commit: crate::app::CommitInfo,
+        total_commits_so_far: usize,
+    },
+    CommitHistoryComplete {
+        file_path: String,
+        total_commits: usize,
     },
     FileContentLoaded {
         content: Vec<String>,
@@ -86,7 +111,49 @@ pub async fn run_worker(
                         }
                     },
                 }
-            }
+            },
+            Task::LoadCommitHistoryProgressive { file_path, chunk_size, start_offset } => {
+                let load_start = Instant::now();
+                match load_commit_history_chunk(&repo_path, &file_path, chunk_size, start_offset).await {
+                    Ok((commits, is_complete)) => {
+                        log::info!("🕐 run_worker: LoadCommitHistoryProgressive for '{}' completed in {:?} - {} commits (chunk_offset: {}, complete: {})", 
+                                 file_path, load_start.elapsed(), commits.len(), start_offset, is_complete);
+                        TaskResult::CommitHistoryChunkLoaded {
+                            file_path: file_path.clone(),
+                            commits,
+                            is_complete,
+                            chunk_offset: start_offset,
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: LoadCommitHistoryProgressive for '{}' failed in {:?}: {}", 
+                                 file_path, load_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
+                    },
+                }
+            },
+            Task::LoadCommitHistoryStreaming { file_path, cancellation_token } => {
+                let load_start = Instant::now();
+                match load_commit_history_streaming(&repo_path, &file_path, result_sender.clone(), cancellation_token).await {
+                    Ok(total_commits) => {
+                        log::info!("🕐 run_worker: LoadCommitHistoryStreaming for '{}' completed in {:?} - {} total commits", 
+                                 file_path, load_start.elapsed(), total_commits);
+                        TaskResult::CommitHistoryComplete {
+                            file_path: file_path.clone(),
+                            total_commits,
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: LoadCommitHistoryStreaming for '{}' failed in {:?}: {}", 
+                                 file_path, load_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
+                    },
+                }
+            },
             Task::LoadFileContent {
                 file_path,
                 commit_hash,
@@ -185,6 +252,101 @@ async fn load_commit_history(
     .await?;
     
     log::debug!("🕐 load_commit_history: Blocking task completed in {:?}, total async time: {:?}", 
+              blocking_start.elapsed(), async_start.elapsed());
+    
+    result
+}
+
+async fn load_commit_history_chunk(
+    repo_path: &str,
+    file_path: &str,
+    chunk_size: usize,
+    start_offset: usize,
+) -> Result<(Vec<crate::app::CommitInfo>, bool), Box<dyn std::error::Error + Send + Sync>> {
+    let async_start = Instant::now();
+    log::debug!("🕐 load_commit_history_chunk: Starting async wrapper for '{}' (chunk_size: {}, offset: {})", 
+              file_path, chunk_size, start_offset);
+    
+    // Run in blocking task since git operations are sync
+    let repo_path = repo_path.to_string();
+    let file_path = file_path.to_string();
+
+    let blocking_start = Instant::now();
+    let result = tokio::task::spawn_blocking(
+        move || -> Result<(Vec<crate::app::CommitInfo>, bool), Box<dyn std::error::Error + Send + Sync>> {
+            let repo = crate::git_utils::open_repository(&repo_path).map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                )) as Box<dyn std::error::Error + Send + Sync>
+            })?;
+            crate::git_utils::get_commit_history_chunk(&repo, &file_path, chunk_size, start_offset).map_err(|e| {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                )) as Box<dyn std::error::Error + Send + Sync>
+            })
+        },
+    )
+    .await?;
+    
+    log::debug!("🕐 load_commit_history_chunk: Blocking task completed in {:?}, total async time: {:?}", 
+              blocking_start.elapsed(), async_start.elapsed());
+    
+    result
+}
+
+async fn load_commit_history_streaming(
+    repo_path: &str,
+    file_path: &str,
+    result_sender: mpsc::Sender<TaskResult>,
+    cancellation_token: CancellationToken,
+) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+    let async_start = Instant::now();
+    log::debug!("🕐 load_commit_history_streaming: Starting async wrapper for '{}'", file_path);
+    
+    // Run in blocking task since git operations are sync
+    let repo_path = repo_path.to_string();
+    let file_path = file_path.to_string();
+
+    let blocking_start = Instant::now();
+    let result = tokio::task::spawn_blocking(move || -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        let repo = crate::git_utils::open_repository(&repo_path).map_err(|e| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            )) as Box<dyn std::error::Error + Send + Sync>
+        })?;
+
+        // Create a callback that sends individual commits via the result sender
+        let file_path_for_callback = file_path.clone();
+        let result_sender_for_callback = result_sender.clone();
+        let cancellation_token_for_callback = cancellation_token.clone();
+        
+        crate::git_utils::get_commit_history_streaming(&repo, &file_path, |commit, total_so_far| {
+            // Send the individual commit found
+            let result = TaskResult::CommitFound {
+                file_path: file_path_for_callback.clone(),
+                commit,
+                total_commits_so_far: total_so_far,
+            };
+            
+            // If sending fails, the UI thread has dropped the receiver, so stop
+            if result_sender_for_callback.try_send(result).is_err() {
+                log::info!("🕐 load_commit_history_streaming: Result sender closed, stopping early");
+                return false; // Stop iteration
+            }
+            
+            true // Continue iteration
+        }, &cancellation_token).map_err(|e| {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            )) as Box<dyn std::error::Error + Send + Sync>
+        })
+    }).await?;
+    
+    log::debug!("🕐 load_commit_history_streaming: Blocking task completed in {:?}, total async time: {:?}", 
               blocking_start.elapsed(), async_start.elapsed());
     
     result

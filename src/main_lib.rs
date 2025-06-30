@@ -50,6 +50,104 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 app.ui.status_message = "Async result ignored (file context changed)".to_string();
             }
         }
+        TaskResult::CommitHistoryChunkLoaded { file_path, commits, is_complete, chunk_offset } => {
+            // Race condition protection: Only apply commits if they're for the currently active file
+            let is_still_relevant = app
+                .active_file_context
+                .as_ref()
+                .map(|active_path| active_path.to_string_lossy() == file_path)
+                .unwrap_or(false);
+
+            if is_still_relevant {
+                if chunk_offset == 0 {
+                    // First chunk - replace entire list and auto-load content
+                    app.history.commit_list = commits;
+                    app.history.next_chunk_offset = app.history.commit_list.len();
+                    
+                    // Reset commit list selection when new commits are loaded
+                    let commit_count = app.history.commit_list.len();
+                    app.history
+                        .list_state
+                        .select(if commit_count == 0 { None } else { Some(0) });
+                    
+                    // Auto-load content for the first (most recent) commit if available
+                    if !app.history.commit_list.is_empty() {
+                        crate::event::update_code_inspector_for_commit(app);
+                    }
+                } else {
+                    // Subsequent chunks - append to existing list
+                    app.history.commit_list.extend(commits);
+                    app.history.next_chunk_offset = app.history.commit_list.len();
+                }
+                
+                app.history.history_complete = is_complete;
+                app.history.is_loading_more = false;
+                
+                let commit_count = app.history.commit_list.len();
+                app.ui.status_message = if commit_count == 0 {
+                    "No commits found for this file".to_string()
+                } else if is_complete {
+                    format!("Loaded {} commits", commit_count)
+                } else {
+                    format!("Loaded {} commits (loading more...)", commit_count)
+                };
+            } else {
+                // Async result is stale - ignore it
+                app.ui.status_message = "Async result ignored (file context changed)".to_string();
+            }
+        }
+        TaskResult::CommitFound { file_path, commit, total_commits_so_far } => {
+            // Race condition protection: Only apply commits if they're for the currently active file
+            let is_still_relevant = app
+                .active_file_context
+                .as_ref()
+                .map(|active_path| active_path.to_string_lossy() == file_path)
+                .unwrap_or(false);
+
+            if is_still_relevant {
+                // Add the new commit to the list
+                app.history.commit_list.push(commit);
+                
+                // If this is the first commit, auto-select it and load content
+                if total_commits_so_far == 1 {
+                    app.history.list_state.select(Some(0));
+                    crate::event::update_code_inspector_for_commit(app);
+                }
+                
+                // Update status message with current progress
+                let filename = app.active_file_context
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default();
+                app.ui.status_message = format!("{} loaded ({} commits found...)", filename, total_commits_so_far);
+            }
+        }
+        TaskResult::CommitHistoryComplete { file_path, total_commits } => {
+            // Race condition protection: Only apply if still relevant
+            let is_still_relevant = app
+                .active_file_context
+                .as_ref()
+                .map(|active_path| active_path.to_string_lossy() == file_path)
+                .unwrap_or(false);
+
+            if is_still_relevant {
+                app.history.history_complete = true;
+                app.history.is_loading_more = false;
+                
+                let filename = app.active_file_context
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default();
+                
+                app.ui.status_message = if total_commits == 0 {
+                    format!("{} loaded (no commit history)", filename)
+                } else {
+                    format!("{} loaded ({} commits)", filename, total_commits)
+                };
+            }
+        }
         TaskResult::FileContentLoaded {
             content,
             blame_info: _,

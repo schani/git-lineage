@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tui_tree_widget::TreeState;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelFocus {
@@ -49,6 +50,10 @@ pub struct HistoryState {
     pub commit_list: Vec<CommitInfo>,
     pub list_state: ListState,
     pub selected_commit_hash: Option<String>,
+    pub is_loading_more: bool,
+    pub history_complete: bool,
+    pub next_chunk_offset: usize,
+    pub streaming_cancellation_token: Option<CancellationToken>,
 }
 
 #[derive(Debug)]
@@ -488,6 +493,10 @@ impl App {
                 commit_list: config.commit_list.clone(),
                 list_state: ListState::default(),
                 selected_commit_hash: None,
+                is_loading_more: false,
+                history_complete: false,
+                next_chunk_offset: 0,
+                streaming_cancellation_token: None,
             },
             inspector: InspectorState {
                 current_content: config.current_content.clone(),
@@ -1492,7 +1501,26 @@ impl HistoryState {
             commit_list: Vec::new(),
             list_state: ListState::default(),
             selected_commit_hash: None,
+            is_loading_more: false,
+            history_complete: false,
+            next_chunk_offset: 0,
+            streaming_cancellation_token: None,
         }
+    }
+    
+    pub fn reset_for_new_file(&mut self) {
+        // Cancel any existing streaming task
+        if let Some(token) = &self.streaming_cancellation_token {
+            token.cancel();
+        }
+        
+        self.commit_list.clear();
+        self.list_state.select(None);
+        self.selected_commit_hash = None;
+        self.is_loading_more = false;
+        self.history_complete = false;
+        self.next_chunk_offset = 0;
+        self.streaming_cancellation_token = None;
     }
 }
 

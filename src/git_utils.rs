@@ -1,6 +1,7 @@
 use gix::Repository;
 use std::path::Path;
 use std::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 use crate::app::{CommitInfo, FileTreeNode};
 
@@ -137,6 +138,271 @@ pub fn get_commit_history_for_file(
     Ok(commits)
 }
 
+pub fn get_commit_history_chunk(
+    repo: &Repository,
+    file_path: &str,
+    chunk_size: usize,
+    start_offset: usize,
+) -> Result<(Vec<CommitInfo>, bool), Box<dyn std::error::Error + Send + Sync>> {
+    let start_time = Instant::now();
+    log::debug!("🕐 get_commit_history_chunk: Starting for file: {} (chunk_size: {}, offset: {})", 
+              file_path, chunk_size, start_offset);
+    
+    let mut commits = Vec::new();
+    let mut commits_found = 0;
+    let mut commits_processed = 0;
+
+    // Normalize the file path by removing "./" prefix if present
+    let normalized_path = if file_path.starts_with("./") {
+        &file_path[2..]
+    } else {
+        file_path
+    };
+
+    // Use gix to walk the commit history
+    let head_setup_start = Instant::now();
+    let head_id = repo.head_id()?;
+    let commit_iter = repo.rev_walk([head_id]).all()?;
+    log::debug!("🕐 get_commit_history_chunk: Head setup took: {:?}", head_setup_start.elapsed());
+
+    // Walk through commits and check if they modified the file
+    let commit_iteration_start = Instant::now();
+    
+    for commit_info in commit_iter {
+        let commit_start = Instant::now();
+        let commit_info = commit_info?;
+        let commit = repo.find_object(commit_info.id)?.try_into_commit()?;
+        commits_processed += 1;
+
+        // Check if this commit actually modified the file by comparing with parent(s)
+        let modified_file = if commit.parent_ids().count() == 0 {
+            // This is the initial commit, check if file exists
+            let tree = commit.tree()?;
+            tree.lookup_entry_by_path(normalized_path)?
+                .is_some()
+        } else {
+            // Compare with parent commit(s) to see if file was modified
+            let mut file_modified = false;
+            let parent_comparison_start = Instant::now();
+
+            for parent_id in commit.parent_ids() {
+                let parent_commit = repo.find_object(parent_id)?.try_into_commit()?;
+                let current_tree = commit.tree()?;
+                let parent_tree = parent_commit.tree()?;
+
+                let current_entry =
+                    current_tree.lookup_entry_by_path(normalized_path)?;
+                let parent_entry =
+                    parent_tree.lookup_entry_by_path(normalized_path)?;
+
+                match (current_entry, parent_entry) {
+                    (Some(current), Some(parent)) => {
+                        // File exists in both - check if content changed
+                        if current.oid() != parent.oid() {
+                            file_modified = true;
+                            break;
+                        }
+                    }
+                    (Some(_), None) => {
+                        // File was added
+                        file_modified = true;
+                        break;
+                    }
+                    (None, Some(_)) => {
+                        // File was deleted
+                        file_modified = true;
+                        break;
+                    }
+                    (None, None) => {
+                        // File doesn't exist in either - not modified
+                    }
+                }
+            }
+            log::debug!("🕐 get_commit_history_chunk: Parent comparison for commit {} took: {:?}", 
+                      commit_info.id.to_string()[..8].to_string(), parent_comparison_start.elapsed());
+
+            file_modified
+        };
+
+        if modified_file {
+            // Skip commits until we reach the start_offset
+            if commits_found < start_offset {
+                commits_found += 1;
+                continue;
+            }
+
+            // Stop if we've collected enough commits for this chunk
+            if commits.len() >= chunk_size {
+                log::info!("🕐 get_commit_history_chunk: Chunk complete for '{}' - {} commits collected in {:?}", 
+                         file_path, commits.len(), start_time.elapsed());
+                return Ok((commits, false)); // More commits available
+            }
+
+            // Get commit metadata
+            let commit_obj = commit.decode()?;
+            let author = &commit_obj.author;
+            let message = commit_obj.message.to_string();
+
+            // Format date
+            let date = format!("{}", author.time);
+
+            let commit_hash = commit_info.id.to_string();
+            let short_hash = commit_hash[..8].to_string();
+
+            commits.push(CommitInfo {
+                hash: commit_hash,
+                short_hash,
+                author: author.name.to_string(),
+                date,
+                subject: message,
+            });
+            commits_found += 1;
+        }
+        
+        log::debug!("🕐 get_commit_history_chunk: Commit {} processing took: {:?}", 
+                  commit_info.id.to_string()[..8].to_string(), commit_start.elapsed());
+    }
+    
+    log::info!("🕐 get_commit_history_chunk: Completed for '{}' - {} commits found from {} processed in {:?}", 
+             file_path, commits.len(), commits_processed, start_time.elapsed());
+    log::debug!("🕐 get_commit_history_chunk: Commit iteration took: {:?}", commit_iteration_start.elapsed());
+
+    Ok((commits, true)) // All commits loaded
+}
+
+pub fn get_commit_history_streaming<F>(
+    repo: &Repository,
+    file_path: &str,
+    mut on_commit_found: F,
+    cancellation_token: &tokio_util::sync::CancellationToken,
+) -> Result<usize, Box<dyn std::error::Error + Send + Sync>>
+where
+    F: FnMut(CommitInfo, usize) -> bool, // Returns false to stop early
+{
+    let start_time = Instant::now();
+    log::debug!("🕐 get_commit_history_streaming: Starting for file: {}", file_path);
+    
+    let mut commits_found = 0;
+    let mut commits_processed = 0;
+
+    // Normalize the file path by removing "./" prefix if present
+    let normalized_path = if file_path.starts_with("./") {
+        &file_path[2..]
+    } else {
+        file_path
+    };
+
+    // Use gix to walk the commit history
+    let head_setup_start = Instant::now();
+    let head_id = repo.head_id()?;
+    let commit_iter = repo.rev_walk([head_id]).all()?;
+    log::debug!("🕐 get_commit_history_streaming: Head setup took: {:?}", head_setup_start.elapsed());
+
+    // Walk through commits and check if they modified the file
+    let commit_iteration_start = Instant::now();
+    
+    for commit_info in commit_iter {
+        // Check for cancellation at the start of each commit iteration
+        if cancellation_token.is_cancelled() {
+            log::info!("🕐 get_commit_history_streaming: Task cancelled, stopping at {} commits found from {} processed", commits_found, commits_processed);
+            break;
+        }
+        
+        let commit_start = Instant::now();
+        let commit_info = commit_info?;
+        let commit = repo.find_object(commit_info.id)?.try_into_commit()?;
+        commits_processed += 1;
+
+        // Check if this commit actually modified the file by comparing with parent(s)
+        let modified_file = if commit.parent_ids().count() == 0 {
+            // This is the initial commit, check if file exists
+            let tree = commit.tree()?;
+            tree.lookup_entry_by_path(normalized_path)?
+                .is_some()
+        } else {
+            // Compare with parent commit(s) to see if file was modified
+            let mut file_modified = false;
+            let parent_comparison_start = Instant::now();
+
+            for parent_id in commit.parent_ids() {
+                let parent_commit = repo.find_object(parent_id)?.try_into_commit()?;
+                let current_tree = commit.tree()?;
+                let parent_tree = parent_commit.tree()?;
+
+                let current_entry =
+                    current_tree.lookup_entry_by_path(normalized_path)?;
+                let parent_entry =
+                    parent_tree.lookup_entry_by_path(normalized_path)?;
+
+                match (current_entry, parent_entry) {
+                    (Some(current), Some(parent)) => {
+                        // File exists in both - check if content changed
+                        if current.oid() != parent.oid() {
+                            file_modified = true;
+                            break;
+                        }
+                    }
+                    (Some(_), None) => {
+                        // File was added
+                        file_modified = true;
+                        break;
+                    }
+                    (None, Some(_)) => {
+                        // File was deleted
+                        file_modified = true;
+                        break;
+                    }
+                    (None, None) => {
+                        // File doesn't exist in either - not modified
+                    }
+                }
+            }
+            log::debug!("🕐 get_commit_history_streaming: Parent comparison for commit {} took: {:?}", 
+                      commit_info.id.to_string()[..8].to_string(), parent_comparison_start.elapsed());
+
+            file_modified
+        };
+
+        if modified_file {
+            // Get commit metadata
+            let commit_obj = commit.decode()?;
+            let author = &commit_obj.author;
+            let message = commit_obj.message.to_string();
+
+            // Format date
+            let date = format!("{}", author.time);
+
+            let commit_hash = commit_info.id.to_string();
+            let short_hash = commit_hash[..8].to_string();
+
+            let commit_info = CommitInfo {
+                hash: commit_hash,
+                short_hash,
+                author: author.name.to_string(),
+                date,
+                subject: message,
+            };
+            
+            commits_found += 1;
+            
+            // Call the callback with the found commit
+            if !on_commit_found(commit_info, commits_found) {
+                log::info!("🕐 get_commit_history_streaming: Stopped early at {} commits by callback", commits_found);
+                break;
+            }
+        }
+        
+        log::debug!("🕐 get_commit_history_streaming: Commit {} processing took: {:?}", 
+                  commit_info.id.to_string()[..8].to_string(), commit_start.elapsed());
+    }
+    
+    log::info!("🕐 get_commit_history_streaming: Completed for '{}' - {} commits found from {} processed in {:?}", 
+             file_path, commits_found, commits_processed, start_time.elapsed());
+    log::debug!("🕐 get_commit_history_streaming: Commit iteration took: {:?}", commit_iteration_start.elapsed());
+
+    Ok(commits_found)
+}
+
 pub fn get_blame_at_commit(
     repo: &Repository,
     file_path: &str,
@@ -156,6 +422,23 @@ pub fn get_file_content_at_commit(
     commit_hash: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     get_file_content_with_gix(repo, file_path, commit_hash)
+}
+
+pub fn get_file_content_at_head(
+    repo: &Repository,
+    file_path: &str,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+    log::debug!("🕐 get_file_content_at_head: Starting for file: {}", file_path);
+    
+    // Get HEAD commit
+    let head_id = repo.head_id()?;
+    let head_hash = head_id.to_string();
+    
+    log::debug!("🕐 get_file_content_at_head: HEAD resolution took: {:?}", start_time.elapsed());
+    
+    // Use existing function to get content at HEAD
+    get_file_content_with_gix(repo, file_path, &head_hash)
 }
 
 fn get_file_content_with_gix(
