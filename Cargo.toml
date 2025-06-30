@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 ratatui = "0.28"
 crossterm = "0.28"
-gix = "0.66"
+gix = "0.72"
 tokio = { version = "1.0", features = ["full"] }
 syntect = "5.2"
 tui-tree-widget = "0.22"

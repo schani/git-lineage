@@ -302,7 +302,7 @@ impl LineMapping {
 #[derive(Debug, thiserror::Error)]
 pub enum LineMappingError {
     #[error("Git error: {0}")]
-    Git(#[from] gix::diff::tree::changes::Error),
+    Git(String),
 
     #[error("Object not found: {0}")]
     ObjectNotFound(String),
@@ -420,9 +420,8 @@ fn get_file_content_at_commit(
     })?;
 
     // Navigate to the file in the tree
-    let mut buf = Vec::new();
     let file_entry = tree
-        .lookup_entry_by_path(file_path, &mut buf)
+        .lookup_entry_by_path(file_path)
         .map_err(|_| LineMappingError::FileNotFound {
             path: file_path.to_string_lossy().to_string(),
         })?

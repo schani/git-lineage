@@ -48,8 +48,7 @@ pub fn get_commit_history_for_file(
         let modified_file = if commit.parent_ids().count() == 0 {
             // This is the initial commit, check if file exists
             let tree = commit.tree()?;
-            let mut buf = Vec::new();
-            tree.lookup_entry_by_path(normalized_path, &mut buf)?
+            tree.lookup_entry_by_path(normalized_path)?
                 .is_some()
         } else {
             // Compare with parent commit(s) to see if file was modified
@@ -60,13 +59,10 @@ pub fn get_commit_history_for_file(
                 let current_tree = commit.tree()?;
                 let parent_tree = parent_commit.tree()?;
 
-                let mut current_buf = Vec::new();
-                let mut parent_buf = Vec::new();
-
                 let current_entry =
-                    current_tree.lookup_entry_by_path(normalized_path, &mut current_buf)?;
+                    current_tree.lookup_entry_by_path(normalized_path)?;
                 let parent_entry =
-                    parent_tree.lookup_entry_by_path(normalized_path, &mut parent_buf)?;
+                    parent_tree.lookup_entry_by_path(normalized_path)?;
 
                 match (current_entry, parent_entry) {
                     (Some(current), Some(parent)) => {
@@ -102,10 +98,7 @@ pub fn get_commit_history_for_file(
             let message = commit_obj.message.to_string();
 
             // Format date
-            let date = chrono::DateTime::from_timestamp(author.time.seconds, 0)
-                .unwrap_or_default()
-                .format("%Y-%m-%d")
-                .to_string();
+            let date = format!("{}", author.time);
 
             let commit_hash = commit_info.id.to_string();
             let short_hash = commit_hash[..8].to_string();
@@ -157,9 +150,8 @@ fn get_file_content_with_gix(
     let tree = commit.tree()?;
 
     // Navigate to the file in the tree
-    let mut buf = Vec::new();
     let file_entry = tree
-        .lookup_entry_by_path(file_path, &mut buf)?
+        .lookup_entry_by_path(file_path)?
         .ok_or_else(|| format!("File '{}' not found in commit {}", file_path, commit_hash))?;
 
     // Get the blob content
