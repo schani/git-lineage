@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🦀 Setup Rust toolchain (${{ matrix.rust }})
         uses: dtolnay/rust-toolchain@master
@@ -69,6 +71,8 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -100,6 +104,8 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: 🦀 Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
