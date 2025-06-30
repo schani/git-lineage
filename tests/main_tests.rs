@@ -59,8 +59,40 @@ fn create_test_git_repo(temp_dir: &TempDir) -> std::result::Result<(), Box<dyn s
 }
 
 fn create_test_app() -> App {
+    // Try to open current directory, fallback to creating a temp repo if that fails
     let repo = git_lineage::git_utils::open_repository(".")
-        .unwrap_or_else(|_| panic!("Failed to open test repository"));
+        .or_else(|_| {
+            // Create a temporary git repo for testing
+            let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+            std::process::Command::new("git")
+                .args(["init"])
+                .current_dir(temp_dir.path())
+                .output()
+                .expect("Failed to initialize git repo");
+            
+            // Create a test file and commit
+            std::fs::write(temp_dir.path().join("test.txt"), "test content")
+                .expect("Failed to write test file");
+            
+            std::process::Command::new("git")
+                .args(["add", "test.txt"])
+                .current_dir(temp_dir.path())
+                .output()
+                .expect("Failed to add test file");
+                
+            std::process::Command::new("git")
+                .args(["commit", "-m", "Initial test commit"])
+                .env("GIT_AUTHOR_NAME", "Test")
+                .env("GIT_AUTHOR_EMAIL", "test@test.com")
+                .env("GIT_COMMITTER_NAME", "Test")
+                .env("GIT_COMMITTER_EMAIL", "test@test.com")
+                .current_dir(temp_dir.path())
+                .output()
+                .expect("Failed to commit test file");
+            
+            git_lineage::git_utils::open_repository(temp_dir.path().to_str().unwrap())
+        })
+        .unwrap_or_else(|_| panic!("Failed to open or create test repository"));
     let mut app = App::new(repo);
 
     // Add test data
