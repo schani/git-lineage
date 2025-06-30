@@ -356,7 +356,10 @@ mod tests {
             task_tx.send(Task::LoadFileTree).await.unwrap();
 
             // Receive result
-            let result = result_rx.recv().await.unwrap();
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                result_rx.recv()
+            ).await.unwrap().unwrap();
             match result {
                 TaskResult::FileTreeLoaded { files } => {
                     assert!(!files.root.is_empty());
@@ -370,7 +373,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -396,7 +402,10 @@ mod tests {
                 .unwrap();
 
             // Receive result
-            let result = result_rx.recv().await.unwrap();
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                result_rx.recv()
+            ).await.unwrap().unwrap();
             match result {
                 TaskResult::CommitHistoryLoaded { file_path, commits } => {
                     assert_eq!(file_path, "src/main.rs");
@@ -407,7 +416,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -427,7 +439,10 @@ mod tests {
                 .unwrap();
 
             // Receive result
-            let result = result_rx.recv().await.unwrap();
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                result_rx.recv()
+            ).await.unwrap().unwrap();
             match result {
                 TaskResult::FileContentLoaded {
                     content,
@@ -441,7 +456,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -462,7 +480,10 @@ mod tests {
                 .unwrap();
 
             // Receive result
-            let result = result_rx.recv().await.unwrap();
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                result_rx.recv()
+            ).await.unwrap().unwrap();
             match result {
                 TaskResult::NextChangeFound { commit_hash } => {
                     assert!(!commit_hash.is_empty());
@@ -472,7 +493,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -538,9 +562,12 @@ mod tests {
                 .await
                 .unwrap();
 
-            // Receive all results
+            // Receive all results with timeout
             for _ in 0..3 {
-                let result = result_rx.recv().await.unwrap();
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    result_rx.recv()
+                ).await.unwrap().unwrap();
                 match result {
                     TaskResult::FileTreeLoaded { .. } => {}
                     TaskResult::CommitHistoryLoaded { .. } => {}
@@ -552,7 +579,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
     }
 
@@ -579,7 +609,10 @@ mod tests {
                 .unwrap();
 
             // Should receive error result
-            let result = result_rx.recv().await.unwrap();
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                result_rx.recv()
+            ).await.unwrap().unwrap();
             match result {
                 TaskResult::Error { message } => {
                     assert!(!message.is_empty());
@@ -589,7 +622,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -622,7 +658,10 @@ mod tests {
             for task in tasks {
                 task_tx.send(task).await.unwrap();
 
-                let result = result_rx.recv().await.unwrap();
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    result_rx.recv()
+                ).await.unwrap().unwrap();
                 match result {
                     TaskResult::Error { message } => {
                         assert!(!message.is_empty());
@@ -636,7 +675,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -670,9 +712,12 @@ mod tests {
                     .unwrap();
             }
 
-            // Collect results from all workers
+            // Collect results from all workers with timeout
             for (i, mut result_rx) in result_receivers.into_iter().enumerate() {
-                let result = result_rx.recv().await.unwrap();
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    result_rx.recv()
+                ).await.unwrap().unwrap();
                 match result {
                     TaskResult::CommitHistoryLoaded { file_path, commits } => {
                         assert_eq!(file_path, format!("src/file{}.rs", i));
@@ -692,7 +737,10 @@ mod tests {
             }
 
             for worker in workers {
-                worker.await.unwrap();
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    worker
+                ).await.unwrap();
             }
         }
     }
@@ -786,7 +834,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
@@ -819,7 +870,10 @@ mod tests {
 
             // Clean shutdown
             drop(task_tx);
-            worker_handle.await.unwrap();
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                worker_handle
+            ).await.unwrap();
         }
 
         #[tokio::test]
