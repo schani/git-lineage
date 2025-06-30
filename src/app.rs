@@ -1477,6 +1477,170 @@ mod tests {
             assert_eq!(app.inspector.cursor_line, 0); // Should be clamped to file bounds
             assert!(message.contains("Restored cursor to saved position"));
         }
+
+        #[test]
+        fn test_get_mapped_line_with_empty_file() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Empty content
+            app.inspector.current_content = vec![];
+            
+            // Different commits to trigger mapping logic
+            let mapped_line = app.get_mapped_line("commit1", "commit2", &file_path, 5);
+            
+            // Should default to 0 for empty content
+            assert_eq!(mapped_line, 0);
+        }
+
+        #[test]
+        fn test_get_mapped_line_with_single_line_file() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Single line content
+            app.inspector.current_content = vec!["single line".to_string()];
+            
+            // Test mapping from various lines to single line file
+            let mapped_line1 = app.get_mapped_line("commit1", "commit2", &file_path, 0);
+            let mapped_line2 = app.get_mapped_line("commit1", "commit2", &file_path, 5);
+            let mapped_line3 = app.get_mapped_line("commit1", "commit2", &file_path, 100);
+            
+            // All should map to line 0 (the only line)
+            assert_eq!(mapped_line1, 0);
+            assert_eq!(mapped_line2, 0);
+            assert_eq!(mapped_line3, 0);
+        }
+
+        #[test]
+        fn test_get_mapped_line_boundary_conditions() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Multi-line content
+            app.inspector.current_content = vec![
+                "line 0".to_string(),
+                "line 1".to_string(),
+                "line 2".to_string(),
+                "line 3".to_string(),
+                "line 4".to_string(),
+            ];
+            
+            // Test first line
+            let first_line = app.get_mapped_line("commit1", "commit2", &file_path, 0);
+            assert!(first_line < app.inspector.current_content.len());
+            
+            // Test last valid line index
+            let last_line = app.get_mapped_line("commit1", "commit2", &file_path, 4);
+            assert!(last_line < app.inspector.current_content.len());
+            
+            // Test beyond bounds
+            let beyond_bounds = app.get_mapped_line("commit1", "commit2", &file_path, 100);
+            assert!(beyond_bounds < app.inspector.current_content.len());
+        }
+
+        #[test]
+        fn test_get_mapped_line_proportional_fallback_bounds() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Small content to test bounds checking in proportional mapping
+            app.inspector.current_content = vec![
+                "line 0".to_string(),
+                "line 1".to_string(),
+            ];
+            
+            // Test with large line number that would cause out-of-bounds proportional mapping
+            let mapped_line = app.get_mapped_line("commit1", "commit2", &file_path, 1000);
+            
+            // Should be within bounds
+            assert!(mapped_line < app.inspector.current_content.len());
+        }
+
+        #[test]
+        fn test_get_mapped_line_zero_line_input() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Multi-line content
+            app.inspector.current_content = vec![
+                "line 0".to_string(),
+                "line 1".to_string(),
+                "line 2".to_string(),
+            ];
+            
+            // Test with line 0 (first line)
+            let mapped_line = app.get_mapped_line("commit1", "commit2", &file_path, 0);
+            
+            // Should handle line 0 correctly
+            assert!(mapped_line < app.inspector.current_content.len());
+        }
+
+        #[test]
+        fn test_get_mapped_line_large_file_simulation() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Simulate larger file content
+            let mut large_content = Vec::new();
+            for i in 0..100 {
+                large_content.push(format!("line {}", i));
+            }
+            app.inspector.current_content = large_content;
+            
+            // Test mapping various positions in large file
+            let mapped_line1 = app.get_mapped_line("commit1", "commit2", &file_path, 25);
+            let mapped_line2 = app.get_mapped_line("commit1", "commit2", &file_path, 50);
+            let mapped_line3 = app.get_mapped_line("commit1", "commit2", &file_path, 75);
+            
+            // All should be within bounds
+            assert!(mapped_line1 < app.inspector.current_content.len());
+            assert!(mapped_line2 < app.inspector.current_content.len());
+            assert!(mapped_line3 < app.inspector.current_content.len());
+        }
+
+        #[test]
+        fn test_get_mapped_line_manual_proportional_fallback_empty_content() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Empty content to trigger manual proportional fallback edge case
+            app.inspector.current_content = vec![];
+            
+            // Should handle empty content gracefully in manual fallback
+            let mapped_line = app.get_mapped_line("commit1", "commit2", &file_path, 10);
+            assert_eq!(mapped_line, 0);
+        }
+
+        #[test]
+        fn test_get_mapped_line_manual_proportional_fallback_calculation() {
+            let repo = create_test_repo();
+            let mut app = App::new(repo);
+            let file_path = PathBuf::from("test.txt");
+            
+            // Set up content for manual proportional fallback testing
+            app.inspector.current_content = vec![
+                "line 0".to_string(),
+                "line 1".to_string(),
+                "line 2".to_string(),
+                "line 3".to_string(),
+            ];
+            
+            // Test various line positions for proportional calculation
+            let mapped_line1 = app.get_mapped_line("commit1", "commit2", &file_path, 2);
+            let mapped_line2 = app.get_mapped_line("commit1", "commit2", &file_path, 8);
+            
+            // Should be within bounds and follow proportional logic
+            assert!(mapped_line1 < app.inspector.current_content.len());
+            assert!(mapped_line2 < app.inspector.current_content.len());
+        }
     }
 }
 
