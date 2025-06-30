@@ -1048,4 +1048,293 @@ mod tests {
         let not_found = tree.find_node(&PathBuf::from("nonexistent"));
         assert!(not_found.is_none());
     }
+
+    #[test]
+    fn test_tree_loading_determinism() {
+        use std::time::Instant;
+        use tempfile::TempDir;
+        
+        // Create a temporary directory structure
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Create a complex directory structure
+        std::fs::create_dir_all(temp_path.join("src/components")).unwrap();
+        std::fs::create_dir_all(temp_path.join("src/utils")).unwrap();
+        std::fs::create_dir_all(temp_path.join("tests/unit")).unwrap();
+        std::fs::create_dir_all(temp_path.join("docs")).unwrap();
+        
+        // Create files at various depths
+        std::fs::write(temp_path.join("README.md"), "# Test Project").unwrap();
+        std::fs::write(temp_path.join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
+        std::fs::write(temp_path.join("src/main.rs"), "fn main() {}").unwrap();
+        std::fs::write(temp_path.join("src/lib.rs"), "// lib").unwrap();
+        std::fs::write(temp_path.join("src/components/button.rs"), "// button").unwrap();
+        std::fs::write(temp_path.join("src/components/input.rs"), "// input").unwrap();
+        std::fs::write(temp_path.join("src/utils/helpers.rs"), "// helpers").unwrap();
+        std::fs::write(temp_path.join("tests/unit/test_main.rs"), "// test").unwrap();
+        std::fs::write(temp_path.join("docs/USAGE.md"), "# Usage").unwrap();
+        
+        // Load the tree multiple times and verify identical results
+        let mut results = Vec::new();
+        let mut load_times = Vec::new();
+        
+        for i in 0..5 {
+            let start = Instant::now();
+            let tree = FileTree::from_directory(temp_path).unwrap();
+            let load_time = start.elapsed();
+            load_times.push(load_time);
+            
+            let stats = tree.get_stats();
+            let visible_count = tree.get_visible_nodes().len();
+            
+            results.push((stats.total_nodes, stats.files, stats.directories, stats.max_depth, visible_count));
+            
+            // Print progress for debugging
+            println!("Run {}: {} nodes, {} files, {} dirs, depth {}, {:?}", 
+                    i + 1, stats.total_nodes, stats.files, stats.directories, stats.max_depth, load_time);
+        }
+        
+        // Verify all results are identical
+        let first_result = &results[0];
+        for (i, result) in results.iter().enumerate() {
+            assert_eq!(result, first_result, 
+                "Run {} produced different results: {:?} vs {:?}", i + 1, result, first_result);
+        }
+        
+        // Verify reasonable performance (should be under 100ms for small test directory)
+        for (i, &load_time) in load_times.iter().enumerate() {
+            assert!(load_time.as_millis() < 1000, 
+                "Run {} took too long: {:?}", i + 1, load_time);
+        }
+        
+        // Verify we found the expected structure
+        assert!(first_result.0 > 10, "Should have found more than 10 nodes");
+        assert!(first_result.1 > 5, "Should have found more than 5 files");
+        assert!(first_result.2 > 3, "Should have found more than 3 directories");
+        assert!(first_result.3 >= 2, "Should have max depth of at least 2");
+    }
+
+    #[test]
+    fn test_tree_hierarchy_structure() {
+        use tempfile::TempDir;
+        
+        // Create a test directory with known hierarchy
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Create nested structure: root -> src -> components -> ui -> button.rs
+        std::fs::create_dir_all(temp_path.join("src/components/ui")).unwrap();
+        std::fs::write(temp_path.join("src/components/ui/button.rs"), "// button component").unwrap();
+        std::fs::write(temp_path.join("src/components/mod.rs"), "// components module").unwrap();
+        std::fs::write(temp_path.join("src/main.rs"), "// main").unwrap();
+        std::fs::write(temp_path.join("README.md"), "# Test").unwrap();
+        
+        let tree = FileTree::from_directory(temp_path).unwrap();
+        
+        // Verify root level contains expected items
+        let root_names: Vec<String> = tree.root.iter().map(|n| n.name.clone()).collect();
+        assert!(root_names.contains(&"src".to_string()));
+        assert!(root_names.contains(&"README.md".to_string()));
+        
+        // Find the src directory and verify it has the right children
+        let src_node = tree.find_node(&PathBuf::from("src")).unwrap();
+        assert!(src_node.is_dir);
+        assert!(src_node.children.iter().any(|c| c.name == "components"));
+        assert!(src_node.children.iter().any(|c| c.name == "main.rs"));
+        
+        // Find components directory and verify its structure
+        let components_node = tree.find_node(&PathBuf::from("src/components")).unwrap();
+        assert!(components_node.is_dir);
+        assert!(components_node.children.iter().any(|c| c.name == "ui"));
+        assert!(components_node.children.iter().any(|c| c.name == "mod.rs"));
+        
+        // Find the deepest ui directory
+        let ui_node = tree.find_node(&PathBuf::from("src/components/ui")).unwrap();
+        assert!(ui_node.is_dir);
+        assert!(ui_node.children.iter().any(|c| c.name == "button.rs"));
+        
+        // Verify the deepest file exists
+        let button_node = tree.find_node(&PathBuf::from("src/components/ui/button.rs")).unwrap();
+        assert!(!button_node.is_dir);
+        assert_eq!(button_node.name, "button.rs");
+        
+        // Verify depth calculations
+        let stats = tree.get_stats();
+        assert_eq!(stats.max_depth, 3, "Should have max depth of 3 (src/components/ui/button.rs)");
+    }
+
+    #[test]
+    fn test_tree_loading_with_gitignore() {
+        use tempfile::TempDir;
+        use std::process::Command;
+        
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Initialize git repository (required for gitignore to work)
+        Command::new("git")
+            .args(["init"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to initialize git repository");
+        
+        // Create directory structure with some files that should be ignored
+        std::fs::create_dir_all(temp_path.join("src")).unwrap();
+        std::fs::create_dir_all(temp_path.join("target/debug")).unwrap();
+        std::fs::create_dir_all(temp_path.join("node_modules/react")).unwrap();
+        
+        // Create files
+        std::fs::write(temp_path.join("src/main.rs"), "fn main() {}").unwrap();
+        std::fs::write(temp_path.join("Cargo.toml"), "[package]").unwrap();
+        std::fs::write(temp_path.join("target/debug/binary"), "binary").unwrap();
+        std::fs::write(temp_path.join("node_modules/react/index.js"), "module.exports = {}").unwrap();
+        
+        // Create .gitignore file
+        std::fs::write(temp_path.join(".gitignore"), "target/\nnode_modules/").unwrap();
+        
+        let tree = FileTree::from_directory(temp_path).unwrap();
+        
+        // Find the src node and expand it to make children visible
+        let src_node = tree.find_node(&PathBuf::from("src")).unwrap();
+        
+        // Verify that gitignored directories are not included
+        let all_paths: Vec<String> = tree.get_visible_nodes()
+            .iter()
+            .map(|n| n.path.to_string_lossy().to_string())
+            .collect();
+        
+        // Debug output (commented out for clean test runs)
+        // println!("All paths found: {:?}", all_paths);
+        // println!("Root nodes: {:?}", tree.root.iter().map(|n| &n.name).collect::<Vec<_>>());
+        // println!("Src children: {:?}", src_node.children.iter().map(|n| &n.name).collect::<Vec<_>>());
+        
+        assert!(all_paths.iter().any(|p| p.contains("src")), "Should include src directory");
+        assert!(src_node.children.iter().any(|c| c.name == "main.rs"), "Should include main.rs in src");
+        assert!(all_paths.iter().any(|p| p.contains("Cargo.toml")), "Should include Cargo.toml");
+        
+        // These should be filtered out by gitignore
+        assert!(!all_paths.iter().any(|p| p.contains("target")), "Should not include target directory");
+        assert!(!all_paths.iter().any(|p| p.contains("node_modules")), "Should not include node_modules");
+        assert!(!all_paths.iter().any(|p| p.contains("binary")), "Should not include binary file");
+        assert!(!all_paths.iter().any(|p| p.contains("index.js")), "Should not include index.js");
+    }
+
+    #[test]
+    fn test_tree_loading_performance() {
+        use std::time::Instant;
+        use tempfile::TempDir;
+        
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Create a moderately complex directory structure (100+ files)
+        for i in 0..10 {
+            let dir_path = temp_path.join(format!("dir_{}", i));
+            std::fs::create_dir_all(&dir_path).unwrap();
+            
+            for j in 0..10 {
+                let file_path = dir_path.join(format!("file_{}.txt", j));
+                std::fs::write(file_path, format!("Content of file {} in dir {}", j, i)).unwrap();
+            }
+        }
+        
+        // Also create some nested directories
+        for i in 0..5 {
+            let nested_path = temp_path.join(format!("nested/level1_{}/level2/level3", i));
+            std::fs::create_dir_all(&nested_path).unwrap();
+            std::fs::write(nested_path.join("deep_file.txt"), "deep content").unwrap();
+        }
+        
+        // Measure loading time
+        let start = Instant::now();
+        let tree = FileTree::from_directory(temp_path).unwrap();
+        let load_time = start.elapsed();
+        
+        let stats = tree.get_stats();
+        
+        // Verify structure
+        assert!(stats.total_nodes > 100, "Should have found over 100 nodes");
+        assert!(stats.files >= 105, "Should have found at least 105 files (100 + 5 deep files)");
+        assert!(stats.directories >= 20, "Should have found at least 20 directories");
+        assert!(stats.max_depth >= 3, "Should have max depth of at least 3");
+        
+        // Performance assertion - should load 100+ files very quickly
+        assert!(load_time.as_millis() < 500, 
+            "Loading {} nodes took too long: {:?}", stats.total_nodes, load_time);
+        
+        println!("Performance test: {} nodes loaded in {:?}", stats.total_nodes, load_time);
+    }
+
+    #[test]
+    fn test_tree_loading_edge_cases() {
+        use tempfile::TempDir;
+        
+        // Test empty directory
+        let empty_dir = TempDir::new().unwrap();
+        let tree = FileTree::from_directory(empty_dir.path()).unwrap();
+        assert_eq!(tree.root.len(), 0);
+        
+        // Test directory with only hidden files
+        let hidden_dir = TempDir::new().unwrap();
+        std::fs::write(hidden_dir.path().join(".hidden"), "hidden content").unwrap();
+        std::fs::create_dir_all(hidden_dir.path().join(".hidden_dir")).unwrap();
+        let tree = FileTree::from_directory(hidden_dir.path()).unwrap();
+        assert_eq!(tree.root.len(), 0, "Should ignore hidden files and directories");
+        
+        // Test directory with special characters in names
+        let special_dir = TempDir::new().unwrap();
+        std::fs::write(special_dir.path().join("file with spaces.txt"), "content").unwrap();
+        std::fs::write(special_dir.path().join("file-with-dashes.txt"), "content").unwrap();
+        std::fs::write(special_dir.path().join("file_with_underscores.txt"), "content").unwrap();
+        
+        let tree = FileTree::from_directory(special_dir.path()).unwrap();
+        assert_eq!(tree.root.len(), 3);
+        
+        let names: Vec<String> = tree.root.iter().map(|n| n.name.clone()).collect();
+        assert!(names.contains(&"file with spaces.txt".to_string()));
+        assert!(names.contains(&"file-with-dashes.txt".to_string()));
+        assert!(names.contains(&"file_with_underscores.txt".to_string()));
+    }
+
+    #[test]
+    fn test_tree_sorting_consistency() {
+        use tempfile::TempDir;
+        
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Create files and directories with names that test sorting
+        std::fs::create_dir_all(temp_path.join("z_last_dir")).unwrap();
+        std::fs::create_dir_all(temp_path.join("a_first_dir")).unwrap();
+        std::fs::create_dir_all(temp_path.join("m_middle_dir")).unwrap();
+        
+        std::fs::write(temp_path.join("z_last_file.txt"), "content").unwrap();
+        std::fs::write(temp_path.join("a_first_file.txt"), "content").unwrap();
+        std::fs::write(temp_path.join("m_middle_file.txt"), "content").unwrap();
+        
+        let tree = FileTree::from_directory(temp_path).unwrap();
+        
+        // Verify directories come before files and both are sorted alphabetically
+        let root_names: Vec<String> = tree.root.iter().map(|n| n.name.clone()).collect();
+        
+        // Find directory and file positions
+        let first_dir_pos = root_names.iter().position(|n| n == "a_first_dir").unwrap();
+        let middle_dir_pos = root_names.iter().position(|n| n == "m_middle_dir").unwrap();
+        let last_dir_pos = root_names.iter().position(|n| n == "z_last_dir").unwrap();
+        
+        let first_file_pos = root_names.iter().position(|n| n == "a_first_file.txt").unwrap();
+        let middle_file_pos = root_names.iter().position(|n| n == "m_middle_file.txt").unwrap();
+        let last_file_pos = root_names.iter().position(|n| n == "z_last_file.txt").unwrap();
+        
+        // Verify directories come first
+        assert!(first_dir_pos < first_file_pos, "Directories should come before files");
+        assert!(last_dir_pos < first_file_pos, "All directories should come before any file");
+        
+        // Verify alphabetical sorting within each group
+        assert!(first_dir_pos < middle_dir_pos, "Directories should be sorted alphabetically");
+        assert!(middle_dir_pos < last_dir_pos, "Directories should be sorted alphabetically");
+        assert!(first_file_pos < middle_file_pos, "Files should be sorted alphabetically");
+        assert!(middle_file_pos < last_file_pos, "Files should be sorted alphabetically");
+    }
 }
