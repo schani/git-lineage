@@ -16,8 +16,11 @@ pub fn handle_event(
             // Global keybindings
             match key.code {
                 KeyCode::Char('q') => {
-                    app.should_quit = true;
-                    return Ok(());
+                    // Don't quit if in search mode - let panel handlers deal with it
+                    if !app.navigator.in_search_mode {
+                        app.should_quit = true;
+                        return Ok(());
+                    }
                 }
                 KeyCode::Esc => {
                     // Don't quit if in search mode - let panel handlers deal with it
@@ -27,33 +30,51 @@ pub fn handle_event(
                     }
                 }
                 KeyCode::Tab => {
-                    if key.modifiers.contains(KeyModifiers::SHIFT) {
-                        app.previous_panel();
-                    } else {
-                        app.next_panel();
+                    // Don't switch panels if in search mode
+                    if !app.navigator.in_search_mode {
+                        if key.modifiers.contains(KeyModifiers::SHIFT) {
+                            app.previous_panel();
+                        } else {
+                            app.next_panel();
+                        }
+                        return Ok(());
                     }
-                    return Ok(());
                 }
                 KeyCode::Char('1') => {
-                    app.ui.active_panel = PanelFocus::Navigator;
-                    return Ok(());
+                    // Don't switch panels if in search mode
+                    if !app.navigator.in_search_mode {
+                        app.ui.active_panel = PanelFocus::Navigator;
+                        return Ok(());
+                    }
                 }
                 KeyCode::Char('2') => {
-                    app.ui.active_panel = PanelFocus::History;
-                    return Ok(());
+                    // Don't switch panels if in search mode
+                    if !app.navigator.in_search_mode {
+                        app.ui.active_panel = PanelFocus::History;
+                        return Ok(());
+                    }
                 }
                 KeyCode::Char('3') => {
-                    app.ui.active_panel = PanelFocus::Inspector;
-                    return Ok(());
+                    // Don't switch panels if in search mode
+                    if !app.navigator.in_search_mode {
+                        app.ui.active_panel = PanelFocus::Inspector;
+                        return Ok(());
+                    }
                 }
                 KeyCode::Char('[') => {
-                    if navigate_to_older_commit(app) {
-                        return Ok(());
+                    // Don't navigate commits if in search mode
+                    if !app.navigator.in_search_mode {
+                        if navigate_to_older_commit(app) {
+                            return Ok(());
+                        }
                     }
                 }
                 KeyCode::Char(']') => {
-                    if navigate_to_younger_commit(app) {
-                        return Ok(());
+                    // Don't navigate commits if in search mode
+                    if !app.navigator.in_search_mode {
+                        if navigate_to_younger_commit(app) {
+                            return Ok(());
+                        }
                     }
                 }
                 _ => {}
@@ -94,6 +115,9 @@ fn handle_navigator_event(
                 if key == KeyCode::Esc {
                     app.navigator.search_query.clear();
                 }
+                // Reset cursor to top when exiting search mode
+                app.navigator.cursor_position = 0;
+                app.navigator.scroll_offset = 0;
             }
             _ => {}
         }
@@ -160,6 +184,9 @@ fn handle_navigator_event(
         KeyCode::Char('/') => {
             app.navigator.in_search_mode = true;
             app.navigator.search_query.clear();
+            // Reset cursor to top when entering search mode
+            app.navigator.cursor_position = 0;
+            app.navigator.scroll_offset = 0;
         }
         _ => {}
     }

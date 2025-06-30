@@ -729,9 +729,14 @@ impl FileTree {
             })
             .collect();
 
-        // Sort by score (higher score = better match), then by name for stability
+        // Sort by score (higher score = better match), then by directory/file type, then by name
         scored_nodes.sort_by(|a, b| {
-            b.1.cmp(&a.1).then_with(|| a.0.0.name.cmp(&b.0.0.name))
+            b.1.cmp(&a.1) // Higher score first
+                .then_with(|| match (a.0.0.is_dir, b.0.0.is_dir) {
+                    (true, false) => std::cmp::Ordering::Less,  // Directories before files
+                    (false, true) => std::cmp::Ordering::Greater, // Files after directories  
+                    _ => a.0.0.name.cmp(&b.0.0.name), // Same type: alphabetical
+                })
         });
 
         // Extract the nodes, preserving their original depth for display
