@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 /// Represents a single node in the file tree
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,9 +160,20 @@ impl FileTree {
 
     /// Build tree from a directory path
     pub fn from_directory<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
+        let start_time = Instant::now();
+        let path_ref = path.as_ref();
+        log::info!("🕐 FileTree::from_directory: Starting tree creation for: {:?}", path_ref);
+        
         let mut tree = Self::new();
-        tree.repo_root = path.as_ref().to_path_buf();
-        tree.scan_directory_with_gitignore(path.as_ref())?;
+        tree.repo_root = path_ref.to_path_buf();
+        
+        let scan_start = Instant::now();
+        tree.scan_directory_with_gitignore(path_ref)?;
+        log::debug!("🕐 FileTree::from_directory: Directory scan took: {:?}", scan_start.elapsed());
+        
+        log::info!("🕐 FileTree::from_directory: Completed tree creation for {:?} - {} root nodes in {:?}", 
+                 path_ref, tree.root.len(), start_time.elapsed());
+        
         Ok(tree)
     }
 

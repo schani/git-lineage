@@ -1,6 +1,7 @@
 use gix::Repository;
 use log::{debug, info, warn};
 use std::path::Path;
+use std::time::Instant;
 
 /// Represents the mapping of lines from one version of a file to another
 #[derive(Debug, Clone, PartialEq)]
@@ -324,9 +325,10 @@ pub fn map_lines_between_commits(
     to_commit: &str,
     file_path: &Path,
 ) -> std::result::Result<LineMapping, LineMappingError> {
+    let start_time = Instant::now();
     debug!(
-        "map_lines_between_commits: Creating mapping for {:?} from {} to {}",
-        file_path, from_commit, to_commit
+        "🕐 map_lines_between_commits: Creating mapping for {:?} from {} to {}",
+        file_path, &from_commit[..8], &to_commit[..8]
     );
 
     // Handle same commit case
@@ -334,15 +336,19 @@ pub fn map_lines_between_commits(
         let content = get_file_content_at_commit(repo, from_commit, file_path)?;
         let line_count = content.lines().count();
         debug!(
-            "map_lines_between_commits: Same commit, creating identity mapping with {} lines",
+            "🕐 map_lines_between_commits: Same commit, creating identity mapping with {} lines",
             line_count
         );
+        info!("🕐 map_lines_between_commits: Completed (same commit) for {:?} in {:?}", 
+             file_path, start_time.elapsed());
         return Ok(LineMapping::identity(line_count));
     }
 
     // Get file content at both commits
+    let content_start = Instant::now();
     let old_content = get_file_content_at_commit(repo, from_commit, file_path)?;
     let new_content = get_file_content_at_commit(repo, to_commit, file_path)?;
+    debug!("🕐 map_lines_between_commits: Content retrieval took: {:?}", content_start.elapsed());
 
     let old_lines: Vec<&str> = old_content.lines().collect();
     let new_lines: Vec<&str> = new_content.lines().collect();
@@ -354,9 +360,12 @@ pub fn map_lines_between_commits(
     );
 
     // Use similar crate for diffing (already in dependencies)
+    let diff_start = Instant::now();
     let diff = similar::TextDiff::from_lines(&old_content, &new_content);
+    debug!("🕐 map_lines_between_commits: Diff computation took: {:?}", diff_start.elapsed());
 
     let mut mapping = LineMapping::new(old_lines.len(), new_lines.len());
+    let mapping_start = Instant::now();
 
     let mut old_line_idx = 0;
     let mut new_line_idx = 0;
@@ -391,9 +400,13 @@ pub fn map_lines_between_commits(
     }
 
     debug!(
-        "map_lines_between_commits: Diff analysis - {} equal, {} deleted, {} inserted",
+        "🕐 map_lines_between_commits: Diff analysis - {} equal, {} deleted, {} inserted",
         equal_count, delete_count, insert_count
     );
+    debug!("🕐 map_lines_between_commits: Mapping construction took: {:?}", mapping_start.elapsed());
+    
+    info!("🕐 map_lines_between_commits: Completed for {:?} from {} to {} - {} -> {} lines in {:?}", 
+         file_path, &from_commit[..8], &to_commit[..8], old_lines.len(), new_lines.len(), start_time.elapsed());
 
     Ok(mapping)
 }
@@ -404,6 +417,10 @@ fn get_file_content_at_commit(
     commit_hash: &str,
     file_path: &Path,
 ) -> std::result::Result<String, LineMappingError> {
+    let start_time = Instant::now();
+    debug!("🕐 get_file_content_at_commit: Starting for file: {:?} at commit: {}", 
+           file_path, &commit_hash[..8]);
+    
     // Find the commit object by hash
     let oid = gix::ObjectId::from_hex(commit_hash.as_bytes())
         .map_err(|_| LineMappingError::ObjectNotFound(commit_hash.to_string()))?;
@@ -450,9 +467,22 @@ fn get_file_content_at_commit(
     }
 
     // Convert to string
-    String::from_utf8(content_bytes).map_err(|_| LineMappingError::BinaryFile {
+    let result = String::from_utf8(content_bytes).map_err(|_| LineMappingError::BinaryFile {
         path: file_path.to_string_lossy().to_string(),
-    })
+    });
+    
+    match &result {
+        Ok(content) => {
+            debug!("🕐 get_file_content_at_commit: Completed for {:?} at {} - {} bytes in {:?}", 
+                   file_path, &commit_hash[..8], content.len(), start_time.elapsed());
+        },
+        Err(e) => {
+            warn!("🕐 get_file_content_at_commit: Failed for {:?} at {} in {:?}: {:?}", 
+                  file_path, &commit_hash[..8], start_time.elapsed(), e);
+        }
+    }
+    
+    result
 }
 
 #[cfg(test)]

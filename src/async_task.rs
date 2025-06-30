@@ -1,4 +1,5 @@
 use tokio::sync::mpsc;
+use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub enum Task {
@@ -44,54 +45,104 @@ pub async fn run_worker(
     result_sender: mpsc::Sender<TaskResult>,
     repo_path: String,
 ) {
+    log::info!("🕐 run_worker: Starting async worker for repo: {}", repo_path);
+    
     while let Some(task) = task_receiver.recv().await {
+        let task_start = Instant::now();
+        log::debug!("🕐 run_worker: Processing task: {:?}", task);
+        
         let result = match task {
-            Task::LoadFileTree => match load_file_tree(&repo_path).await {
-                Ok(files) => TaskResult::FileTreeLoaded { files },
-                Err(e) => TaskResult::Error {
-                    message: e.to_string(),
-                },
+            Task::LoadFileTree => {
+                let load_start = Instant::now();
+                match load_file_tree(&repo_path).await {
+                    Ok(files) => {
+                        log::info!("🕐 run_worker: LoadFileTree completed in {:?}", load_start.elapsed());
+                        TaskResult::FileTreeLoaded { files }
+                    },
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: LoadFileTree failed in {:?}: {}", load_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
+                    },
+                }
             },
             Task::LoadCommitHistory { file_path } => {
+                let load_start = Instant::now();
                 match load_commit_history(&repo_path, &file_path).await {
-                    Ok(commits) => TaskResult::CommitHistoryLoaded {
-                        file_path: file_path.clone(),
-                        commits,
+                    Ok(commits) => {
+                        log::info!("🕐 run_worker: LoadCommitHistory for '{}' completed in {:?} - {} commits", 
+                                 file_path, load_start.elapsed(), commits.len());
+                        TaskResult::CommitHistoryLoaded {
+                            file_path: file_path.clone(),
+                            commits,
+                        }
                     },
-                    Err(e) => TaskResult::Error {
-                        message: e.to_string(),
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: LoadCommitHistory for '{}' failed in {:?}: {}", 
+                                 file_path, load_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
                     },
                 }
             }
             Task::LoadFileContent {
                 file_path,
                 commit_hash,
-            } => match load_file_content(&repo_path, &file_path, &commit_hash).await {
-                Ok((content, blame_info)) => TaskResult::FileContentLoaded {
-                    content,
-                    blame_info,
-                },
-                Err(e) => TaskResult::Error {
-                    message: e.to_string(),
-                },
+            } => {
+                let load_start = Instant::now();
+                match load_file_content(&repo_path, &file_path, &commit_hash).await {
+                    Ok((content, blame_info)) => {
+                        log::info!("🕐 run_worker: LoadFileContent for '{}' at {} completed in {:?} - {} lines", 
+                                 file_path, &commit_hash[..8], load_start.elapsed(), content.len());
+                        TaskResult::FileContentLoaded {
+                            content,
+                            blame_info,
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: LoadFileContent for '{}' at {} failed in {:?}: {}", 
+                                 file_path, &commit_hash[..8], load_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
+                    },
+                }
             },
             Task::FindNextChange {
                 file_path,
                 current_commit,
                 line_number,
             } => {
+                let find_start = Instant::now();
                 match find_next_change(&repo_path, &file_path, &current_commit, line_number).await {
-                    Ok(Some(commit_hash)) => TaskResult::NextChangeFound { commit_hash },
-                    Ok(None) => TaskResult::NextChangeNotFound,
-                    Err(e) => TaskResult::Error {
-                        message: e.to_string(),
+                    Ok(Some(commit_hash)) => {
+                        log::info!("🕐 run_worker: FindNextChange for '{}' line {} from {} found in {:?}: {}", 
+                                 file_path, line_number, &current_commit[..8], find_start.elapsed(), &commit_hash[..8]);
+                        TaskResult::NextChangeFound { commit_hash }
+                    },
+                    Ok(None) => {
+                        log::info!("🕐 run_worker: FindNextChange for '{}' line {} from {} completed in {:?} - no change found", 
+                                 file_path, line_number, &current_commit[..8], find_start.elapsed());
+                        TaskResult::NextChangeNotFound
+                    },
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: FindNextChange for '{}' line {} from {} failed in {:?}: {}", 
+                                 file_path, line_number, &current_commit[..8], find_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
                     },
                 }
             }
         };
+        
+        log::debug!("🕐 run_worker: Task processing completed in {:?}", task_start.elapsed());
 
         if let Err(_) = result_sender.send(result).await {
             // Main thread has dropped the receiver, exit worker
+            log::info!("🕐 run_worker: Result sender closed, exiting worker");
             break;
         }
     }
@@ -107,11 +158,15 @@ async fn load_commit_history(
     repo_path: &str,
     file_path: &str,
 ) -> Result<Vec<crate::app::CommitInfo>, Box<dyn std::error::Error + Send + Sync>> {
+    let async_start = Instant::now();
+    log::debug!("🕐 load_commit_history: Starting async wrapper for '{}'", file_path);
+    
     // Run in blocking task since git operations are sync
     let repo_path = repo_path.to_string();
     let file_path = file_path.to_string();
 
-    tokio::task::spawn_blocking(
+    let blocking_start = Instant::now();
+    let result = tokio::task::spawn_blocking(
         move || -> Result<Vec<crate::app::CommitInfo>, Box<dyn std::error::Error + Send + Sync>> {
             let repo = crate::git_utils::open_repository(&repo_path).map_err(|e| {
                 Box::new(std::io::Error::new(
@@ -127,7 +182,12 @@ async fn load_commit_history(
             })
         },
     )
-    .await?
+    .await?;
+    
+    log::debug!("🕐 load_commit_history: Blocking task completed in {:?}, total async time: {:?}", 
+              blocking_start.elapsed(), async_start.elapsed());
+    
+    result
 }
 
 async fn load_file_content(

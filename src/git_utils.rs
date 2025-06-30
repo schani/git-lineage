@@ -1,5 +1,6 @@
 use gix::Repository;
 use std::path::Path;
+use std::time::Instant;
 
 use crate::app::{CommitInfo, FileTreeNode};
 
@@ -26,6 +27,9 @@ pub fn get_commit_history_for_file(
     repo: &Repository,
     file_path: &str,
 ) -> Result<Vec<CommitInfo>, Box<dyn std::error::Error + Send + Sync>> {
+    let start_time = Instant::now();
+    log::debug!("🕐 get_commit_history_for_file: Starting for file: {}", file_path);
+    
     let mut commits = Vec::new();
 
     // Normalize the file path by removing "./" prefix if present
@@ -36,13 +40,20 @@ pub fn get_commit_history_for_file(
     };
 
     // Use gix to walk the commit history
+    let head_setup_start = Instant::now();
     let head_id = repo.head_id()?;
     let commit_iter = repo.rev_walk([head_id]).all()?;
+    log::debug!("🕐 get_commit_history_for_file: Head setup took: {:?}", head_setup_start.elapsed());
 
     // Walk through commits and check if they modified the file
+    let mut commits_processed = 0;
+    let commit_iteration_start = Instant::now();
+    
     for commit_info in commit_iter {
+        let commit_start = Instant::now();
         let commit_info = commit_info?;
         let commit = repo.find_object(commit_info.id)?.try_into_commit()?;
+        commits_processed += 1;
 
         // Check if this commit actually modified the file by comparing with parent(s)
         let modified_file = if commit.parent_ids().count() == 0 {
@@ -53,6 +64,7 @@ pub fn get_commit_history_for_file(
         } else {
             // Compare with parent commit(s) to see if file was modified
             let mut file_modified = false;
+            let parent_comparison_start = Instant::now();
 
             for parent_id in commit.parent_ids() {
                 let parent_commit = repo.find_object(parent_id)?.try_into_commit()?;
@@ -87,6 +99,8 @@ pub fn get_commit_history_for_file(
                     }
                 }
             }
+            log::debug!("🕐 get_commit_history_for_file: Parent comparison for commit {} took: {:?}", 
+                      commit_info.id.to_string()[..8].to_string(), parent_comparison_start.elapsed());
 
             file_modified
         };
@@ -111,7 +125,14 @@ pub fn get_commit_history_for_file(
                 subject: message,
             });
         }
+        
+        log::debug!("🕐 get_commit_history_for_file: Commit {} processing took: {:?}", 
+                  commit_info.id.to_string()[..8].to_string(), commit_start.elapsed());
     }
+    
+    log::info!("🕐 get_commit_history_for_file: Completed for '{}' - {} commits found from {} processed in {:?}", 
+             file_path, commits.len(), commits_processed, start_time.elapsed());
+    log::debug!("🕐 get_commit_history_for_file: Commit iteration took: {:?}", commit_iteration_start.elapsed());
 
     Ok(commits)
 }
@@ -142,25 +163,43 @@ fn get_file_content_with_gix(
     file_path: &str,
     commit_hash: &str,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+    log::debug!("🕐 get_file_content_with_gix: Starting for file: {} at commit: {}", file_path, &commit_hash[..8]);
+    
     // Find the commit object by hash
+    let oid_start = Instant::now();
     let oid = gix::ObjectId::from_hex(commit_hash.as_bytes())?;
     let commit = repo.find_object(oid)?.try_into_commit()?;
+    log::debug!("🕐 get_file_content_with_gix: OID resolution took: {:?}", oid_start.elapsed());
 
     // Get the tree from the commit
+    let tree_start = Instant::now();
     let tree = commit.tree()?;
+    log::debug!("🕐 get_file_content_with_gix: Tree retrieval took: {:?}", tree_start.elapsed());
 
     // Navigate to the file in the tree
+    let lookup_start = Instant::now();
     let file_entry = tree
         .lookup_entry_by_path(file_path)?
         .ok_or_else(|| format!("File '{}' not found in commit {}", file_path, commit_hash))?;
+    log::debug!("🕐 get_file_content_with_gix: File lookup took: {:?}", lookup_start.elapsed());
 
     // Get the blob content
+    let blob_start = Instant::now();
     let blob = file_entry.object()?.try_into_blob()?;
     let content_bytes = blob.data.clone();
+    log::debug!("🕐 get_file_content_with_gix: Blob retrieval took: {:?}, size: {} bytes", 
+              blob_start.elapsed(), content_bytes.len());
 
     // Convert to string and split into lines
+    let parsing_start = Instant::now();
     let content_str = String::from_utf8_lossy(&content_bytes);
     let lines: Vec<String> = content_str.lines().map(|line| line.to_string()).collect();
+    log::debug!("🕐 get_file_content_with_gix: Content parsing took: {:?}, {} lines", 
+              parsing_start.elapsed(), lines.len());
+    
+    log::info!("🕐 get_file_content_with_gix: Completed for '{}' at {} - {} lines in {:?}", 
+             file_path, &commit_hash[..8], lines.len(), start_time.elapsed());
 
     Ok(lines)
 }
