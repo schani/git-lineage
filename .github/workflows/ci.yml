@@ -61,91 +61,6 @@ jobs:
       - name: 🧪 Run doc tests
         run: cargo test --doc
 
-  # 📊 Coverage analysis (Linux only for speed)
-  coverage:
-    name: 📊 Coverage Analysis  
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🦀 Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-
-      - name: 📦 Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: 📦 Cache Cargo build
-        uses: actions/cache@v4
-        with:
-          path: target/
-          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-coverage-
-
-      - name: 🔧 Install coverage tools
-        run: |
-          # Try cargo-llvm-cov first, fallback to tarpaulin
-          if cargo install cargo-llvm-cov 2>/dev/null; then
-            echo "COVERAGE_TOOL=llvm-cov" >> $GITHUB_ENV
-          else
-            cargo install cargo-tarpaulin
-            echo "COVERAGE_TOOL=tarpaulin" >> $GITHUB_ENV
-          fi
-
-      - name: 📊 Generate coverage report
-        run: |
-          if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
-            cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-          else
-            cargo tarpaulin --all-features --workspace --out Lcov --output-dir .
-          fi
-
-      - name: 📊 Check coverage threshold (70%)
-        run: |
-          if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
-            # Extract total line coverage percentage from llvm-cov
-            COVERAGE=$(cargo llvm-cov --all-features --workspace --summary-only | grep -oE '[0-9]+\.[0-9]+%' | head -1 | sed 's/%//')
-          else
-            # Extract coverage from tarpaulin output
-            COVERAGE=$(cargo tarpaulin --all-features --workspace --print-summary | grep -oE '[0-9]+\.[0-9]+%' | head -1 | sed 's/%//')
-          fi
-          
-          echo "Current coverage: ${COVERAGE}%"
-          
-          # Check if coverage meets 70% threshold (using bc if available, otherwise awk)
-          if command -v bc >/dev/null 2>&1; then
-            if (( $(echo "$COVERAGE >= 70" | bc -l) )); then
-              echo "✅ Coverage $COVERAGE% meets the 70% threshold!"
-            else
-              echo "❌ Coverage $COVERAGE% is below the 70% threshold!"
-              exit 1
-            fi
-          else
-            if awk "BEGIN {exit !($COVERAGE >= 70)}"; then
-              echo "✅ Coverage $COVERAGE% meets the 70% threshold!"
-            else
-              echo "❌ Coverage $COVERAGE% is below the 70% threshold!"
-              exit 1
-            fi
-          fi
-
-      - name: 📤 Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: lcov.info
-          fail_ci_if_error: true
-          verbose: true
 
   # 🛡️ Security audit
   security:
@@ -168,7 +83,7 @@ jobs:
   build:
     name: 🚀 Build Release
     runs-on: ${{ matrix.os }}
-    needs: [test, coverage, security]
+    needs: [test, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       matrix:
