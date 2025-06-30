@@ -2,6 +2,8 @@
 
 A TUI (Terminal User Interface) application for exploring Git file history with line-level "time travel" capabilities.
 
+[Loom](https://www.loom.com/share/f9a7db55217e4f21aa294de038cd08dc)
+
 ## Features
 
 - Interactive three-panel layout for navigating files, viewing commit history, and inspecting code
@@ -26,7 +28,7 @@ git-lineage
 ### Global Navigation
 - **Tab** / **Shift+Tab** - Cycle between panels (forward/backward)
 - **1** - Focus File Navigator panel (left)
-- **2** - Focus Commit History panel (middle)  
+- **2** - Focus Commit History panel (middle)
 - **3** - Focus Code Inspector panel (right)
 - **[** / **]** - Navigate to older/younger commit (works from any panel)
 - **q** / **Esc** - Quit application
@@ -38,7 +40,7 @@ git-lineage
 - **/** - Start search mode
 - **Esc** - Exit search mode
 
-### Commit History Panel  
+### Commit History Panel
 - **↑** / **↓** - Navigate through commit history
 - **Enter** - Select commit and load file content
 
