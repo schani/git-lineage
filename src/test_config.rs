@@ -114,21 +114,21 @@ impl TestConfig {
 
     pub fn from_app(app: &crate::app::App) -> Self {
         TestConfig {
-            active_panel: app.active_panel.clone(),
-            file_tree: app.file_tree.clone(),
-            selected_file_navigator_index: app.file_navigator_list_state.selected(),
-            search_query: app.search_query.clone(),
-            in_search_mode: app.in_search_mode,
-            commit_list: app.commit_list.clone(),
-            selected_commit_index: app.commit_list_state.selected(),
-            current_content: app.current_content.clone(),
-            cursor_line: app.cursor_line,
-            cursor_column: app.cursor_column,
-            inspector_scroll_vertical: app.inspector_scroll_vertical,
-            inspector_scroll_horizontal: app.inspector_scroll_horizontal,
-            show_diff_view: app.show_diff_view,
-            status_message: app.status_message.clone(),
-            is_loading: app.is_loading,
+            active_panel: app.ui.active_panel.clone(),
+            file_tree: app.navigator.file_tree.clone(),
+            selected_file_navigator_index: app.navigator.list_state.selected(),
+            search_query: app.navigator.search_query.clone(),
+            in_search_mode: app.navigator.in_search_mode,
+            commit_list: app.history.commit_list.clone(),
+            selected_commit_index: app.history.list_state.selected(),
+            current_content: app.inspector.current_content.clone(),
+            cursor_line: app.inspector.cursor_line,
+            cursor_column: app.inspector.cursor_column,
+            inspector_scroll_vertical: app.inspector.scroll_vertical,
+            inspector_scroll_horizontal: app.inspector.scroll_horizontal,
+            show_diff_view: app.inspector.show_diff_view,
+            status_message: app.ui.status_message.clone(),
+            is_loading: app.ui.is_loading,
         }
     }
 }

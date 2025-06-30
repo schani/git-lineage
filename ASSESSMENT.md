@@ -89,6 +89,7 @@ Here are actionable recommendations, prioritized from high to low.
     }
     ```
 *   **Why**: This will make the `App` struct easier to manage and understand as the application grows. It improves modularity within the state itself.
+*   **Status**: DONE
 
 #### 2. **Improve Async Error Handling**
 *   **What**: Modify `async_task.rs` and `git_utils.rs` to return more specific error types instead of `Box<dyn Error>` or `String`. Use the `GitLineageError` enum from `error.rs` more extensively.

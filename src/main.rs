@@ -99,7 +99,7 @@ async fn run_interactive() -> Result<()> {
 
     // Load initial data
     if let Err(e) = task_sender.send(Task::LoadFileTree).await {
-        app.status_message = format!("Failed to load file tree: {}", e);
+        app.ui.status_message = format!("Failed to load file tree: {}", e);
     }
 
     // Main application loop
@@ -113,7 +113,7 @@ async fn run_interactive() -> Result<()> {
         if crossterm::event::poll(timeout)? {
             let event = crossterm::event::read()?;
             if let Err(e) = event::handle_event(event, &mut app, &task_sender) {
-                app.status_message = format!("Error handling event: {}", e);
+                app.ui.status_message = format!("Error handling event: {}", e);
             }
         }
 

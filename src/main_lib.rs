@@ -6,19 +6,19 @@ use crate::error::Result;
 use std::fs;
 
 pub fn handle_task_result(app: &mut App, result: TaskResult) {
-    app.is_loading = false;
+    app.ui.is_loading = false;
 
     match result {
         TaskResult::FileTreeLoaded { files } => {
-            app.file_tree = files;
+            app.navigator.file_tree = files;
             // Automatically select the first item in the tree
-            app.file_tree.navigate_to_first();
+            app.navigator.file_tree.navigate_to_first();
             // Reset viewport state
-            app.file_navigator_scroll_offset = 0;
-            app.file_navigator_cursor_position = 0;
+            app.navigator.scroll_offset = 0;
+            app.navigator.cursor_position = 0;
             // Update the list state to match the selection
             app.update_file_navigator_list_state();
-            app.status_message = "File tree loaded".to_string();
+            app.ui.status_message = "File tree loaded".to_string();
         }
         TaskResult::CommitHistoryLoaded { file_path, commits } => {
             // Race condition protection: Only apply commits if they're for the currently active file
@@ -29,47 +29,47 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             
             if is_still_relevant {
                 let commit_count = commits.len();
-                app.commit_list = commits;
+                app.history.commit_list = commits;
                 // Reset commit list selection when new commits are loaded
-                app.commit_list_state
+                app.history.list_state
                     .select(if commit_count == 0 { None } else { Some(0) });
-                app.status_message = if commit_count == 0 {
+                app.ui.status_message = if commit_count == 0 {
                     "No commits found for this file".to_string()
                 } else {
                     format!("Loaded {} commits", commit_count)
                 };
 
                 // Auto-load content for the first (most recent) commit if available
-                if !app.commit_list.is_empty() {
+                if !app.history.commit_list.is_empty() {
                     crate::event::update_code_inspector_for_commit(app);
                 }
             } else {
                 // Async result is stale - ignore it
-                app.status_message = "Async result ignored (file context changed)".to_string();
+                app.ui.status_message = "Async result ignored (file context changed)".to_string();
             }
         }
         TaskResult::FileContentLoaded {
             content,
             blame_info: _,
         } => {
-            app.current_content = content;
-            app.status_message = "File content loaded".to_string();
+            app.inspector.current_content = content;
+            app.ui.status_message = "File content loaded".to_string();
         }
         TaskResult::NextChangeFound { commit_hash } => {
             // Find the commit in the list and select it
-            if let Some(index) = app.commit_list.iter().position(|c| c.hash == commit_hash) {
-                app.commit_list_state.select(Some(index));
-                app.active_panel = crate::app::PanelFocus::History;
-                app.status_message = "Found next change".to_string();
+            if let Some(index) = app.history.commit_list.iter().position(|c| c.hash == commit_hash) {
+                app.history.list_state.select(Some(index));
+                app.ui.active_panel = crate::app::PanelFocus::History;
+                app.ui.status_message = "Found next change".to_string();
             } else {
-                app.status_message = "Next change found but commit not in history".to_string();
+                app.ui.status_message = "Next change found but commit not in history".to_string();
             }
         }
         TaskResult::NextChangeNotFound => {
-            app.status_message = "No subsequent changes found for this line".to_string();
+            app.ui.status_message = "No subsequent changes found for this line".to_string();
         }
         TaskResult::Error { message } => {
-            app.status_message = format!("Error: {}", message);
+            app.ui.status_message = format!("Error: {}", message);
         }
     }
 }
@@ -150,19 +150,19 @@ pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
     // Load the file tree directly
     match crate::async_task::load_file_tree(".").await {
         Ok(tree) => {
-            app.file_tree = tree;
+            app.navigator.file_tree = tree;
             // Automatically select the first item in the tree
-            app.file_tree.navigate_to_first();
+            app.navigator.file_tree.navigate_to_first();
             // Reset viewport state
-            app.file_navigator_scroll_offset = 0;
-            app.file_navigator_cursor_position = 0;
+            app.navigator.scroll_offset = 0;
+            app.navigator.cursor_position = 0;
             // Update the list state to match the selection
             app.update_file_navigator_list_state();
-            app.is_loading = false;
-            app.status_message = "File tree loaded".to_string();
+            app.ui.is_loading = false;
+            app.ui.status_message = "File tree loaded".to_string();
         }
         Err(e) => {
-            app.status_message = format!("Error loading file tree: {}", e);
+            app.ui.status_message = format!("Error loading file tree: {}", e);
         }
     }
 

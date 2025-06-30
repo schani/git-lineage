@@ -31,89 +31,80 @@ pub struct CommitInfo {
     pub subject: String,
 }
 
-pub struct App {
-    pub repo: Repository,
-    pub active_panel: PanelFocus,
-    pub should_quit: bool,
-
-    // Panel 1 State - File Navigator
+#[derive(Debug)]
+pub struct NavigatorState {
     pub file_tree: FileTree,
     pub file_tree_state: TreeState<usize>,
-    pub file_navigator_list_state: ListState,
-    pub file_navigator_scroll_offset: usize,
-    pub file_navigator_cursor_position: usize, // Position within the viewport
-    pub file_navigator_viewport_height: usize, // Actual viewport height from UI
+    pub list_state: ListState,
+    pub scroll_offset: usize,
+    pub cursor_position: usize,
+    pub viewport_height: usize,
     pub search_query: String,
     pub in_search_mode: bool,
+}
 
-    // Panel 2 State - Commit History
+#[derive(Debug)]
+pub struct HistoryState {
     pub commit_list: Vec<CommitInfo>,
-    pub commit_list_state: ListState,
+    pub list_state: ListState,
     pub selected_commit_hash: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct InspectorState {
+    pub current_content: Vec<String>,
+    pub current_blame: Option<String>,
+    pub scroll_vertical: u16,
+    pub scroll_horizontal: u16,
+    pub visible_height: usize,
+    pub cursor_line: usize,
+    pub cursor_column: usize,
+    pub show_diff_view: bool,
+}
+
+#[derive(Debug)]
+pub struct UIState {
+    pub active_panel: PanelFocus,
+    pub status_message: String,
+    pub is_loading: bool,
+}
+
+pub struct App {
+    pub repo: Repository,
+    pub should_quit: bool,
     
     // Content Context - tracks what file's content is being displayed
     // This is separate from navigator selection to handle directories properly
     pub active_file_context: Option<PathBuf>,
 
-    // Panel 3 State - Code Inspector
-    pub current_content: Vec<String>,
-    pub current_blame: Option<String>, // Simplified for now
-    pub inspector_scroll_vertical: u16,
-    pub inspector_scroll_horizontal: u16,
-    pub inspector_visible_height: usize, // Actual viewport height from UI
-    pub cursor_line: usize,
-    pub cursor_column: usize,
-    pub show_diff_view: bool,
-
-    // UI State
-    pub status_message: String,
-    pub is_loading: bool,
-
     // Position Tracking for Same-Line Feature
     pub per_commit_cursor_positions: HashMap<(String, PathBuf), usize>,
     pub last_commit_for_mapping: Option<String>,
+
+    // State modules
+    pub navigator: NavigatorState,
+    pub history: HistoryState,
+    pub inspector: InspectorState,
+    pub ui: UIState,
 }
 
 impl App {
     pub fn new(repo: Repository) -> Self {
         Self {
             repo,
-            active_panel: PanelFocus::Navigator,
             should_quit: false,
-
-            file_tree: FileTree::new(),
-            file_tree_state: TreeState::default(),
-            file_navigator_list_state: ListState::default(),
-            file_navigator_scroll_offset: 0,
-            file_navigator_cursor_position: 0,
-            file_navigator_viewport_height: 18, // Default reasonable value
-            search_query: String::new(),
-            in_search_mode: false,
-
-            commit_list: Vec::new(),
-            commit_list_state: ListState::default(),
-            selected_commit_hash: None,
             active_file_context: None,
-
-            current_content: Vec::new(),
-            current_blame: None,
-            inspector_scroll_vertical: 0,
-            inspector_scroll_horizontal: 0,
-            inspector_visible_height: 20, // Default reasonable value
-            cursor_line: 0,
-            cursor_column: 0,
-            show_diff_view: false,
-
-            status_message: "Ready".to_string(),
-            is_loading: false,
-
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
+            navigator: NavigatorState::new(),
+            history: HistoryState::new(),
+            inspector: InspectorState::new(),
+            ui: UIState::new(),
         }
     }
 
     pub fn next_panel(&mut self) {
-        self.active_panel = match self.active_panel {
+        self.ui.active_panel = match self.ui.active_panel {
             PanelFocus::Navigator => PanelFocus::History,
             PanelFocus::History => PanelFocus::Inspector,
             PanelFocus::Inspector => PanelFocus::Navigator,
@@ -121,7 +112,7 @@ impl App {
     }
 
     pub fn previous_panel(&mut self) {
-        self.active_panel = match self.active_panel {
+        self.ui.active_panel = match self.ui.active_panel {
             PanelFocus::Navigator => PanelFocus::Inspector,
             PanelFocus::History => PanelFocus::Navigator,
             PanelFocus::Inspector => PanelFocus::History,
@@ -130,55 +121,55 @@ impl App {
 
     // File tree navigation methods with viewport-based cursor movement
     pub fn navigate_tree_up(&mut self) -> bool {
-        let viewport_height = self.file_navigator_viewport_height;
+        let viewport_height = self.navigator.viewport_height;
         self.navigate_file_navigator_up(viewport_height)
     }
 
     pub fn navigate_tree_down(&mut self) -> bool {
-        let viewport_height = self.file_navigator_viewport_height;
+        let viewport_height = self.navigator.viewport_height;
         self.navigate_file_navigator_down(viewport_height)
     }
 
     pub fn expand_selected_node(&mut self) -> bool {
-        if let Some(selected_path) = self.file_tree.current_selection.clone() {
-            self.file_tree.expand_node(&selected_path)
+        if let Some(selected_path) = self.navigator.file_tree.current_selection.clone() {
+            self.navigator.file_tree.expand_node(&selected_path)
         } else {
             false
         }
     }
 
     pub fn collapse_selected_node(&mut self) -> bool {
-        if let Some(selected_path) = self.file_tree.current_selection.clone() {
-            self.file_tree.collapse_node(&selected_path)
+        if let Some(selected_path) = self.navigator.file_tree.current_selection.clone() {
+            self.navigator.file_tree.collapse_node(&selected_path)
         } else {
             false
         }
     }
 
     pub fn toggle_selected_node(&mut self) -> bool {
-        if let Some(selected_path) = self.file_tree.current_selection.clone() {
-            self.file_tree.toggle_node(&selected_path)
+        if let Some(selected_path) = self.navigator.file_tree.current_selection.clone() {
+            self.navigator.file_tree.toggle_node(&selected_path)
         } else {
             false
         }
     }
 
     pub fn get_selected_file_path(&self) -> Option<PathBuf> {
-        self.file_tree.current_selection.clone()
+        self.navigator.file_tree.current_selection.clone()
     }
 
     /// Update the file navigator list state to match the current file tree selection
     pub fn update_file_navigator_list_state(&mut self) {
-        if let Some(ref current_selection) = self.file_tree.current_selection {
+        if let Some(ref current_selection) = self.navigator.file_tree.current_selection {
             // Get visible nodes with depth to find the current selection index
-            let visible_nodes_with_depth = self.file_tree.get_visible_nodes_with_depth();
+            let visible_nodes_with_depth = self.navigator.file_tree.get_visible_nodes_with_depth();
             let selected_index = visible_nodes_with_depth
                 .iter()
                 .position(|(node, _)| &node.path == current_selection);
 
-            self.file_navigator_list_state.select(selected_index);
+            self.navigator.list_state.select(selected_index);
         } else {
-            self.file_navigator_list_state.select(None);
+            self.navigator.list_state.select(None);
         }
     }
 
@@ -189,14 +180,14 @@ impl App {
             return false;
         }
 
-        let visible_nodes = self.file_tree.get_visible_nodes_with_depth();
+        let visible_nodes = self.navigator.file_tree.get_visible_nodes_with_depth();
         if visible_nodes.is_empty() {
             return false;
         }
 
         // Find current absolute position
         let current_absolute_pos =
-            if let Some(ref current_selection) = self.file_tree.current_selection {
+            if let Some(ref current_selection) = self.navigator.file_tree.current_selection {
                 visible_nodes
                     .iter()
                     .position(|(node, _)| &node.path == current_selection)
@@ -214,34 +205,34 @@ impl App {
 
         // Calculate what the new cursor position should be within the viewport
         let new_cursor_in_viewport =
-            new_absolute_pos.saturating_sub(self.file_navigator_scroll_offset);
+            new_absolute_pos.saturating_sub(self.navigator.scroll_offset);
 
         // Calculate the actual available viewport height (nodes that will be rendered)
         let visible_nodes_in_viewport = visible_nodes
             .iter()
-            .skip(self.file_navigator_scroll_offset)
+            .skip(self.navigator.scroll_offset)
             .take(viewport_height)
             .count();
         let actual_viewport_height = visible_nodes_in_viewport.min(viewport_height);
 
         // Check if the new position would be outside the viewport (above it)
-        if new_absolute_pos < self.file_navigator_scroll_offset {
+        if new_absolute_pos < self.navigator.scroll_offset {
             // Need to scroll up - move the viewport but keep cursor at top
-            self.file_navigator_scroll_offset = new_absolute_pos;
-            self.file_navigator_cursor_position = 0;
+            self.navigator.scroll_offset = new_absolute_pos;
+            self.navigator.cursor_position = 0;
         } else {
             // New position is within viewport - just move cursor
-            self.file_navigator_cursor_position = new_cursor_in_viewport;
+            self.navigator.cursor_position = new_cursor_in_viewport;
         }
 
         // CRITICAL: Ensure cursor position never exceeds actual rendered bounds
-        self.file_navigator_cursor_position = self
-            .file_navigator_cursor_position
+        self.navigator.cursor_position = self
+            .navigator.cursor_position
             .min(actual_viewport_height.saturating_sub(1));
 
         // Update the actual file tree selection
         if let Some((node, _)) = visible_nodes.get(new_absolute_pos) {
-            self.file_tree.current_selection = Some(node.path.clone());
+            self.navigator.file_tree.current_selection = Some(node.path.clone());
             self.update_file_navigator_list_state();
             true
         } else {
@@ -256,14 +247,14 @@ impl App {
             return false;
         }
 
-        let visible_nodes = self.file_tree.get_visible_nodes_with_depth();
+        let visible_nodes = self.navigator.file_tree.get_visible_nodes_with_depth();
         if visible_nodes.is_empty() {
             return false;
         }
 
         // Find current absolute position
         let current_absolute_pos =
-            if let Some(ref current_selection) = self.file_tree.current_selection {
+            if let Some(ref current_selection) = self.navigator.file_tree.current_selection {
                 visible_nodes
                     .iter()
                     .position(|(node, _)| &node.path == current_selection)
@@ -281,12 +272,12 @@ impl App {
 
         // Calculate what the new cursor position should be within the viewport
         let new_cursor_in_viewport =
-            new_absolute_pos.saturating_sub(self.file_navigator_scroll_offset);
+            new_absolute_pos.saturating_sub(self.navigator.scroll_offset);
 
         // Calculate the actual available viewport height (nodes that will be rendered)
         let visible_nodes_in_viewport = visible_nodes
             .iter()
-            .skip(self.file_navigator_scroll_offset)
+            .skip(self.navigator.scroll_offset)
             .take(viewport_height)
             .count();
         let actual_viewport_height = visible_nodes_in_viewport.min(viewport_height);
@@ -294,22 +285,22 @@ impl App {
         // Check if the new position would be outside the actual viewport
         if new_cursor_in_viewport >= actual_viewport_height {
             // Need to scroll down - move the viewport but keep cursor at bottom
-            self.file_navigator_scroll_offset =
+            self.navigator.scroll_offset =
                 new_absolute_pos.saturating_sub(actual_viewport_height - 1);
-            self.file_navigator_cursor_position = actual_viewport_height - 1;
+            self.navigator.cursor_position = actual_viewport_height - 1;
         } else {
             // New position is within viewport - just move cursor
-            self.file_navigator_cursor_position = new_cursor_in_viewport;
+            self.navigator.cursor_position = new_cursor_in_viewport;
         }
 
         // CRITICAL: Ensure cursor position never exceeds actual rendered bounds
-        self.file_navigator_cursor_position = self
-            .file_navigator_cursor_position
+        self.navigator.cursor_position = self
+            .navigator.cursor_position
             .min(actual_viewport_height.saturating_sub(1));
 
         // Update the actual file tree selection
         if let Some((node, _)) = visible_nodes.get(new_absolute_pos) {
-            self.file_tree.current_selection = Some(node.path.clone());
+            self.navigator.file_tree.current_selection = Some(node.path.clone());
             self.update_file_navigator_list_state();
             true
         } else {
@@ -327,55 +318,55 @@ impl App {
         &mut self,
         path: &std::path::Path,
     ) -> Result<(), std::io::Error> {
-        self.file_tree = FileTree::from_directory(path)?;
+        self.navigator.file_tree = FileTree::from_directory(path)?;
         Ok(())
     }
 
     /// Load file content for the Inspector panel based on current selections
     pub fn load_inspector_content(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Check if we have both a selected file and commit
-        let file_path = match &self.file_tree.current_selection {
+        let file_path = match &self.navigator.file_tree.current_selection {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
-                self.current_content.clear();
-                self.status_message = "No file selected".to_string();
+                self.inspector.current_content.clear();
+                self.ui.status_message = "No file selected".to_string();
                 return Ok(());
             }
         };
 
-        let commit_hash = match &self.selected_commit_hash {
+        let commit_hash = match &self.history.selected_commit_hash {
             Some(hash) => hash.clone(),
             None => {
-                self.current_content.clear();
-                self.status_message = "No commit selected".to_string();
+                self.inspector.current_content.clear();
+                self.ui.status_message = "No commit selected".to_string();
                 return Ok(());
             }
         };
 
         // Load file content at the selected commit
-        self.is_loading = true;
-        self.status_message = format!("Loading {} at commit {}...", file_path, &commit_hash[..8]);
+        self.ui.is_loading = true;
+        self.ui.status_message = format!("Loading {} at commit {}...", file_path, &commit_hash[..8]);
 
         match crate::git_utils::get_file_content_at_commit(&self.repo, &file_path, &commit_hash) {
             Ok(content) => {
-                self.current_content = content;
-                self.inspector_scroll_horizontal = 0;
-                self.cursor_line = 0;
+                self.inspector.current_content = content;
+                self.inspector.scroll_horizontal = 0;
+                self.inspector.cursor_line = 0;
                 self.ensure_inspector_cursor_visible(); // Use unified scroll management
-                self.status_message = format!(
+                self.ui.status_message = format!(
                     "Loaded {} ({} lines) at commit {}",
                     file_path,
-                    self.current_content.len(),
+                    self.inspector.current_content.len(),
                     &commit_hash[..8]
                 );
             }
             Err(e) => {
-                self.current_content.clear();
-                self.status_message = format!("Error loading {}: {}", file_path, e);
+                self.inspector.current_content.clear();
+                self.ui.status_message = format!("Error loading {}: {}", file_path, e);
             }
         }
 
-        self.is_loading = false;
+        self.ui.is_loading = false;
         Ok(())
     }
 
@@ -384,10 +375,10 @@ impl App {
         &mut self,
         commit_hash: String,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.selected_commit_hash = Some(commit_hash);
+        self.history.selected_commit_hash = Some(commit_hash);
 
         // Auto-load content if we have a file selected
-        if self.file_tree.current_selection.is_some() {
+        if self.navigator.file_tree.current_selection.is_some() {
             self.load_inspector_content()?;
         }
 
@@ -397,25 +388,25 @@ impl App {
     /// Load commit history for the currently selected file
     /// Ensure the cursor is visible in the inspector viewport by adjusting scroll
     pub fn ensure_inspector_cursor_visible(&mut self) {
-        if self.current_content.is_empty() {
+        if self.inspector.current_content.is_empty() {
             return;
         }
 
-        let visible_lines = self.inspector_visible_height.saturating_sub(2); // Account for borders
+        let visible_lines = self.inspector.visible_height.saturating_sub(2); // Account for borders
         if visible_lines == 0 {
             return;
         }
 
-        let scroll_top = self.inspector_scroll_vertical as usize;
+        let scroll_top = self.inspector.scroll_vertical as usize;
         let scroll_bottom = scroll_top + visible_lines;
 
         // If cursor is above visible area, scroll up
-        if self.cursor_line < scroll_top {
-            self.inspector_scroll_vertical = self.cursor_line as u16;
+        if self.inspector.cursor_line < scroll_top {
+            self.inspector.scroll_vertical = self.inspector.cursor_line as u16;
         }
         // If cursor is below visible area, scroll down
-        else if self.cursor_line >= scroll_bottom {
-            self.inspector_scroll_vertical = (self.cursor_line.saturating_sub(visible_lines - 1)) as u16;
+        else if self.inspector.cursor_line >= scroll_bottom {
+            self.inspector.scroll_vertical = (self.inspector.cursor_line.saturating_sub(visible_lines - 1)) as u16;
         }
         // Otherwise cursor is already visible, no scrolling needed
     }
@@ -423,108 +414,111 @@ impl App {
     pub fn load_commit_history_for_selected_file(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_path = match &self.file_tree.current_selection {
+        let file_path = match &self.navigator.file_tree.current_selection {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
-                self.commit_list.clear();
-                self.commit_list_state.select(None);
-                self.selected_commit_hash = None;
-                self.status_message = "No file selected for history".to_string();
+                self.history.commit_list.clear();
+                self.history.list_state.select(None);
+                self.history.selected_commit_hash = None;
+                self.ui.status_message = "No file selected for history".to_string();
                 return Ok(());
             }
         };
 
-        self.is_loading = true;
-        self.status_message = format!("Loading commit history for {}...", file_path);
+        self.ui.is_loading = true;
+        self.ui.status_message = format!("Loading commit history for {}...", file_path);
 
         match crate::git_utils::get_commit_history_for_file(&self.repo, &file_path) {
             Ok(commits) => {
-                self.commit_list = commits;
-                if !self.commit_list.is_empty() {
+                self.history.commit_list = commits;
+                if !self.history.commit_list.is_empty() {
                     // Auto-select the first (most recent) commit
-                    self.commit_list_state.select(Some(0));
-                    self.selected_commit_hash = Some(self.commit_list[0].hash.clone());
-                    self.status_message = format!(
+                    self.history.list_state.select(Some(0));
+                    self.history.selected_commit_hash = Some(self.history.commit_list[0].hash.clone());
+                    self.ui.status_message = format!(
                         "Loaded {} commits for {}",
-                        self.commit_list.len(),
+                        self.history.commit_list.len(),
                         file_path
                     );
 
                     // Auto-load content for the most recent commit
                     self.load_inspector_content()?;
                 } else {
-                    self.commit_list_state.select(None);
-                    self.selected_commit_hash = None;
-                    self.current_content.clear();
-                    self.status_message = format!("No commits found for {}", file_path);
+                    self.history.list_state.select(None);
+                    self.history.selected_commit_hash = None;
+                    self.inspector.current_content.clear();
+                    self.ui.status_message = format!("No commits found for {}", file_path);
                 }
             }
             Err(e) => {
-                self.commit_list.clear();
-                self.commit_list_state.select(None);
-                self.selected_commit_hash = None;
-                self.current_content.clear();
-                self.status_message = format!("Error loading history for {}: {}", file_path, e);
+                self.history.commit_list.clear();
+                self.history.list_state.select(None);
+                self.history.selected_commit_hash = None;
+                self.inspector.current_content.clear();
+                self.ui.status_message = format!("Error loading history for {}: {}", file_path, e);
             }
         }
 
-        self.is_loading = false;
+        self.ui.is_loading = false;
         Ok(())
     }
 
     pub fn from_test_config(config: &crate::test_config::TestConfig, repo: Repository) -> Self {
         let mut app = Self {
             repo,
-            active_panel: config.active_panel,
             should_quit: false,
-
-            file_tree: config.file_tree.clone(),
-            file_tree_state: TreeState::default(),
-            file_navigator_list_state: ListState::default(),
-            file_navigator_scroll_offset: 0,
-            file_navigator_cursor_position: 0,
-            file_navigator_viewport_height: 18, // Default reasonable value
-            search_query: config.search_query.clone(),
-            in_search_mode: config.in_search_mode,
-
-            commit_list: config.commit_list.clone(),
-            commit_list_state: ListState::default(),
-            selected_commit_hash: None,
             active_file_context: None, // Will be set below based on selection
-
-            current_content: config.current_content.clone(),
-            current_blame: None,
-            inspector_scroll_vertical: config.inspector_scroll_vertical,
-            inspector_scroll_horizontal: config.inspector_scroll_horizontal,
-            inspector_visible_height: 20, // Default reasonable value
-            cursor_line: config.cursor_line,
-            cursor_column: config.cursor_column,
-            show_diff_view: config.show_diff_view,
-
-            status_message: config.status_message.clone(),
-            is_loading: config.is_loading,
-
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
+            navigator: NavigatorState {
+                file_tree: config.file_tree.clone(),
+                file_tree_state: TreeState::default(),
+                list_state: ListState::default(),
+                scroll_offset: 0,
+                cursor_position: 0,
+                viewport_height: 18, // Default reasonable value
+                search_query: config.search_query.clone(),
+                in_search_mode: config.in_search_mode,
+            },
+            history: HistoryState {
+                commit_list: config.commit_list.clone(),
+                list_state: ListState::default(),
+                selected_commit_hash: None,
+            },
+            inspector: InspectorState {
+                current_content: config.current_content.clone(),
+                current_blame: None,
+                scroll_vertical: config.inspector_scroll_vertical,
+                scroll_horizontal: config.inspector_scroll_horizontal,
+                visible_height: 20, // Default reasonable value
+                cursor_line: config.cursor_line,
+                cursor_column: config.cursor_column,
+                show_diff_view: config.show_diff_view,
+            },
+            ui: UIState {
+                active_panel: config.active_panel,
+                status_message: config.status_message.clone(),
+                is_loading: config.is_loading,
+            },
         };
 
         // Set the selected commit if specified
         if let Some(index) = config.selected_commit_index {
-            if index < app.commit_list.len() {
-                app.commit_list_state.select(Some(index));
-                app.selected_commit_hash = Some(app.commit_list[index].hash.clone());
+            if index < app.history.commit_list.len() {
+                app.history.list_state.select(Some(index));
+                app.history.selected_commit_hash = Some(app.history.commit_list[index].hash.clone());
             }
         }
 
         // Set the selected file navigator index if specified
         if let Some(index) = config.selected_file_navigator_index {
-            app.file_navigator_list_state.select(Some(index));
+            app.navigator.list_state.select(Some(index));
         }
 
         // Set active_file_context based on current selection (only if it's a file, not directory)
-        if let Some(ref selected_path) = app.file_tree.current_selection {
+        if let Some(ref selected_path) = app.navigator.file_tree.current_selection {
             let is_dir = app
-                .file_tree
+                .navigator.file_tree
                 .find_node(selected_path)
                 .map(|node| node.is_dir)
                 .unwrap_or(false);
@@ -542,7 +536,7 @@ impl App {
     /// Save the current cursor position for the given commit and file
     pub fn save_cursor_position(&mut self, commit_hash: &str, file_path: &PathBuf) {
         let key = (commit_hash.to_string(), file_path.clone());
-        self.per_commit_cursor_positions.insert(key, self.cursor_line);
+        self.per_commit_cursor_positions.insert(key, self.inspector.cursor_line);
     }
 
     /// Restore a previously saved cursor position for the given commit and file
@@ -584,7 +578,7 @@ impl App {
 
                 // Fallback 2: Proportional mapping
                 let proportional_line = mapping.proportional_map(old_line);
-                if proportional_line < self.current_content.len() {
+                if proportional_line < self.inspector.current_content.len() {
                     return proportional_line;
                 }
 
@@ -593,12 +587,12 @@ impl App {
             }
             Err(_) => {
                 // Fallback 4: If mapping fails, try proportional mapping manually
-                if !self.current_content.is_empty() && old_line > 0 {
+                if !self.inspector.current_content.is_empty() && old_line > 0 {
                     // Simple proportional fallback: assume some reasonable old file size
-                    let estimated_old_size = (old_line + 1).max(self.current_content.len());
+                    let estimated_old_size = (old_line + 1).max(self.inspector.current_content.len());
                     let proportion = old_line as f64 / estimated_old_size as f64;
-                    let new_line = (proportion * self.current_content.len() as f64) as usize;
-                    new_line.min(self.current_content.len().saturating_sub(1))
+                    let new_line = (proportion * self.inspector.current_content.len() as f64) as usize;
+                    new_line.min(self.inspector.current_content.len().saturating_sub(1))
                 } else {
                     0
                 }
@@ -618,23 +612,23 @@ impl App {
             None => {
                 // No previous commit - try to restore saved position or default to 0
                 if let Some(saved_line) = self.restore_cursor_position(new_commit_hash, file_path) {
-                    self.cursor_line = saved_line.min(self.current_content.len().saturating_sub(1));
-                    return format!("Restored cursor to saved position (line {})", self.cursor_line + 1);
+                    self.inspector.cursor_line = saved_line.min(self.inspector.current_content.len().saturating_sub(1));
+                    return format!("Restored cursor to saved position (line {})", self.inspector.cursor_line + 1);
                 } else {
-                    self.cursor_line = 0;
+                    self.inspector.cursor_line = 0;
                     return "Positioned cursor at top of file".to_string();
                 }
             }
         };
 
         // Save the current position before mapping
-        let old_line = self.cursor_line;
+        let old_line = self.inspector.cursor_line;
 
         // Calculate the mapped line position
         let mapped_line = self.get_mapped_line(&old_commit_hash, new_commit_hash, file_path, old_line);
 
         // Apply the new cursor position
-        self.cursor_line = mapped_line.min(self.current_content.len().saturating_sub(1));
+        self.inspector.cursor_line = mapped_line.min(self.inspector.current_content.len().saturating_sub(1));
 
         // Update the tracking state
         self.last_commit_for_mapping = Some(new_commit_hash.to_string());
@@ -751,24 +745,24 @@ mod tests {
             let repo = create_test_repo();
             let app = App::new(repo);
 
-            assert_eq!(app.active_panel, PanelFocus::Navigator);
+            assert_eq!(app.ui.active_panel, PanelFocus::Navigator);
             assert!(!app.should_quit);
-            assert_eq!(app.file_navigator_scroll_offset, 0);
-            assert_eq!(app.file_navigator_cursor_position, 0);
-            assert_eq!(app.file_navigator_viewport_height, 18);
-            assert!(app.search_query.is_empty());
-            assert!(!app.in_search_mode);
-            assert!(app.commit_list.is_empty());
-            assert_eq!(app.selected_commit_hash, None);
-            assert!(app.current_content.is_empty());
-            assert_eq!(app.current_blame, None);
-            assert_eq!(app.inspector_scroll_vertical, 0);
-            assert_eq!(app.inspector_scroll_horizontal, 0);
-            assert_eq!(app.cursor_line, 0);
-            assert_eq!(app.cursor_column, 0);
-            assert!(!app.show_diff_view);
-            assert_eq!(app.status_message, "Ready");
-            assert!(!app.is_loading);
+            assert_eq!(app.navigator.scroll_offset, 0);
+            assert_eq!(app.navigator.cursor_position, 0);
+            assert_eq!(app.navigator.viewport_height, 18);
+            assert!(app.navigator.search_query.is_empty());
+            assert!(!app.navigator.in_search_mode);
+            assert!(app.history.commit_list.is_empty());
+            assert_eq!(app.history.selected_commit_hash, None);
+            assert!(app.inspector.current_content.is_empty());
+            assert_eq!(app.inspector.current_blame, None);
+            assert_eq!(app.inspector.scroll_vertical, 0);
+            assert_eq!(app.inspector.scroll_horizontal, 0);
+            assert_eq!(app.inspector.cursor_line, 0);
+            assert_eq!(app.inspector.cursor_column, 0);
+            assert!(!app.inspector.show_diff_view);
+            assert_eq!(app.ui.status_message, "Ready");
+            assert!(!app.ui.is_loading);
         }
 
         #[test]
@@ -781,9 +775,9 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.active_panel, PanelFocus::History);
-            assert_eq!(app.status_message, "Test status");
-            assert!(app.is_loading);
+            assert_eq!(app.ui.active_panel, PanelFocus::History);
+            assert_eq!(app.ui.status_message, "Test status");
+            assert!(app.ui.is_loading);
             assert!(!app.should_quit);
         }
 
@@ -797,9 +791,9 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.file_tree.root.len(), 3);
-            assert_eq!(app.search_query, "test search");
-            assert!(app.in_search_mode);
+            assert_eq!(app.navigator.file_tree.root.len(), 3);
+            assert_eq!(app.navigator.search_query, "test search");
+            assert!(app.navigator.in_search_mode);
         }
 
         #[test]
@@ -811,9 +805,9 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.commit_list.len(), 2);
-            assert_eq!(app.commit_list_state.selected(), Some(1));
-            assert_eq!(app.selected_commit_hash, Some("def456ghi789".to_string()));
+            assert_eq!(app.history.commit_list.len(), 2);
+            assert_eq!(app.history.list_state.selected(), Some(1));
+            assert_eq!(app.history.selected_commit_hash, Some("def456ghi789".to_string()));
         }
 
         #[test]
@@ -829,12 +823,12 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.current_content.len(), 2);
-            assert_eq!(app.inspector_scroll_vertical, 5);
-            assert_eq!(app.inspector_scroll_horizontal, 10);
-            assert_eq!(app.cursor_line, 2);
-            assert_eq!(app.cursor_column, 15);
-            assert!(app.show_diff_view);
+            assert_eq!(app.inspector.current_content.len(), 2);
+            assert_eq!(app.inspector.scroll_vertical, 5);
+            assert_eq!(app.inspector.scroll_horizontal, 10);
+            assert_eq!(app.inspector.cursor_line, 2);
+            assert_eq!(app.inspector.cursor_column, 15);
+            assert!(app.inspector.show_diff_view);
         }
 
         #[test]
@@ -845,7 +839,7 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.file_navigator_list_state.selected(), Some(2));
+            assert_eq!(app.navigator.list_state.selected(), Some(2));
         }
 
         #[test]
@@ -857,8 +851,8 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.commit_list_state.selected(), None);
-            assert_eq!(app.selected_commit_hash, None);
+            assert_eq!(app.history.list_state.selected(), None);
+            assert_eq!(app.history.selected_commit_hash, None);
         }
     }
 
@@ -869,66 +863,66 @@ mod tests {
         fn test_next_panel_from_navigator() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.active_panel = PanelFocus::Navigator;
+            app.ui.active_panel = PanelFocus::Navigator;
 
             app.next_panel();
 
-            assert_eq!(app.active_panel, PanelFocus::History);
+            assert_eq!(app.ui.active_panel, PanelFocus::History);
         }
 
         #[test]
         fn test_next_panel_from_history() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.active_panel = PanelFocus::History;
+            app.ui.active_panel = PanelFocus::History;
 
             app.next_panel();
 
-            assert_eq!(app.active_panel, PanelFocus::Inspector);
+            assert_eq!(app.ui.active_panel, PanelFocus::Inspector);
         }
 
         #[test]
         fn test_next_panel_from_inspector() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.active_panel = PanelFocus::Inspector;
+            app.ui.active_panel = PanelFocus::Inspector;
 
             app.next_panel();
 
-            assert_eq!(app.active_panel, PanelFocus::Navigator);
+            assert_eq!(app.ui.active_panel, PanelFocus::Navigator);
         }
 
         #[test]
         fn test_previous_panel_from_navigator() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.active_panel = PanelFocus::Navigator;
+            app.ui.active_panel = PanelFocus::Navigator;
 
             app.previous_panel();
 
-            assert_eq!(app.active_panel, PanelFocus::Inspector);
+            assert_eq!(app.ui.active_panel, PanelFocus::Inspector);
         }
 
         #[test]
         fn test_previous_panel_from_history() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.active_panel = PanelFocus::History;
+            app.ui.active_panel = PanelFocus::History;
 
             app.previous_panel();
 
-            assert_eq!(app.active_panel, PanelFocus::Navigator);
+            assert_eq!(app.ui.active_panel, PanelFocus::Navigator);
         }
 
         #[test]
         fn test_previous_panel_from_inspector() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.active_panel = PanelFocus::Inspector;
+            app.ui.active_panel = PanelFocus::Inspector;
 
             app.previous_panel();
 
-            assert_eq!(app.active_panel, PanelFocus::History);
+            assert_eq!(app.ui.active_panel, PanelFocus::History);
         }
     }
 
@@ -939,8 +933,8 @@ mod tests {
         fn test_navigate_tree_up() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
-            app.file_navigator_viewport_height = 10;
+            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.viewport_height = 10;
 
             let result = app.navigate_tree_up();
 
@@ -953,8 +947,8 @@ mod tests {
         fn test_navigate_tree_down() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
-            app.file_navigator_viewport_height = 10;
+            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.viewport_height = 10;
 
             let result = app.navigate_tree_down();
 
@@ -965,7 +959,7 @@ mod tests {
         fn test_expand_selected_node_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             let result = app.expand_selected_node();
 
@@ -978,7 +972,7 @@ mod tests {
         fn test_expand_selected_node_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
 
             let result = app.expand_selected_node();
 
@@ -989,7 +983,7 @@ mod tests {
         fn test_collapse_selected_node_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             let result = app.collapse_selected_node();
 
@@ -1001,7 +995,7 @@ mod tests {
         fn test_collapse_selected_node_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
 
             let result = app.collapse_selected_node();
 
@@ -1012,7 +1006,7 @@ mod tests {
         fn test_toggle_selected_node_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             let result = app.toggle_selected_node();
 
@@ -1024,7 +1018,7 @@ mod tests {
         fn test_toggle_selected_node_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
 
             let result = app.toggle_selected_node();
 
@@ -1035,7 +1029,7 @@ mod tests {
         fn test_get_selected_file_path_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             let path = app.get_selected_file_path();
 
@@ -1046,7 +1040,7 @@ mod tests {
         fn test_get_selected_file_path_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
 
             let path = app.get_selected_file_path();
 
@@ -1061,7 +1055,7 @@ mod tests {
         fn test_navigate_file_navigator_up_empty_tree() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree
+            app.navigator.file_tree = FileTree::new(); // Empty tree
 
             let result = app.navigate_file_navigator_up(10);
 
@@ -1072,7 +1066,7 @@ mod tests {
         fn test_navigate_file_navigator_down_empty_tree() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree
+            app.navigator.file_tree = FileTree::new(); // Empty tree
 
             let result = app.navigate_file_navigator_down(10);
 
@@ -1083,8 +1077,8 @@ mod tests {
         fn test_navigate_file_navigator_up_from_first_item() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
-            app.file_tree.current_selection = Some(PathBuf::from("src/main.rs")); // First item
+            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree.current_selection = Some(PathBuf::from("src/main.rs")); // First item
 
             let result = app.navigate_file_navigator_up(10);
 
@@ -1095,8 +1089,8 @@ mod tests {
         fn test_navigate_file_navigator_down_from_last_item() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
-            app.file_tree.current_selection = Some(PathBuf::from("tests/test.rs")); // Last item
+            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree.current_selection = Some(PathBuf::from("tests/test.rs")); // Last item
 
             let result = app.navigate_file_navigator_down(10);
 
@@ -1118,8 +1112,8 @@ mod tests {
                 tree.root.push(file);
             }
             tree.current_selection = Some(PathBuf::from("src/file10.rs"));
-            app.file_tree = tree;
-            app.file_navigator_viewport_height = 5; // Small viewport
+            app.navigator.file_tree = tree;
+            app.navigator.viewport_height = 5; // Small viewport
 
             // Test navigation with scrolling
             let result = app.navigate_file_navigator_down(5);
@@ -1137,23 +1131,23 @@ mod tests {
         fn test_update_file_navigator_list_state_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             app.update_file_navigator_list_state();
 
             // Should have a selection matching the file tree's current selection
-            assert!(app.file_navigator_list_state.selected().is_some());
+            assert!(app.navigator.list_state.selected().is_some());
         }
 
         #[test]
         fn test_update_file_navigator_list_state_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
 
             app.update_file_navigator_list_state();
 
-            assert_eq!(app.file_navigator_list_state.selected(), None);
+            assert_eq!(app.navigator.list_state.selected(), None);
         }
     }
 
@@ -1206,7 +1200,7 @@ mod tests {
         fn test_navigation_with_zero_viewport_height() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             // Zero viewport height should be handled gracefully (returns early)
             let result = app.navigate_file_navigator_up(0);
@@ -1221,7 +1215,7 @@ mod tests {
         fn test_navigation_with_very_large_viewport() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.file_tree = create_test_file_tree();
+            app.navigator.file_tree = create_test_file_tree();
 
             let result = app.navigate_file_navigator_up(1000);
             assert!(result || !result); // Should handle gracefully
@@ -1239,8 +1233,8 @@ mod tests {
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.commit_list_state.selected(), None);
-            assert_eq!(app.selected_commit_hash, None);
+            assert_eq!(app.history.list_state.selected(), None);
+            assert_eq!(app.history.selected_commit_hash, None);
         }
     }
 
@@ -1255,13 +1249,13 @@ mod tests {
             let commit_hash = "abc123";
 
             // Set cursor to line 5
-            app.cursor_line = 5;
+            app.inspector.cursor_line = 5;
 
             // Save position
             app.save_cursor_position(commit_hash, &file_path);
 
             // Change cursor position
-            app.cursor_line = 10;
+            app.inspector.cursor_line = 10;
 
             // Restore should return the saved position
             let restored = app.restore_cursor_position(commit_hash, &file_path);
@@ -1297,7 +1291,7 @@ mod tests {
             let commit_hash = "abc123";
 
             // Set up some content
-            app.current_content = vec![
+            app.inspector.current_content = vec![
                 "line 0".to_string(),
                 "line 1".to_string(),
                 "line 2".to_string(),
@@ -1305,7 +1299,7 @@ mod tests {
 
             // No previous commit, should position at top
             let message = app.apply_smart_cursor_positioning(commit_hash, &file_path);
-            assert_eq!(app.cursor_line, 0);
+            assert_eq!(app.inspector.cursor_line, 0);
             assert_eq!(app.last_commit_for_mapping, None); // No mapping was done
             assert_eq!(message, "Positioned cursor at top of file");
         }
@@ -1318,7 +1312,7 @@ mod tests {
             let commit_hash = "abc123";
 
             // Set up some content
-            app.current_content = vec![
+            app.inspector.current_content = vec![
                 "line 0".to_string(),
                 "line 1".to_string(),
                 "line 2".to_string(),
@@ -1326,11 +1320,11 @@ mod tests {
 
             // Save a position for this commit
             app.save_cursor_position(commit_hash, &file_path);
-            app.cursor_line = 2; // Set to different line to save
+            app.inspector.cursor_line = 2; // Set to different line to save
 
             // Apply positioning should restore saved position
             let message = app.apply_smart_cursor_positioning(commit_hash, &file_path);
-            assert_eq!(app.cursor_line, 0); // Should restore the saved position (was 0 when saved)
+            assert_eq!(app.inspector.cursor_line, 0); // Should restore the saved position (was 0 when saved)
             assert_eq!(message, "Restored cursor to saved position (line 1)");
         }
 
@@ -1342,16 +1336,66 @@ mod tests {
             let commit_hash = "abc123";
 
             // Set up small content
-            app.current_content = vec!["line 0".to_string()];
+            app.inspector.current_content = vec!["line 0".to_string()];
 
             // Save a position beyond file bounds
-            app.cursor_line = 100;
+            app.inspector.cursor_line = 100;
             app.save_cursor_position(commit_hash, &file_path);
 
             // Apply positioning should clamp to file bounds
             let message = app.apply_smart_cursor_positioning(commit_hash, &file_path);
-            assert_eq!(app.cursor_line, 0); // Should be clamped to file bounds
+            assert_eq!(app.inspector.cursor_line, 0); // Should be clamped to file bounds
             assert!(message.contains("Restored cursor to saved position"));
+        }
+    }
+}
+
+impl NavigatorState {
+    pub fn new() -> Self {
+        Self {
+            file_tree: FileTree::new(),
+            file_tree_state: TreeState::default(),
+            list_state: ListState::default(),
+            scroll_offset: 0,
+            cursor_position: 0,
+            viewport_height: 18, // Default reasonable value
+            search_query: String::new(),
+            in_search_mode: false,
+        }
+    }
+}
+
+impl HistoryState {
+    pub fn new() -> Self {
+        Self {
+            commit_list: Vec::new(),
+            list_state: ListState::default(),
+            selected_commit_hash: None,
+        }
+    }
+}
+
+impl InspectorState {
+    pub fn new() -> Self {
+        Self {
+            current_content: Vec::new(),
+            current_blame: None,
+            scroll_vertical: 0,
+            scroll_horizontal: 0,
+            visible_height: 20, // Default reasonable value
+            cursor_line: 0,
+            cursor_column: 0,
+            show_diff_view: false,
+        }
+    }
+}
+
+impl UIState {
+    pub fn new() -> Self {
+        Self {
+            active_panel: PanelFocus::Navigator,
+            status_message: "Ready".to_string(),
+            is_loading: false,
         }
     }
 }

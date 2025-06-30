@@ -34,15 +34,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     let theme = get_theme();
-    let is_active = app.active_panel == PanelFocus::Navigator;
+    let is_active = app.ui.active_panel == PanelFocus::Navigator;
     let border_style = if is_active {
         Style::default().fg(theme.active_border)
     } else {
         Style::default().fg(theme.inactive_border)
     };
 
-    let title = if app.in_search_mode {
-        format!(" File Navigator (Search: {}) ", app.search_query)
+    let title = if app.navigator.in_search_mode {
+        format!(" File Navigator (Search: {}) ", app.navigator.search_query)
     } else {
         " File Navigator ".to_string()
     };
@@ -53,7 +53,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .border_style(border_style)
         .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
 
-    if app.file_tree.root.is_empty() {
+    if app.navigator.file_tree.root.is_empty() {
         let paragraph = Paragraph::new("No files found")
             .block(block)
             .style(Style::default().fg(theme.panel_title));
@@ -62,11 +62,11 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     // Get visible nodes with their display depths from the file tree
-    let all_visible_nodes = app.file_tree.get_visible_nodes_with_depth();
+    let all_visible_nodes = app.navigator.file_tree.get_visible_nodes_with_depth();
 
     // Calculate viewport bounds based on scroll offset
     let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders
-    let scroll_offset = app.file_navigator_scroll_offset;
+    let scroll_offset = app.navigator.scroll_offset;
     let _viewport_end = (scroll_offset + viewport_height).min(all_visible_nodes.len());
 
     // Get only the nodes that should be visible in the current viewport
@@ -79,7 +79,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     // CRITICAL FAILSAFE: The actual rendered viewport is the minimum of calculated height and available nodes
     let actual_rendered_height = visible_nodes_with_depth.len();
     let safe_cursor_position = app
-        .file_navigator_cursor_position
+        .navigator.cursor_position
         .min(actual_rendered_height.saturating_sub(1));
 
     // Convert visible nodes to list items with proper highlighting
@@ -189,7 +189,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     let theme = get_theme();
-    let is_active = app.active_panel == PanelFocus::History;
+    let is_active = app.ui.active_panel == PanelFocus::History;
     let border_style = if is_active {
         Style::default().fg(theme.active_border)
     } else {
@@ -207,7 +207,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    if app.commit_list.is_empty() {
+    if app.history.commit_list.is_empty() {
         let paragraph = Paragraph::new("Select a file to view its history")
             .block(block)
             .style(Style::default().fg(theme.panel_title));
@@ -216,7 +216,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let items: Vec<ListItem> = app
-        .commit_list
+        .history.commit_list
         .iter()
         .map(|commit| {
             let line = Line::from(vec![
@@ -241,13 +241,13 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         )
         .highlight_symbol(">> ");
 
-    let mut list_state = app.commit_list_state.clone();
+    let mut list_state = app.history.list_state.clone();
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
     let theme = get_theme();
-    let is_active = app.active_panel == PanelFocus::Inspector;
+    let is_active = app.ui.active_panel == PanelFocus::Inspector;
     let border_style = if is_active {
         Style::default().fg(theme.active_border)
     } else {
@@ -255,13 +255,13 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
     };
 
     // Update the visible height in the app state
-    app.inspector_visible_height = area.height as usize;
+    app.inspector.visible_height = area.height as usize;
 
     // Create a more informative title
-    let title = if app.show_diff_view {
+    let title = if app.inspector.show_diff_view {
         " Code Inspector (Diff View) ".to_string()
     } else if let (Some(file_path), Some(commit_hash)) =
-        (&app.active_file_context, &app.selected_commit_hash)
+        (&app.active_file_context, &app.history.selected_commit_hash)
     {
         format!(
             " Code Inspector - {} @ {} ",
@@ -277,12 +277,12 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    if app.current_content.is_empty() {
+    if app.inspector.current_content.is_empty() {
         let message = if app.active_file_context.is_none() {
             "Select a file to view its content"
-        } else if app.selected_commit_hash.is_none() {
+        } else if app.history.selected_commit_hash.is_none() {
             "Select a commit to view file content at that point"
-        } else if app.is_loading {
+        } else if app.ui.is_loading {
             "Loading file content..."
         } else {
             "No content available for selected file/commit"
@@ -297,10 +297,10 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // Enhanced content display with syntax-aware styling
     let content_lines: Vec<Line> = app
-        .current_content
+        .inspector.current_content
         .iter()
         .enumerate()
-        .skip(app.inspector_scroll_vertical as usize)
+        .skip(app.inspector.scroll_vertical as usize)
         .take((area.height - 2) as usize) // Account for borders
         .map(|(line_num, line)| {
             let line_number = format!("{:4} ", line_num + 1);
@@ -308,7 +308,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
             // Basic syntax highlighting for common file types
             let line_style = get_line_style(line, &app.active_file_context);
 
-            if line_num == app.cursor_line {
+            if line_num == app.inspector.cursor_line {
                 // Calculate content width and add padding for full-width highlighting
                 let content_width = (area.width as usize).saturating_sub(2); // Account for borders
                 let line_number_width = line_number.len();
@@ -342,7 +342,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let paragraph = Paragraph::new(content_lines)
         .block(block)
-        .scroll((0, app.inspector_scroll_horizontal));
+        .scroll((0, app.inspector.scroll_horizontal));
 
     frame.render_widget(paragraph, area);
 }
@@ -414,13 +414,13 @@ fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let theme = get_theme();
-    let status_text = if app.is_loading {
-        format!("Loading... | {}", app.status_message)
+    let status_text = if app.ui.is_loading {
+        format!("Loading... | {}", app.ui.status_message)
     } else {
-        app.status_message.clone()
+        app.ui.status_message.clone()
     };
 
-    let help_text = match app.active_panel {
+    let help_text = match app.ui.active_panel {
         PanelFocus::Navigator => "Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navigate | →←: Expand/Collapse",
         PanelFocus::History => "Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate | Enter: Select commit",
         PanelFocus::Inspector => "Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate | p: Previous change | n: Next change | d: Toggle diff",

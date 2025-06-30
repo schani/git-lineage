@@ -67,9 +67,9 @@ fn create_test_app() -> App {
     let mut tree = FileTree::new();
     let src_node = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
     tree.root.push(src_node);
-    app.file_tree = tree;
+    app.navigator.file_tree = tree;
 
-    app.commit_list = vec![CommitInfo {
+    app.history.commit_list = vec![CommitInfo {
         hash: "abc123".to_string(),
         short_hash: "abc123".to_string(),
         author: "Test Author".to_string(),
@@ -204,7 +204,7 @@ mod task_result_handling {
     #[test]
     fn test_handle_file_tree_loaded() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
 
         let mut tree = FileTree::new();
         let test_node = TreeNode::new_file("test.rs".to_string(), PathBuf::from("test.rs"));
@@ -214,17 +214,17 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert_eq!(app.file_tree.root.len(), 1);
-        assert_eq!(app.file_navigator_scroll_offset, 0);
-        assert_eq!(app.file_navigator_cursor_position, 0);
-        assert!(app.status_message.contains("File tree loaded"));
+        assert!(!app.ui.is_loading);
+        assert_eq!(app.navigator.file_tree.root.len(), 1);
+        assert_eq!(app.navigator.scroll_offset, 0);
+        assert_eq!(app.navigator.cursor_position, 0);
+        assert!(app.ui.status_message.contains("File tree loaded"));
     }
 
     #[test]
     fn test_handle_commit_history_loaded_with_commits() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
         // Set active file context to match the result
         app.active_file_context = Some(std::path::PathBuf::from("test_file.rs"));
 
@@ -252,20 +252,20 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert_eq!(app.commit_list.len(), 2);
-        assert_eq!(app.commit_list_state.selected(), Some(0));
+        assert!(!app.ui.is_loading);
+        assert_eq!(app.history.commit_list.len(), 2);
+        assert_eq!(app.history.list_state.selected(), Some(0));
         // When auto-loading commits, the status message is updated by the content loading
         // Since the test uses invalid commit hashes, it will fail to load content
-        assert!(app.status_message.contains("Loaded 2 commits") || 
-                app.status_message.contains("Failed to load content") ||
-                app.status_message.contains("Error loading file content"));
+        assert!(app.ui.status_message.contains("Loaded 2 commits") || 
+                app.ui.status_message.contains("Failed to load content") ||
+                app.ui.status_message.contains("Error loading file content"));
     }
 
     #[test]
     fn test_handle_commit_history_loaded_empty() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
         // Set active file context to match the result
         app.active_file_context = Some(std::path::PathBuf::from("empty_file.rs"));
 
@@ -276,20 +276,20 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert_eq!(app.commit_list.len(), 0);
-        assert_eq!(app.commit_list_state.selected(), None);
-        assert!(app.status_message.contains("No commits found"));
+        assert!(!app.ui.is_loading);
+        assert_eq!(app.history.commit_list.len(), 0);
+        assert_eq!(app.history.list_state.selected(), None);
+        assert!(app.ui.status_message.contains("No commits found"));
     }
 
     #[test]
     fn test_handle_commit_history_loaded_race_condition_protection() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
         
         // Start with empty commit list to test race condition properly
-        app.commit_list.clear();
-        app.commit_list_state.select(None);
+        app.history.commit_list.clear();
+        app.history.list_state.select(None);
         
         // Simulate race condition: User was viewing file A, but has now moved to directory B
         // The active_file_context is None (directory selected), but we receive stale 
@@ -315,14 +315,14 @@ mod task_result_handling {
         git_lineage::main_lib::handle_task_result(&mut app, stale_result);
 
         // The stale result should be IGNORED:
-        assert!(!app.is_loading);
-        assert_eq!(app.commit_list.len(), 0); // Should remain empty
-        assert_eq!(app.commit_list_state.selected(), None); // Should remain None
-        assert!(app.status_message.contains("ignored")); // Should indicate result was ignored
+        assert!(!app.ui.is_loading);
+        assert_eq!(app.history.commit_list.len(), 0); // Should remain empty
+        assert_eq!(app.history.list_state.selected(), None); // Should remain None
+        assert!(app.ui.status_message.contains("ignored")); // Should indicate result was ignored
         
         // Now test that valid results are still processed when context matches
         app.active_file_context = Some(std::path::PathBuf::from("current_file.rs"));
-        app.is_loading = true; // Reset loading state for second test
+        app.ui.is_loading = true; // Reset loading state for second test
         
         let valid_result = TaskResult::CommitHistoryLoaded {
             file_path: "current_file.rs".to_string(),
@@ -332,19 +332,19 @@ mod task_result_handling {
         git_lineage::main_lib::handle_task_result(&mut app, valid_result);
 
         // Valid result should be applied:
-        assert_eq!(app.commit_list.len(), 1); // Should contain the commit
-        assert_eq!(app.commit_list_state.selected(), Some(0)); // Should select first commit
+        assert_eq!(app.history.commit_list.len(), 1); // Should contain the commit
+        assert_eq!(app.history.list_state.selected(), Some(0)); // Should select first commit
         // When auto-loading commits, the status message is updated by the content loading
         // Since the test uses invalid commit hashes, it will fail to load content
-        assert!(app.status_message.contains("Loaded 1 commits") || 
-                app.status_message.contains("Failed to load content") ||
-                app.status_message.contains("Error loading file content")); // Should show success
+        assert!(app.ui.status_message.contains("Loaded 1 commits") || 
+                app.ui.status_message.contains("Failed to load content") ||
+                app.ui.status_message.contains("Error loading file content")); // Should show success
     }
 
     #[test]
     fn test_handle_file_content_loaded() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
 
         let content = vec![
             "fn main() {".to_string(),
@@ -359,16 +359,16 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert_eq!(app.current_content, content);
-        assert!(app.status_message.contains("File content loaded"));
+        assert!(!app.ui.is_loading);
+        assert_eq!(app.inspector.current_content, content);
+        assert!(app.ui.status_message.contains("File content loaded"));
     }
 
     #[test]
     fn test_handle_next_change_found() {
         let mut app = create_test_app();
-        app.is_loading = true;
-        app.active_panel = PanelFocus::Navigator;
+        app.ui.is_loading = true;
+        app.ui.active_panel = PanelFocus::Navigator;
 
         let result = TaskResult::NextChangeFound {
             commit_hash: "abc123".to_string(),
@@ -376,16 +376,16 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert_eq!(app.commit_list_state.selected(), Some(0));
-        assert_eq!(app.active_panel, PanelFocus::History);
-        assert!(app.status_message.contains("Found next change"));
+        assert!(!app.ui.is_loading);
+        assert_eq!(app.history.list_state.selected(), Some(0));
+        assert_eq!(app.ui.active_panel, PanelFocus::History);
+        assert!(app.ui.status_message.contains("Found next change"));
     }
 
     #[test]
     fn test_handle_next_change_found_commit_not_in_history() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
 
         let result = TaskResult::NextChangeFound {
             commit_hash: "nonexistent".to_string(),
@@ -393,27 +393,27 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert!(app.status_message.contains("commit not in history"));
+        assert!(!app.ui.is_loading);
+        assert!(app.ui.status_message.contains("commit not in history"));
     }
 
     #[test]
     fn test_handle_next_change_not_found() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
 
         let result = TaskResult::NextChangeNotFound;
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert!(app.status_message.contains("No subsequent changes found"));
+        assert!(!app.ui.is_loading);
+        assert!(app.ui.status_message.contains("No subsequent changes found"));
     }
 
     #[test]
     fn test_handle_error_result() {
         let mut app = create_test_app();
-        app.is_loading = true;
+        app.ui.is_loading = true;
 
         let result = TaskResult::Error {
             message: "Test error message".to_string(),
@@ -421,8 +421,8 @@ mod task_result_handling {
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
-        assert!(!app.is_loading);
-        assert!(app.status_message.contains("Error: Test error message"));
+        assert!(!app.ui.is_loading);
+        assert!(app.ui.status_message.contains("Error: Test error message"));
     }
 }
 
