@@ -1,11 +1,11 @@
 use crate::tree::FileTree;
 use gix::Repository;
+use log::{debug, info, warn};
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tui_tree_widget::TreeState;
-use log::{debug, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PanelFocus {
@@ -73,7 +73,7 @@ pub struct UIState {
 pub struct App {
     pub repo: Repository,
     pub should_quit: bool,
-    
+
     // Content Context - tracks what file's content is being displayed
     // This is separate from navigator selection to handle directories properly
     pub active_file_context: Option<PathBuf>,
@@ -205,8 +205,7 @@ impl App {
         let new_absolute_pos = current_absolute_pos - 1;
 
         // Calculate what the new cursor position should be within the viewport
-        let new_cursor_in_viewport =
-            new_absolute_pos.saturating_sub(self.navigator.scroll_offset);
+        let new_cursor_in_viewport = new_absolute_pos.saturating_sub(self.navigator.scroll_offset);
 
         // Calculate the actual available viewport height (nodes that will be rendered)
         let visible_nodes_in_viewport = visible_nodes
@@ -228,7 +227,8 @@ impl App {
 
         // CRITICAL: Ensure cursor position never exceeds actual rendered bounds
         self.navigator.cursor_position = self
-            .navigator.cursor_position
+            .navigator
+            .cursor_position
             .min(actual_viewport_height.saturating_sub(1));
 
         // Update the actual file tree selection
@@ -272,8 +272,7 @@ impl App {
         let new_absolute_pos = current_absolute_pos + 1;
 
         // Calculate what the new cursor position should be within the viewport
-        let new_cursor_in_viewport =
-            new_absolute_pos.saturating_sub(self.navigator.scroll_offset);
+        let new_cursor_in_viewport = new_absolute_pos.saturating_sub(self.navigator.scroll_offset);
 
         // Calculate the actual available viewport height (nodes that will be rendered)
         let visible_nodes_in_viewport = visible_nodes
@@ -296,7 +295,8 @@ impl App {
 
         // CRITICAL: Ensure cursor position never exceeds actual rendered bounds
         self.navigator.cursor_position = self
-            .navigator.cursor_position
+            .navigator
+            .cursor_position
             .min(actual_viewport_height.saturating_sub(1));
 
         // Update the actual file tree selection
@@ -346,7 +346,8 @@ impl App {
 
         // Load file content at the selected commit
         self.ui.is_loading = true;
-        self.ui.status_message = format!("Loading {} at commit {}...", file_path, &commit_hash[..8]);
+        self.ui.status_message =
+            format!("Loading {} at commit {}...", file_path, &commit_hash[..8]);
 
         match crate::git_utils::get_file_content_at_commit(&self.repo, &file_path, &commit_hash) {
             Ok(content) => {
@@ -407,7 +408,8 @@ impl App {
         }
         // If cursor is below visible area, scroll down
         else if self.inspector.cursor_line >= scroll_bottom {
-            self.inspector.scroll_vertical = (self.inspector.cursor_line.saturating_sub(visible_lines - 1)) as u16;
+            self.inspector.scroll_vertical =
+                (self.inspector.cursor_line.saturating_sub(visible_lines - 1)) as u16;
         }
         // Otherwise cursor is already visible, no scrolling needed
     }
@@ -435,7 +437,8 @@ impl App {
                 if !self.history.commit_list.is_empty() {
                     // Auto-select the first (most recent) commit
                     self.history.list_state.select(Some(0));
-                    self.history.selected_commit_hash = Some(self.history.commit_list[0].hash.clone());
+                    self.history.selected_commit_hash =
+                        Some(self.history.commit_list[0].hash.clone());
                     self.ui.status_message = format!(
                         "Loaded {} commits for {}",
                         self.history.commit_list.len(),
@@ -507,7 +510,8 @@ impl App {
         if let Some(index) = config.selected_commit_index {
             if index < app.history.commit_list.len() {
                 app.history.list_state.select(Some(index));
-                app.history.selected_commit_hash = Some(app.history.commit_list[index].hash.clone());
+                app.history.selected_commit_hash =
+                    Some(app.history.commit_list[index].hash.clone());
             }
         }
 
@@ -519,11 +523,12 @@ impl App {
         // Set active_file_context based on current selection (only if it's a file, not directory)
         if let Some(ref selected_path) = app.navigator.file_tree.current_selection {
             let is_dir = app
-                .navigator.file_tree
+                .navigator
+                .file_tree
                 .find_node(selected_path)
                 .map(|node| node.is_dir)
                 .unwrap_or(false);
-            
+
             if !is_dir {
                 app.active_file_context = Some(selected_path.clone());
             }
@@ -537,11 +542,16 @@ impl App {
     /// Save the current cursor position for the given commit and file
     pub fn save_cursor_position(&mut self, commit_hash: &str, file_path: &PathBuf) {
         let key = (commit_hash.to_string(), file_path.clone());
-        self.per_commit_cursor_positions.insert(key, self.inspector.cursor_line);
+        self.per_commit_cursor_positions
+            .insert(key, self.inspector.cursor_line);
     }
 
     /// Restore a previously saved cursor position for the given commit and file
-    pub fn restore_cursor_position(&mut self, commit_hash: &str, file_path: &PathBuf) -> Option<usize> {
+    pub fn restore_cursor_position(
+        &mut self,
+        commit_hash: &str,
+        file_path: &PathBuf,
+    ) -> Option<usize> {
         let key = (commit_hash.to_string(), file_path.clone());
         self.per_commit_cursor_positions.get(&key).copied()
     }
@@ -554,49 +564,52 @@ impl App {
         file_path: &PathBuf,
         old_line: usize,
     ) -> usize {
-        info!("get_mapped_line: Mapping line {} from {} to {} in file {:?}", 
-              old_line, old_commit, new_commit, file_path);
-        
+        info!(
+            "get_mapped_line: Mapping line {} from {} to {} in file {:?}",
+            old_line, old_commit, new_commit, file_path
+        );
+
         // If commits are the same, no mapping needed
         if old_commit == new_commit {
-            debug!("get_mapped_line: Same commit, returning original line {}", old_line);
+            debug!(
+                "get_mapped_line: Same commit, returning original line {}",
+                old_line
+            );
             return old_line;
         }
 
         // Try to compute line mapping
         match crate::line_mapping::map_lines_between_commits(
-            &self.repo,
-            old_commit,
-            new_commit,
-            file_path,
+            &self.repo, old_commit, new_commit, file_path,
         ) {
             Ok(mapping) => {
                 debug!("get_mapped_line: Successfully created line mapping");
-                
+
                 // Try exact mapping first
                 if let Some(mapped_line) = mapping.map_line(old_line) {
-                    info!("get_mapped_line: SUCCESS via exact mapping - line {} -> {}", old_line, mapped_line);
+                    info!(
+                        "get_mapped_line: SUCCESS via exact mapping - line {} -> {}",
+                        old_line, mapped_line
+                    );
                     return mapped_line;
                 }
-                debug!("get_mapped_line: Exact mapping failed for line {}", old_line);
+                debug!(
+                    "get_mapped_line: Exact mapping failed for line {}",
+                    old_line
+                );
 
                 // Fallback 1: Content-aware nearest neighbor search (±5 lines)
                 debug!("get_mapped_line: Trying content-aware nearest neighbor search");
                 match mapping.find_content_aware_nearest_mapped_line(
-                    old_line,
-                    5,
-                    &self.repo,
-                    old_commit,
-                    new_commit,
-                    file_path,
+                    old_line, 5, &self.repo, old_commit, new_commit, file_path,
                 ) {
                     Ok(Some(nearest_line)) => {
                         info!("get_mapped_line: SUCCESS via content-aware nearest neighbor - line {} -> {}", old_line, nearest_line);
                         return nearest_line;
-                    },
+                    }
                     Ok(None) => {
                         debug!("get_mapped_line: Content-aware nearest neighbor search failed for line {}", old_line);
-                    },
+                    }
                     Err(e) => {
                         warn!("get_mapped_line: Content-aware nearest neighbor search failed with error: {:?}", e);
                     }
@@ -605,32 +618,40 @@ impl App {
                 // Fallback 1.5: Exact content matching (broader search)
                 debug!("get_mapped_line: Trying exact content matching fallback");
                 match mapping.find_exact_content_match(
-                    old_line,
-                    &self.repo,
-                    old_commit,
-                    new_commit,
-                    file_path,
+                    old_line, &self.repo, old_commit, new_commit, file_path,
                 ) {
                     Ok(Some(content_match)) => {
-                        info!("get_mapped_line: SUCCESS via exact content match - line {} -> {}", old_line, content_match);
+                        info!(
+                            "get_mapped_line: SUCCESS via exact content match - line {} -> {}",
+                            old_line, content_match
+                        );
                         return content_match;
-                    },
+                    }
                     Ok(None) => {
                         debug!("get_mapped_line: Exact content matching failed - no unique match found");
-                    },
+                    }
                     Err(e) => {
-                        warn!("get_mapped_line: Exact content matching failed with error: {:?}", e);
+                        warn!(
+                            "get_mapped_line: Exact content matching failed with error: {:?}",
+                            e
+                        );
                     }
                 }
 
                 // Fallback 2: Proportional mapping
                 let proportional_line = mapping.proportional_map(old_line);
                 if proportional_line < self.inspector.current_content.len() {
-                    info!("get_mapped_line: SUCCESS via proportional mapping - line {} -> {}", old_line, proportional_line);
+                    info!(
+                        "get_mapped_line: SUCCESS via proportional mapping - line {} -> {}",
+                        old_line, proportional_line
+                    );
                     return proportional_line;
                 }
-                debug!("get_mapped_line: Proportional mapping out of bounds: {} >= {}", 
-                       proportional_line, self.inspector.current_content.len());
+                debug!(
+                    "get_mapped_line: Proportional mapping out of bounds: {} >= {}",
+                    proportional_line,
+                    self.inspector.current_content.len()
+                );
 
                 // Fallback 3: Default to top of file
                 warn!("get_mapped_line: All mapping strategies failed, defaulting to line 0");
@@ -638,15 +659,21 @@ impl App {
             }
             Err(e) => {
                 warn!("get_mapped_line: Line mapping creation failed: {:?}", e);
-                
+
                 // Fallback 4: If mapping fails, try proportional mapping manually
                 if !self.inspector.current_content.is_empty() && old_line > 0 {
                     // Simple proportional fallback: assume some reasonable old file size
-                    let estimated_old_size = (old_line + 1).max(self.inspector.current_content.len());
+                    let estimated_old_size =
+                        (old_line + 1).max(self.inspector.current_content.len());
                     let proportion = old_line as f64 / estimated_old_size as f64;
-                    let new_line = (proportion * self.inspector.current_content.len() as f64) as usize;
-                    let result = new_line.min(self.inspector.current_content.len().saturating_sub(1));
-                    info!("get_mapped_line: SUCCESS via manual proportional fallback - line {} -> {}", old_line, result);
+                    let new_line =
+                        (proportion * self.inspector.current_content.len() as f64) as usize;
+                    let result =
+                        new_line.min(self.inspector.current_content.len().saturating_sub(1));
+                    info!(
+                        "get_mapped_line: SUCCESS via manual proportional fallback - line {} -> {}",
+                        old_line, result
+                    );
                     result
                 } else {
                     warn!("get_mapped_line: Empty content or line 0, defaulting to line 0");
@@ -662,25 +689,39 @@ impl App {
         new_commit_hash: &str,
         file_path: &PathBuf,
     ) -> String {
-        info!("apply_smart_cursor_positioning: Switching to commit {} for file {:?}", 
-              new_commit_hash, file_path);
-        
+        info!(
+            "apply_smart_cursor_positioning: Switching to commit {} for file {:?}",
+            new_commit_hash, file_path
+        );
+
         // If we don't have a previous commit, just use any saved position or default to 0
         let old_commit_hash = match &self.last_commit_for_mapping {
             Some(hash) => {
-                debug!("apply_smart_cursor_positioning: Previous commit found: {}", hash);
+                debug!(
+                    "apply_smart_cursor_positioning: Previous commit found: {}",
+                    hash
+                );
                 hash.clone()
-            },
+            }
             None => {
                 debug!("apply_smart_cursor_positioning: No previous commit for mapping");
                 // No previous commit - try to restore saved position or default to 0
                 if let Some(saved_line) = self.restore_cursor_position(new_commit_hash, file_path) {
-                    self.inspector.cursor_line = saved_line.min(self.inspector.current_content.len().saturating_sub(1));
-                    info!("apply_smart_cursor_positioning: Restored saved position to line {}", self.inspector.cursor_line);
-                    return format!("Restored cursor to saved position (line {})", self.inspector.cursor_line + 1);
+                    self.inspector.cursor_line =
+                        saved_line.min(self.inspector.current_content.len().saturating_sub(1));
+                    info!(
+                        "apply_smart_cursor_positioning: Restored saved position to line {}",
+                        self.inspector.cursor_line
+                    );
+                    return format!(
+                        "Restored cursor to saved position (line {})",
+                        self.inspector.cursor_line + 1
+                    );
                 } else {
                     self.inspector.cursor_line = 0;
-                    info!("apply_smart_cursor_positioning: No saved position, defaulting to line 0");
+                    info!(
+                        "apply_smart_cursor_positioning: No saved position, defaulting to line 0"
+                    );
                     return "Positioned cursor at top of file".to_string();
                 }
             }
@@ -692,12 +733,16 @@ impl App {
               old_line, old_commit_hash, new_commit_hash);
 
         // Calculate the mapped line position
-        let mapped_line = self.get_mapped_line(&old_commit_hash, new_commit_hash, file_path, old_line);
+        let mapped_line =
+            self.get_mapped_line(&old_commit_hash, new_commit_hash, file_path, old_line);
 
         // Apply the new cursor position
         let final_line = mapped_line.min(self.inspector.current_content.len().saturating_sub(1));
         self.inspector.cursor_line = final_line;
-        info!("apply_smart_cursor_positioning: Final cursor position set to line {}", final_line);
+        info!(
+            "apply_smart_cursor_positioning: Final cursor position set to line {}",
+            final_line
+        );
 
         // Update the tracking state
         self.last_commit_for_mapping = Some(new_commit_hash.to_string());
@@ -706,7 +751,7 @@ impl App {
         // Use final_line instead of mapped_line for accurate display, and use the original old_line
         info!("apply_smart_cursor_positioning: Status calculation - old_line={} (0-based), final_line={} (0-based), display will be {} → {}", 
               old_line, final_line, old_line + 1, final_line + 1);
-        
+
         if final_line == old_line {
             "Cursor position unchanged".to_string()
         } else if final_line == 0 && old_line != 0 {
@@ -880,7 +925,10 @@ mod tests {
 
             assert_eq!(app.history.commit_list.len(), 2);
             assert_eq!(app.history.list_state.selected(), Some(1));
-            assert_eq!(app.history.selected_commit_hash, Some("def456ghi789".to_string()));
+            assert_eq!(
+                app.history.selected_commit_hash,
+                Some("def456ghi789".to_string())
+            );
         }
 
         #[test]

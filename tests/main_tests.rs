@@ -257,9 +257,11 @@ mod task_result_handling {
         assert_eq!(app.history.list_state.selected(), Some(0));
         // When auto-loading commits, the status message is updated by the content loading
         // Since the test uses invalid commit hashes, it will fail to load content
-        assert!(app.ui.status_message.contains("Loaded 2 commits") || 
-                app.ui.status_message.contains("Failed to load content") ||
-                app.ui.status_message.contains("Error loading file content"));
+        assert!(
+            app.ui.status_message.contains("Loaded 2 commits")
+                || app.ui.status_message.contains("Failed to load content")
+                || app.ui.status_message.contains("Error loading file content")
+        );
     }
 
     #[test]
@@ -269,9 +271,9 @@ mod task_result_handling {
         // Set active file context to match the result
         app.active_file_context = Some(std::path::PathBuf::from("empty_file.rs"));
 
-        let result = TaskResult::CommitHistoryLoaded { 
+        let result = TaskResult::CommitHistoryLoaded {
             file_path: "empty_file.rs".to_string(),
-            commits: vec![] 
+            commits: vec![],
         };
 
         git_lineage::main_lib::handle_task_result(&mut app, result);
@@ -286,25 +288,23 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_race_condition_protection() {
         let mut app = create_test_app();
         app.ui.is_loading = true;
-        
+
         // Start with empty commit list to test race condition properly
         app.history.commit_list.clear();
         app.history.list_state.select(None);
-        
+
         // Simulate race condition: User was viewing file A, but has now moved to directory B
-        // The active_file_context is None (directory selected), but we receive stale 
+        // The active_file_context is None (directory selected), but we receive stale
         // async result for file A
         app.active_file_context = None; // Directory or no selection
-        
-        let commits = vec![
-            CommitInfo {
-                hash: "stale123".to_string(),
-                short_hash: "stale123".to_string(),
-                author: "Stale Author".to_string(),
-                date: "2023-01-01".to_string(),
-                subject: "Stale commit from previous file".to_string(),
-            },
-        ];
+
+        let commits = vec![CommitInfo {
+            hash: "stale123".to_string(),
+            short_hash: "stale123".to_string(),
+            author: "Stale Author".to_string(),
+            date: "2023-01-01".to_string(),
+            subject: "Stale commit from previous file".to_string(),
+        }];
 
         // This result is for "old_file.rs" but user has moved away from it
         let stale_result = TaskResult::CommitHistoryLoaded {
@@ -319,11 +319,11 @@ mod task_result_handling {
         assert_eq!(app.history.commit_list.len(), 0); // Should remain empty
         assert_eq!(app.history.list_state.selected(), None); // Should remain None
         assert!(app.ui.status_message.contains("ignored")); // Should indicate result was ignored
-        
+
         // Now test that valid results are still processed when context matches
         app.active_file_context = Some(std::path::PathBuf::from("current_file.rs"));
         app.ui.is_loading = true; // Reset loading state for second test
-        
+
         let valid_result = TaskResult::CommitHistoryLoaded {
             file_path: "current_file.rs".to_string(),
             commits: commits.clone(),
@@ -334,11 +334,13 @@ mod task_result_handling {
         // Valid result should be applied:
         assert_eq!(app.history.commit_list.len(), 1); // Should contain the commit
         assert_eq!(app.history.list_state.selected(), Some(0)); // Should select first commit
-        // When auto-loading commits, the status message is updated by the content loading
-        // Since the test uses invalid commit hashes, it will fail to load content
-        assert!(app.ui.status_message.contains("Loaded 1 commits") || 
-                app.ui.status_message.contains("Failed to load content") ||
-                app.ui.status_message.contains("Error loading file content")); // Should show success
+                                                                // When auto-loading commits, the status message is updated by the content loading
+                                                                // Since the test uses invalid commit hashes, it will fail to load content
+        assert!(
+            app.ui.status_message.contains("Loaded 1 commits")
+                || app.ui.status_message.contains("Failed to load content")
+                || app.ui.status_message.contains("Error loading file content")
+        ); // Should show success
     }
 
     #[test]
@@ -407,7 +409,10 @@ mod task_result_handling {
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
         assert!(!app.ui.is_loading);
-        assert!(app.ui.status_message.contains("No subsequent changes found"));
+        assert!(app
+            .ui
+            .status_message
+            .contains("No subsequent changes found"));
     }
 
     #[test]

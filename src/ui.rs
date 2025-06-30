@@ -79,7 +79,8 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     // CRITICAL FAILSAFE: The actual rendered viewport is the minimum of calculated height and available nodes
     let actual_rendered_height = visible_nodes_with_depth.len();
     let safe_cursor_position = app
-        .navigator.cursor_position
+        .navigator
+        .cursor_position
         .min(actual_rendered_height.saturating_sub(1));
 
     // Convert visible nodes to list items with proper highlighting
@@ -216,7 +217,8 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let items: Vec<ListItem> = app
-        .history.commit_list
+        .history
+        .commit_list
         .iter()
         .map(|commit| {
             let line = Line::from(vec![
@@ -297,7 +299,8 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // Enhanced content display with syntax-aware styling
     let content_lines: Vec<Line> = app
-        .inspector.current_content
+        .inspector
+        .current_content
         .iter()
         .enumerate()
         .skip(app.inspector.scroll_vertical as usize)
@@ -315,7 +318,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
                 let content_len = line.chars().count();
                 let total_used = line_number_width + content_len;
                 let padding_needed = content_width.saturating_sub(total_used);
-                
+
                 Line::from(vec![
                     Span::styled(
                         line_number,

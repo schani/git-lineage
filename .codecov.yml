@@ -1,0 +1,55 @@
+# 📊 Codecov Configuration for Git Lineage
+
+# Coverage thresholds
+coverage:
+  status:
+    project:
+      default:
+        # Project must maintain 70% coverage (PRIME DIRECTIVE)
+        target: 70%
+        threshold: 1%
+        base: auto
+    patch:
+      default:
+        # New code should have higher coverage
+        target: 90%
+        threshold: 5%
+        base: auto
+
+  # Precision and rounding
+  precision: 2
+  round: down
+  range: "60...95"
+
+# Comment configuration
+comment:
+  layout: "header, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: no
+  require_head: yes
+
+# Ignore paths that don't need coverage
+ignore:
+  - "tests/*"
+  - "examples/*"
+  - "target/*"
+  - "*.md"
+  - "Makefile"
+  - ".github/*"
+
+# File-level coverage requirements
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 1%
+    patch:
+      default:
+        target: 90%
+        threshold: 5%
+
+# Notification settings
+github_checks:
+  annotations: true

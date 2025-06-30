@@ -54,9 +54,9 @@ pub async fn run_worker(
             },
             Task::LoadCommitHistory { file_path } => {
                 match load_commit_history(&repo_path, &file_path).await {
-                    Ok(commits) => TaskResult::CommitHistoryLoaded { 
+                    Ok(commits) => TaskResult::CommitHistoryLoaded {
                         file_path: file_path.clone(),
-                        commits 
+                        commits,
                     },
                     Err(e) => TaskResult::Error {
                         message: e.to_string(),
@@ -705,7 +705,7 @@ mod tests {
             // FileTree::from_directory is resilient and doesn't fail for nonexistent paths
             // It returns an empty tree instead, which is the expected behavior
             let result = load_file_tree("/nonexistent/path/that/should/fail").await;
-            
+
             assert_ok!(&result);
             let tree = result.unwrap();
             assert!(tree.root.is_empty()); // Should be empty for nonexistent path
@@ -734,9 +734,12 @@ mod tests {
             }
 
             // Test LoadCommitHistory error path (covers line 62)
-            task_tx.send(Task::LoadCommitHistory {
-                file_path: "nonexistent.rs".to_string(),
-            }).await.unwrap();
+            task_tx
+                .send(Task::LoadCommitHistory {
+                    file_path: "nonexistent.rs".to_string(),
+                })
+                .await
+                .unwrap();
             let result = result_rx.recv().await.unwrap();
             match result {
                 TaskResult::Error { message } => {
@@ -746,10 +749,13 @@ mod tests {
             }
 
             // Test LoadFileContent error path (covers line 75)
-            task_tx.send(Task::LoadFileContent {
-                file_path: "test.rs".to_string(),
-                commit_hash: "invalid".to_string(),
-            }).await.unwrap();
+            task_tx
+                .send(Task::LoadFileContent {
+                    file_path: "test.rs".to_string(),
+                    commit_hash: "invalid".to_string(),
+                })
+                .await
+                .unwrap();
             let result = result_rx.recv().await.unwrap();
             match result {
                 TaskResult::FileContentLoaded { .. } => {
@@ -759,11 +765,14 @@ mod tests {
             }
 
             // Test FindNextChange error paths (covers line 87)
-            task_tx.send(Task::FindNextChange {
-                file_path: "test.rs".to_string(),
-                current_commit: "invalid".to_string(),
-                line_number: 1,
-            }).await.unwrap();
+            task_tx
+                .send(Task::FindNextChange {
+                    file_path: "test.rs".to_string(),
+                    current_commit: "invalid".to_string(),
+                    line_number: 1,
+                })
+                .await
+                .unwrap();
             let result = result_rx.recv().await.unwrap();
             match result {
                 TaskResult::NextChangeFound { .. } => {
@@ -788,11 +797,14 @@ mod tests {
             let worker_handle = tokio::spawn(run_worker(task_rx, result_tx, ".".to_string()));
 
             // Send task that should return NextChangeFound
-            task_tx.send(Task::FindNextChange {
-                file_path: "src/main.rs".to_string(),
-                current_commit: "abc123".to_string(),
-                line_number: 5,
-            }).await.unwrap();
+            task_tx
+                .send(Task::FindNextChange {
+                    file_path: "src/main.rs".to_string(),
+                    current_commit: "abc123".to_string(),
+                    line_number: 5,
+                })
+                .await
+                .unwrap();
 
             let result = result_rx.recv().await.unwrap();
             match result {
@@ -813,30 +825,30 @@ mod tests {
         #[tokio::test]
         async fn test_worker_handles_result_send_failure() {
             let (task_tx, task_rx, result_tx, result_rx) = create_test_channels().await;
-            
+
             // Start worker
             let worker_handle = tokio::spawn(run_worker(task_rx, result_tx, ".".to_string()));
-            
+
             // Drop result receiver to cause send failure
             drop(result_rx);
-            
+
             // Send a task - the worker should detect the send failure and exit gracefully
             task_tx.send(Task::LoadFileTree).await.unwrap();
-            
+
             // Worker should exit when it can't send the result (covers line 93-96)
             let result = worker_handle.await;
             assert!(result.is_ok());
-            
+
             // Clean up
             drop(task_tx);
         }
 
-        #[tokio::test]  
+        #[tokio::test]
         async fn test_git_error_handling_in_load_commit_history() {
             // Test that git errors are properly converted to the expected error type
             // This covers lines 155-165 in the error handling paths
             let result = load_commit_history("/invalid/git/repo", "test.rs").await;
-            
+
             assert_err!(&result);
             let error = result.unwrap_err();
             // Verify the error message contains something meaningful

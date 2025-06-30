@@ -1,0 +1,268 @@
+name: 🔧 Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly dependency audit
+    - cron: '0 2 * * 1'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # 🔍 Fast code quality checks
+  quality:
+    name: 🔍 Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 📦 Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: 📦 Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-build-
+
+      - name: 🎨 Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: 📎 Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: 🔍 Check documentation
+        run: cargo doc --no-deps --document-private-items
+
+  # 🧪 Test suite across multiple environments
+  test:
+    name: 🧪 Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, beta]
+        exclude:
+          # Skip beta on Windows and macOS for faster CI
+          - os: windows-latest
+            rust: beta
+          - os: macos-latest
+            rust: beta
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust toolchain (${{ matrix.rust }})
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: 📦 Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-registry-
+
+      - name: 📦 Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-build-
+
+      - name: 🔧 Build project
+        run: cargo build --verbose
+
+      - name: 🧪 Run tests
+        run: cargo test --verbose
+
+      - name: 🧪 Run doc tests
+        run: cargo test --doc
+
+  # 📊 Coverage analysis (Linux only for speed)
+  coverage:
+    name: 📊 Coverage Analysis  
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: 📦 Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: 📦 Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-coverage-
+
+      - name: 🔧 Install coverage tools
+        run: |
+          # Try cargo-llvm-cov first, fallback to tarpaulin
+          if cargo install cargo-llvm-cov 2>/dev/null; then
+            echo "COVERAGE_TOOL=llvm-cov" >> $GITHUB_ENV
+          else
+            cargo install cargo-tarpaulin
+            echo "COVERAGE_TOOL=tarpaulin" >> $GITHUB_ENV
+          fi
+
+      - name: 📊 Generate coverage report
+        run: |
+          if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
+            cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+          else
+            cargo tarpaulin --all-features --workspace --out Lcov --output-dir .
+          fi
+
+      - name: 📊 Check coverage threshold (70%)
+        run: |
+          if [ "$COVERAGE_TOOL" = "llvm-cov" ]; then
+            # Extract total line coverage percentage from llvm-cov
+            COVERAGE=$(cargo llvm-cov --all-features --workspace --summary-only | grep -oE '[0-9]+\.[0-9]+%' | head -1 | sed 's/%//')
+          else
+            # Extract coverage from tarpaulin output
+            COVERAGE=$(cargo tarpaulin --all-features --workspace --print-summary | grep -oE '[0-9]+\.[0-9]+%' | head -1 | sed 's/%//')
+          fi
+          
+          echo "Current coverage: ${COVERAGE}%"
+          
+          # Check if coverage meets 70% threshold (using bc if available, otherwise awk)
+          if command -v bc >/dev/null 2>&1; then
+            if (( $(echo "$COVERAGE >= 70" | bc -l) )); then
+              echo "✅ Coverage $COVERAGE% meets the 70% threshold!"
+            else
+              echo "❌ Coverage $COVERAGE% is below the 70% threshold!"
+              exit 1
+            fi
+          else
+            if awk "BEGIN {exit !($COVERAGE >= 70)}"; then
+              echo "✅ Coverage $COVERAGE% meets the 70% threshold!"
+            else
+              echo "❌ Coverage $COVERAGE% is below the 70% threshold!"
+              exit 1
+            fi
+          fi
+
+      - name: 📤 Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: true
+          verbose: true
+
+  # 🛡️ Security audit
+  security:
+    name: 🛡️ Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 🔧 Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: 🛡️ Run security audit
+        run: cargo audit
+
+  # 🚀 Build artifacts (on success)
+  build:
+    name: 🚀 Build Release
+    runs-on: ${{ matrix.os }}
+    needs: [quality, test, coverage, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: git-lineage
+            asset_name: git-lineage-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: git-lineage.exe
+            asset_name: git-lineage-windows-x86_64.exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: git-lineage
+            asset_name: git-lineage-macos-x86_64
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
+
+      - name: 📦 Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: 📦 Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: 🚀 Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}

@@ -1,6 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyModifiers};
-use tokio::sync::mpsc;
 use log::{debug, info};
+use tokio::sync::mpsc;
 
 use crate::app::{App, PanelFocus};
 use crate::async_task::Task;
@@ -127,14 +127,16 @@ fn handle_navigator_event(
         KeyCode::Enter => {
             if let Some(selected_path) = app.get_selected_file_path() {
                 let is_dir = app
-                    .navigator.file_tree
+                    .navigator
+                    .file_tree
                     .find_node(&selected_path)
                     .map(|node| node.is_dir)
                     .unwrap_or(false);
 
                 if is_dir {
                     let was_expanded = app
-                        .navigator.file_tree
+                        .navigator
+                        .file_tree
                         .find_node(&selected_path)
                         .map(|node| node.is_expanded)
                         .unwrap_or(false);
@@ -149,7 +151,8 @@ fn handle_navigator_event(
                 } else {
                     // For files, Enter switches to the Inspector panel to view content
                     app.ui.active_panel = crate::app::PanelFocus::Inspector;
-                    app.ui.status_message = format!("Viewing content for {}", selected_path.display());
+                    app.ui.status_message =
+                        format!("Viewing content for {}", selected_path.display());
                 }
             }
         }
@@ -223,8 +226,8 @@ fn handle_inspector_event(
             app.ensure_inspector_cursor_visible();
         }
         KeyCode::PageDown => {
-            app.inspector.cursor_line =
-                (app.inspector.cursor_line + 10).min(app.inspector.current_content.len().saturating_sub(1));
+            app.inspector.cursor_line = (app.inspector.cursor_line + 10)
+                .min(app.inspector.current_content.len().saturating_sub(1));
             app.ensure_inspector_cursor_visible();
         }
         KeyCode::Home => {
@@ -296,7 +299,7 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
     let commit_data = extract_commit_data(app, selected_index);
     let cursor_state = save_cursor_state(app);
     let file_path = app.active_file_context.clone(); // Clone to avoid borrow issues
-    
+
     app.history.selected_commit_hash = Some(commit_data.hash.clone());
 
     if let Some(file_path) = file_path {
@@ -322,7 +325,10 @@ fn save_cursor_state(app: &App) -> CursorState {
         old_cursor_line: app.inspector.cursor_line,
         old_commit_hash: app.history.selected_commit_hash.clone(),
         old_scroll_vertical: app.inspector.scroll_vertical,
-        old_cursor_viewport_offset: app.inspector.cursor_line.saturating_sub(app.inspector.scroll_vertical as usize),
+        old_cursor_viewport_offset: app
+            .inspector
+            .cursor_line
+            .saturating_sub(app.inspector.scroll_vertical as usize),
     }
 }
 
@@ -334,7 +340,7 @@ fn handle_file_content_loading(
 ) {
     setup_loading_state(app, commit_data, file_path);
     setup_line_mapping(app, commit_data, cursor_state, file_path);
-    
+
     match load_file_content(app, commit_data, file_path) {
         Ok(()) => {
             handle_successful_content_load(app, commit_data, cursor_state, file_path);
@@ -343,7 +349,7 @@ fn handle_file_content_loading(
             handle_content_load_error(app, e);
         }
     }
-    
+
     app.ui.is_loading = false;
 }
 
@@ -380,7 +386,7 @@ fn load_file_content(
         &file_path.to_string_lossy(),
         &commit_data.hash,
     )?;
-    
+
     app.inspector.current_content = content;
     app.inspector.scroll_horizontal = 0;
     Ok(())
@@ -404,10 +410,16 @@ fn restore_cursor_position(
     commit_data: &CommitData,
     file_path: &std::path::PathBuf,
 ) {
-    info!("restore_cursor_position: Setting cursor to line {} before smart positioning", cursor_state.old_cursor_line);
+    info!(
+        "restore_cursor_position: Setting cursor to line {} before smart positioning",
+        cursor_state.old_cursor_line
+    );
     app.inspector.cursor_line = cursor_state.old_cursor_line;
     let positioning_message = app.apply_smart_cursor_positioning(&commit_data.hash, file_path);
-    debug!("restore_cursor_position: Smart positioning result: {}", positioning_message);
+    debug!(
+        "restore_cursor_position: Smart positioning result: {}",
+        positioning_message
+    );
 }
 
 fn restore_viewport_position(app: &mut App, cursor_state: &CursorState) {
@@ -421,17 +433,25 @@ fn update_success_status_message(
     commit_data: &CommitData,
     file_path: &std::path::PathBuf,
 ) {
-    info!("update_success_status_message: Applying smart cursor positioning for commit {}", &commit_data.hash);
+    info!(
+        "update_success_status_message: Applying smart cursor positioning for commit {}",
+        &commit_data.hash
+    );
     let positioning_message = app.apply_smart_cursor_positioning(&commit_data.hash, file_path);
-    debug!("update_success_status_message: Positioning result: {}", positioning_message);
+    debug!(
+        "update_success_status_message: Positioning result: {}",
+        positioning_message
+    );
     let file_info = format!(
         "Loaded {} ({} lines) at commit {}",
         file_path.file_name().unwrap_or_default().to_string_lossy(),
         app.inspector.current_content.len(),
         &commit_data.short_hash
     );
-    
-    app.ui.status_message = if positioning_message.contains("top of file") || positioning_message.contains("unchanged") {
+
+    app.ui.status_message = if positioning_message.contains("top of file")
+        || positioning_message.contains("unchanged")
+    {
         file_info
     } else {
         format!("{} • {}", file_info, positioning_message)
@@ -448,7 +468,7 @@ fn handle_content_load_error(app: &mut App, error: Box<dyn std::error::Error>) {
         "- The commit hash is invalid".to_string(),
         "- There's a Git repository issue".to_string(),
     ];
-    
+
     app.inspector.cursor_line = 0;
     app.last_commit_for_mapping = None;
     app.ui.status_message = format!("Failed to load content: {}", error);
@@ -464,7 +484,7 @@ fn handle_no_file_context(app: &mut App, commit_data: &CommitData) {
         "".to_string(),
         "Select a file to view its content at this commit.".to_string(),
     ];
-    
+
     app.inspector.cursor_line = 0;
     app.last_commit_for_mapping = None;
     app.ui.status_message = format!("Viewing commit: {}", commit_data.short_hash);
@@ -480,9 +500,10 @@ fn handle_next_change(
     app: &mut App,
     async_sender: &mpsc::Sender<Task>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let (Some(ref file_path), Some(ref commit_hash)) =
-        (&app.get_selected_file_path(), &app.history.selected_commit_hash)
-    {
+    if let (Some(ref file_path), Some(ref commit_hash)) = (
+        &app.get_selected_file_path(),
+        &app.history.selected_commit_hash,
+    ) {
         let task = Task::FindNextChange {
             file_path: file_path.to_string_lossy().to_string(),
             current_commit: commit_hash.clone(),
@@ -506,7 +527,8 @@ fn handle_next_change(
 fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>) {
     if let Some(selected_path) = app.get_selected_file_path() {
         let is_dir = app
-            .navigator.file_tree
+            .navigator
+            .file_tree
             .find_node(&selected_path)
             .map(|node| node.is_dir)
             .unwrap_or(false);
@@ -517,7 +539,7 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
             app.per_commit_cursor_positions.clear();
             app.last_commit_for_mapping = None;
             app.active_file_context = Some(selected_path.clone());
-            
+
             let file_path = selected_path.to_string_lossy().to_string();
             if let Err(e) = task_sender.try_send(crate::async_task::Task::LoadCommitHistory {
                 file_path: file_path.clone(),
@@ -577,7 +599,7 @@ fn navigate_to_younger_commit(app: &mut App) -> bool {
     }
 
     let current_selection = app.history.list_state.selected();
-    
+
     match current_selection {
         Some(index) if index > 0 => {
             // Move to previous commit (younger)
@@ -619,7 +641,7 @@ fn navigate_to_older_commit(app: &mut App) -> bool {
 
     let current_selection = app.history.list_state.selected();
     let max_index = app.history.commit_list.len() - 1;
-    
+
     match current_selection {
         Some(index) if index < max_index => {
             // Move to next commit (older)
@@ -1331,7 +1353,10 @@ mod tests {
             let result = handle_previous_change(&mut app);
 
             assert!(result.is_ok());
-            assert!(app.ui.status_message.contains("Previous change for line 11"));
+            assert!(app
+                .ui
+                .status_message
+                .contains("Previous change for line 11"));
         }
 
         #[test]
@@ -1359,12 +1384,16 @@ mod tests {
         #[test]
         fn test_handle_file_selection_change_with_file() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection = Some(std::path::PathBuf::from("src/main.rs"));
+            app.navigator.file_tree.current_selection =
+                Some(std::path::PathBuf::from("src/main.rs"));
             let (tx, mut rx) = tokio::sync::mpsc::channel(100);
 
             handle_file_selection_change(&mut app, &tx);
 
-            assert_eq!(app.active_file_context, Some(std::path::PathBuf::from("src/main.rs")));
+            assert_eq!(
+                app.active_file_context,
+                Some(std::path::PathBuf::from("src/main.rs"))
+            );
             assert!(app.per_commit_cursor_positions.is_empty());
             assert!(app.last_commit_for_mapping.is_none());
             assert!(app.ui.status_message.contains("Loading history"));
@@ -1422,15 +1451,19 @@ mod tests {
         #[test]
         fn test_handle_file_selection_change_task_send_failure() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection = Some(std::path::PathBuf::from("src/main.rs"));
-            
+            app.navigator.file_tree.current_selection =
+                Some(std::path::PathBuf::from("src/main.rs"));
+
             // Create a channel and immediately drop the receiver to simulate failure
             let (tx, rx) = tokio::sync::mpsc::channel(1);
             drop(rx);
 
             handle_file_selection_change(&mut app, &tx);
 
-            assert!(app.ui.status_message.contains("Failed to load commit history"));
+            assert!(app
+                .ui
+                .status_message
+                .contains("Failed to load commit history"));
         }
     }
 
@@ -1581,7 +1614,10 @@ mod tests {
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            assert!(app.ui.status_message.contains("Failed to load commit history"));
+            assert!(app
+                .ui
+                .status_message
+                .contains("Failed to load commit history"));
         }
 
         #[tokio::test]
@@ -1595,7 +1631,7 @@ mod tests {
             // Test [ (next older commit)
             let event = create_key_event(KeyCode::Char('['));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert_eq!(app.history.list_state.selected(), Some(1));
             assert!(app.ui.status_message.contains("older commit"));
@@ -1603,7 +1639,7 @@ mod tests {
             // Test ] (next younger commit)
             let event = create_key_event(KeyCode::Char(']'));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert_eq!(app.history.list_state.selected(), Some(0));
             assert!(app.ui.status_message.contains("younger commit"));
@@ -1619,14 +1655,14 @@ mod tests {
             // Test [ should not work without file context
             let event = create_key_event(KeyCode::Char('['));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert!(app.ui.status_message.contains("No file selected"));
 
             // Test ] should not work without file context
             let event = create_key_event(KeyCode::Char(']'));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert!(app.ui.status_message.contains("No file selected"));
         }
@@ -1641,7 +1677,7 @@ mod tests {
             app.history.list_state.select(Some(0));
             let event = create_key_event(KeyCode::Char(']'));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert_eq!(app.history.list_state.selected(), Some(0)); // Should stay at 0
             assert!(app.ui.status_message.contains("youngest commit"));
@@ -1650,7 +1686,7 @@ mod tests {
             app.history.list_state.select(Some(1)); // Last commit in our test data
             let event = create_key_event(KeyCode::Char('['));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert_eq!(app.history.list_state.selected(), Some(1)); // Should stay at last
             assert!(app.ui.status_message.contains("oldest commit"));
@@ -1666,7 +1702,7 @@ mod tests {
             // Both [ and ] should select the first commit when none is selected
             let event = create_key_event(KeyCode::Char('['));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert_eq!(app.history.list_state.selected(), Some(0));
             assert!(app.ui.status_message.contains("youngest commit"));
@@ -1676,7 +1712,7 @@ mod tests {
 
             let event = create_key_event(KeyCode::Char(']'));
             let result = handle_event(event, &mut app, &tx);
-            
+
             assert!(result.is_ok());
             assert_eq!(app.history.list_state.selected(), Some(0));
             assert!(app.ui.status_message.contains("youngest commit"));

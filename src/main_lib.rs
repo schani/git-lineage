@@ -22,16 +22,18 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         }
         TaskResult::CommitHistoryLoaded { file_path, commits } => {
             // Race condition protection: Only apply commits if they're for the currently active file
-            let is_still_relevant = app.active_file_context
+            let is_still_relevant = app
+                .active_file_context
                 .as_ref()
                 .map(|active_path| active_path.to_string_lossy() == file_path)
                 .unwrap_or(false);
-            
+
             if is_still_relevant {
                 let commit_count = commits.len();
                 app.history.commit_list = commits;
                 // Reset commit list selection when new commits are loaded
-                app.history.list_state
+                app.history
+                    .list_state
                     .select(if commit_count == 0 { None } else { Some(0) });
                 app.ui.status_message = if commit_count == 0 {
                     "No commits found for this file".to_string()
@@ -57,7 +59,12 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         }
         TaskResult::NextChangeFound { commit_hash } => {
             // Find the commit in the list and select it
-            if let Some(index) = app.history.commit_list.iter().position(|c| c.hash == commit_hash) {
+            if let Some(index) = app
+                .history
+                .commit_list
+                .iter()
+                .position(|c| c.hash == commit_hash)
+            {
                 app.history.list_state.select(Some(index));
                 app.ui.active_panel = crate::app::PanelFocus::History;
                 app.ui.status_message = "Found next change".to_string();
