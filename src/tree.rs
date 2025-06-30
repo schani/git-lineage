@@ -254,11 +254,10 @@ impl FileTree {
         Ok(())
     }
 
-    /// Scan a directory with gitignore filtering using the ignore crate
+    /// Scan a directory with gitignore filtering using the ignore crate (optimized single-pass)
     fn scan_directory_with_gitignore(&mut self, dir_path: &Path) -> Result<(), std::io::Error> {
-        // Use ignore crate's WalkBuilder for efficient gitignore-aware traversal
+        // Single WalkBuilder for the entire repository - no depth limit, no recursion
         let walk = WalkBuilder::new(dir_path)
-            .max_depth(Some(1)) // Only get immediate children for this directory
             .hidden(false) // We'll handle hidden files manually
             .git_ignore(true) // Respect .gitignore files
             .git_global(true) // Respect global git ignore
@@ -266,7 +265,8 @@ impl FileTree {
             .parents(true) // Look at parent directories for gitignore files
             .build();
 
-        let mut entries = Vec::new();
+        // Collect all valid paths in a single pass
+        let mut all_paths = Vec::new();
 
         for result in walk {
             match result {
@@ -286,7 +286,13 @@ impl FileTree {
                         }
                     }
 
-                    entries.push(path.to_path_buf());
+                    // Convert to relative path immediately
+                    let relative_path = match path.strip_prefix(&self.repo_root) {
+                        Ok(rel_path) => rel_path.to_path_buf(),
+                        Err(_) => path.to_path_buf(), // Fallback to absolute path if strip fails
+                    };
+
+                    all_paths.push((path.to_path_buf(), relative_path, path.is_dir()));
                 }
                 Err(err) => {
                     eprintln!("Warning: Error walking directory: {}", err);
@@ -295,33 +301,78 @@ impl FileTree {
             }
         }
 
-        // Process the collected entries
-        for path in entries {
-            let name = path
+        // Build tree structure from collected paths
+        self.build_tree_from_paths(all_paths)?;
+
+        Ok(())
+    }
+
+    /// Build tree structure from collected paths efficiently with proper hierarchy
+    fn build_tree_from_paths(&mut self, paths: Vec<(PathBuf, PathBuf, bool)>) -> Result<(), std::io::Error> {
+        // Use HashMap for O(1) parent lookups during tree construction
+        let mut path_to_node: HashMap<PathBuf, TreeNode> = HashMap::new();
+        
+        // First pass: Create all nodes
+        for (absolute_path, relative_path, is_dir) in paths {
+            let name = relative_path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.to_string_lossy().to_string());
+                .unwrap_or_else(|| relative_path.to_string_lossy().to_string());
 
-            // Convert absolute path to relative path from repo root
-            let relative_path = match path.strip_prefix(&self.repo_root) {
-                Ok(rel_path) => rel_path.to_path_buf(),
-                Err(_) => path.clone(), // Fallback to absolute path if strip fails
-            };
-
-            let is_dir = path.is_dir();
             let mut node = TreeNode::new(name, relative_path.clone(), is_dir);
 
             // Apply git status if available (using original absolute path for git status lookup)
-            if let Some(&status) = self.git_status_map.get(&path) {
+            if let Some(&status) = self.git_status_map.get(&absolute_path) {
                 node.git_status = Some(status);
             }
 
-            // Recursively scan subdirectories with gitignore filtering
-            if is_dir {
-                self.scan_directory_into_node_with_gitignore(&mut node, &path)?;
-            }
+            path_to_node.insert(relative_path, node);
+        }
 
-            self.root.push(node);
+        // Second pass: Build hierarchy by organizing nodes into parent-child relationships
+        let mut root_paths = Vec::new();
+        let mut child_paths: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        
+        for path in path_to_node.keys() {
+            if let Some(parent_path) = path.parent() {
+                if !parent_path.as_os_str().is_empty() && parent_path != Path::new(".") {
+                    // This is a child - add to parent's children list
+                    child_paths.entry(parent_path.to_path_buf()).or_default().push(path.clone());
+                } else {
+                    // This is a root-level item
+                    root_paths.push(path.clone());
+                }
+            } else {
+                // This is a root-level item
+                root_paths.push(path.clone());
+            }
+        }
+
+        // Third pass: Build the tree by moving nodes to their parents
+        // We need to avoid double borrowing, so collect child nodes first
+        for (parent_path, children) in child_paths {
+            let mut child_nodes = Vec::new();
+            
+            // First, remove all child nodes from the map
+            for child_path in children {
+                if let Some(child_node) = path_to_node.remove(&child_path) {
+                    child_nodes.push(child_node);
+                }
+            }
+            
+            // Then add them to the parent
+            if let Some(parent_node) = path_to_node.get_mut(&parent_path) {
+                for child_node in child_nodes {
+                    parent_node.add_child(child_node);
+                }
+            }
+        }
+
+        // Finally: Add root-level nodes to tree
+        for root_path in root_paths {
+            if let Some(root_node) = path_to_node.remove(&root_path) {
+                self.root.push(root_node);
+            }
         }
 
         // Sort root level
@@ -330,83 +381,6 @@ impl FileTree {
             (false, true) => std::cmp::Ordering::Greater,
             _ => a.name.cmp(&b.name),
         });
-
-        Ok(())
-    }
-
-    /// Scan directory contents into a specific node with gitignore filtering
-    fn scan_directory_into_node_with_gitignore(
-        &mut self,
-        parent: &mut TreeNode,
-        dir_path: &Path,
-    ) -> Result<(), std::io::Error> {
-        // Use ignore crate's WalkBuilder for this subdirectory
-        let walk = WalkBuilder::new(dir_path)
-            .max_depth(Some(1)) // Only get immediate children
-            .hidden(false) // We'll handle hidden files manually
-            .git_ignore(true) // Respect .gitignore files
-            .git_global(true) // Respect global git ignore
-            .git_exclude(true) // Respect .git/info/exclude
-            .parents(true) // Look at parent directories for gitignore files
-            .build();
-
-        let mut entries = Vec::new();
-
-        for result in walk {
-            match result {
-                Ok(entry) => {
-                    let path = entry.path();
-
-                    // Skip the directory itself
-                    if path == dir_path {
-                        continue;
-                    }
-
-                    // Skip hidden files and directories (starting with .)
-                    if let Some(name) = path.file_name() {
-                        let name_str = name.to_string_lossy();
-                        if name_str.starts_with('.') {
-                            continue;
-                        }
-                    }
-
-                    entries.push(path.to_path_buf());
-                }
-                Err(err) => {
-                    eprintln!("Warning: Error walking directory: {}", err);
-                    continue;
-                }
-            }
-        }
-
-        // Process the collected entries
-        for path in entries {
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.to_string_lossy().to_string());
-
-            // Convert absolute path to relative path from repo root
-            let relative_path = match path.strip_prefix(&self.repo_root) {
-                Ok(rel_path) => rel_path.to_path_buf(),
-                Err(_) => path.clone(), // Fallback to absolute path if strip fails
-            };
-
-            let is_dir = path.is_dir();
-            let mut node = TreeNode::new(name, relative_path, is_dir);
-
-            // Apply git status if available (using original absolute path for git status lookup)
-            if let Some(&status) = self.git_status_map.get(&path) {
-                node.git_status = Some(status);
-            }
-
-            // Recursively scan subdirectories with gitignore filtering
-            if is_dir {
-                self.scan_directory_into_node_with_gitignore(&mut node, &path)?;
-            }
-
-            parent.add_child(node);
-        }
 
         Ok(())
     }
