@@ -92,6 +92,69 @@ impl LineMapping {
         // Ensure we don't exceed bounds
         new_line.min(self.new_file_size.saturating_sub(1))
     }
+
+    /// Find exact content match for a line between commits
+    /// Returns Some(line_number) if exactly one match is found, None otherwise
+    pub fn find_exact_content_match(
+        &self,
+        old_line: usize,
+        repo: &Repository,
+        from_commit: &str,
+        to_commit: &str,
+        file_path: &Path,
+    ) -> Result<Option<usize>, LineMappingError> {
+        // Get the content of the line we're trying to map
+        let old_content = get_file_content_at_commit(repo, from_commit, file_path)?;
+        let old_lines: Vec<&str> = old_content.lines().collect();
+        
+        if old_line >= old_lines.len() {
+            return Ok(None);
+        }
+        
+        let target_line_content = old_lines[old_line];
+        
+        // Get the content of the target commit
+        let new_content = get_file_content_at_commit(repo, to_commit, file_path)?;
+        let new_lines: Vec<&str> = new_content.lines().collect();
+        
+        // Find all matching lines
+        let matches: Vec<usize> = new_lines
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, &line)| {
+                if line == target_line_content {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        // Return the match only if there's exactly one
+        match matches.len() {
+            1 => Ok(Some(matches[0])),
+            _ => Ok(None), // 0 matches or multiple matches (ambiguous)
+        }
+    }
+
+    /// Enhanced version of find_nearest_mapped_line that includes exact content fallback
+    pub fn find_nearest_mapped_line_with_content_fallback(
+        &self,
+        old_line: usize,
+        search_radius: usize,
+        repo: &Repository,
+        from_commit: &str,
+        to_commit: &str,
+        file_path: &Path,
+    ) -> Result<Option<usize>, LineMappingError> {
+        // First try the standard nearest mapping
+        if let Some(mapped) = self.find_nearest_mapped_line(old_line, search_radius) {
+            return Ok(Some(mapped));
+        }
+        
+        // If that fails, try exact content fallback
+        self.find_exact_content_match(old_line, repo, from_commit, to_commit, file_path)
+    }
 }
 
 /// Error types for line mapping operations
@@ -457,5 +520,176 @@ mod tests {
         // All new lines should have no reverse mapping
         assert_eq!(mapping.reverse_map_line(0), None);
         assert_eq!(mapping.reverse_map_line(1), None);
+    }
+
+    #[test]
+    fn test_exact_content_fallback_single_match() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - original content
+        let content1 = "line 1\nUNIQUE_LINE\nline 2\nline 3\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - rearrange lines (UNIQUE_LINE moved to different position)
+        let content2 = "line 1\nline 2\nUNIQUE_LINE\nline 3\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Rearrange lines");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // The UNIQUE_LINE should be mappable via exact content fallback
+        // Line 1 (UNIQUE_LINE) in old commit should map to line 2 in new commit
+        let result = mapping.find_exact_content_match(1, &repo, &commit1, &commit2, Path::new("test.txt"));
+        assert_eq!(result.unwrap(), Some(2));
+    }
+
+    #[test]
+    fn test_exact_content_fallback_no_match() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - original content
+        let content1 = "line 1\nDELETED_LINE\nline 2\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - line completely removed
+        let content2 = "line 1\nline 2\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Remove line");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // The deleted line should not be found
+        let result = mapping.find_exact_content_match(1, &repo, &commit1, &commit2, Path::new("test.txt"));
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_exact_content_fallback_multiple_matches() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - original content with duplicate line
+        let content1 = "line 1\nDUPLICATE\nline 2\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - multiple instances of the same line
+        let content2 = "line 1\nDUPLICATE\nDUPLICATE\nline 2\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Add duplicate");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // When there are multiple matches, should return None (ambiguous)
+        let result = mapping.find_exact_content_match(1, &repo, &commit1, &commit2, Path::new("test.txt"));
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_exact_content_fallback_whitespace_sensitivity() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - line with trailing space
+        let content1 = "line 1\nLINE_WITH_SPACE \nline 2\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Second commit - same line but without trailing space
+        let content2 = "line 1\nLINE_WITH_SPACE\nline 2\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Remove trailing space");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // Should not match because of whitespace difference
+        let result = mapping.find_exact_content_match(1, &repo, &commit1, &commit2, Path::new("test.txt"));
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_exact_content_fallback_integration() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // First commit - original structure
+        let content1 = "function foo() {\n  return 42;\n}\nfunction bar() {\n  return 24;\n}\n";
+        let commit1 = commit_file(repo_path, "code.js", content1, "Initial functions");
+        
+        // Second commit - functions reordered and middle content changed
+        let content2 = "function bar() {\n  return 24;\n}\nfunction foo() {\n  return 99;\n}\n";
+        let commit2 = commit_file(repo_path, "code.js", content2, "Reorder and modify");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("code.js")
+        ).unwrap();
+        
+        // Line 3 "function bar() {" should map to line 0 via exact content match
+        let result = mapping.find_exact_content_match(3, &repo, &commit1, &commit2, Path::new("code.js"));
+        assert_eq!(result.unwrap(), Some(0));
+        
+        // Line 4 "  return 24;" should map to line 1 via exact content match  
+        let result = mapping.find_exact_content_match(4, &repo, &commit1, &commit2, Path::new("code.js"));
+        assert_eq!(result.unwrap(), Some(1));
+    }
+
+    #[test]
+    fn test_find_nearest_with_exact_content_fallback_integration() {
+        let (_temp_dir, repo) = create_test_repo();
+        let repo_path = _temp_dir.path();
+        
+        // Create a scenario where we can test the fallback logic
+        let content1 = "line_1\nline_2\nline_3\nMOVED_LINE\nline_4\nline_5\n";
+        let commit1 = commit_file(repo_path, "test.txt", content1, "Initial commit");
+        
+        // Simulate a complex restructuring where MOVED_LINE goes to a different location
+        let content2 = "new_1\nnew_2\nnew_3\nnew_4\nnew_5\nMOVED_LINE\nnew_6\n";
+        let commit2 = commit_file(repo_path, "test.txt", content2, "Restructure completely");
+        
+        let mapping = map_lines_between_commits(
+            &repo,
+            &commit1,
+            &commit2,
+            Path::new("test.txt")
+        ).unwrap();
+        
+        // Test that the enhanced method finds content matches when standard mapping fails
+        // We'll test with line 3 (MOVED_LINE) from the first commit
+        let result = mapping.find_nearest_mapped_line_with_content_fallback(
+            3, 0, &repo, &commit1, &commit2, Path::new("test.txt")
+        );
+        
+        // The exact content fallback should find the moved line, even if nearest neighbor fails
+        match result {
+            Ok(Some(new_line)) => {
+                // Verify that the content actually matches
+                let old_content = get_file_content_at_commit(&repo, &commit1, Path::new("test.txt")).unwrap();
+                let new_content = get_file_content_at_commit(&repo, &commit2, Path::new("test.txt")).unwrap();
+                let old_lines: Vec<&str> = old_content.lines().collect();
+                let new_lines: Vec<&str> = new_content.lines().collect();
+                assert_eq!(old_lines[3], new_lines[new_line]);
+                assert_eq!(old_lines[3], "MOVED_LINE");
+            }
+            _ => panic!("Expected to find exact content match"),
+        }
     }
 }

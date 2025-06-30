@@ -576,6 +576,17 @@ impl App {
                     return nearest_line;
                 }
 
+                // Fallback 1.5: Exact content matching
+                if let Ok(Some(content_match)) = mapping.find_exact_content_match(
+                    old_line,
+                    &self.repo,
+                    old_commit,
+                    new_commit,
+                    file_path,
+                ) {
+                    return content_match;
+                }
+
                 // Fallback 2: Proportional mapping
                 let proportional_line = mapping.proportional_map(old_line);
                 if proportional_line < self.inspector.current_content.len() {
