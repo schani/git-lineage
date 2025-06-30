@@ -256,6 +256,9 @@ impl FileTree {
 
     /// Scan a directory with gitignore filtering using the ignore crate (optimized single-pass)
     fn scan_directory_with_gitignore(&mut self, dir_path: &Path) -> Result<(), std::io::Error> {
+        let walker_start = Instant::now();
+        log::debug!("🕐 scan_directory_with_gitignore: Creating WalkBuilder for {:?}", dir_path);
+        
         // Single WalkBuilder for the entire repository - no depth limit, no recursion
         let walk = WalkBuilder::new(dir_path)
             .hidden(false) // We'll handle hidden files manually
@@ -265,10 +268,19 @@ impl FileTree {
             .parents(true) // Look at parent directories for gitignore files
             .build();
 
+        log::debug!("🕐 scan_directory_with_gitignore: WalkBuilder created in {:?}", walker_start.elapsed());
+
         // Collect all valid paths in a single pass
         let mut all_paths = Vec::new();
+        let walk_start = Instant::now();
+        let mut file_count = 0;
 
         for result in walk {
+            file_count += 1;
+            if file_count % 1000 == 0 {
+                log::debug!("🕐 scan_directory_with_gitignore: Processed {} files in {:?}", file_count, walk_start.elapsed());
+            }
+            
             match result {
                 Ok(entry) => {
                     let path = entry.path();
@@ -301,8 +313,13 @@ impl FileTree {
             }
         }
 
+        log::debug!("🕐 scan_directory_with_gitignore: Walk completed - {} files processed, {} valid paths collected in {:?}", 
+                   file_count, all_paths.len(), walk_start.elapsed());
+
         // Build tree structure from collected paths
+        let tree_start = Instant::now();
         self.build_tree_from_paths(all_paths)?;
+        log::debug!("🕐 scan_directory_with_gitignore: Tree building completed in {:?}", tree_start.elapsed());
 
         Ok(())
     }
@@ -330,10 +347,14 @@ impl FileTree {
         }
 
         // Second pass: Build hierarchy by organizing nodes into parent-child relationships
+        // CRITICAL: Sort paths to ensure deterministic processing order!
+        let mut all_paths: Vec<PathBuf> = path_to_node.keys().cloned().collect();
+        all_paths.sort(); // Deterministic order by path
+        
         let mut root_paths = Vec::new();
         let mut child_paths: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
         
-        for path in path_to_node.keys() {
+        for path in all_paths {
             if let Some(parent_path) = path.parent() {
                 if !parent_path.as_os_str().is_empty() && parent_path != Path::new(".") {
                     // This is a child - add to parent's children list
@@ -349,8 +370,17 @@ impl FileTree {
         }
 
         // Third pass: Build the tree by moving nodes to their parents
-        // We need to avoid double borrowing, so collect child nodes first
-        for (parent_path, children) in child_paths {
+        // Process parents in depth order (deepest first) to ensure children are attached before parents are moved
+        let mut sorted_parents: Vec<PathBuf> = child_paths.keys().cloned().collect();
+        sorted_parents.sort_by(|a, b| {
+            // Sort by depth (deepest first), then by path for determinism
+            let depth_a = a.components().count();
+            let depth_b = b.components().count();
+            depth_b.cmp(&depth_a).then_with(|| a.cmp(b))
+        });
+        
+        for parent_path in sorted_parents {
+            let children = child_paths.remove(&parent_path).unwrap();
             let mut child_nodes = Vec::new();
             
             // First, remove all child nodes from the map
@@ -368,7 +398,8 @@ impl FileTree {
             }
         }
 
-        // Finally: Add root-level nodes to tree
+        // Finally: Add root-level nodes to tree in sorted order
+        root_paths.sort(); // Ensure deterministic order
         for root_path in root_paths {
             if let Some(root_node) = path_to_node.remove(&root_path) {
                 self.root.push(root_node);
