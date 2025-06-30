@@ -148,13 +148,6 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 };
             }
         }
-        TaskResult::FileContentLoaded {
-            content,
-            blame_info: _,
-        } => {
-            app.inspector.current_content = content;
-            app.ui.status_message = "File content loaded".to_string();
-        }
         TaskResult::NextChangeFound { commit_hash } => {
             // Find the commit in the list and select it
             if let Some(index) = app

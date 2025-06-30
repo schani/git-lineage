@@ -375,28 +375,6 @@ mod task_result_handling {
         ); // Should show success
     }
 
-    #[test]
-    fn test_handle_file_content_loaded() {
-        let mut app = create_test_app();
-        app.ui.is_loading = true;
-
-        let content = vec![
-            "fn main() {".to_string(),
-            "    println!(\"Hello, world!\");".to_string(),
-            "}".to_string(),
-        ];
-
-        let result = TaskResult::FileContentLoaded {
-            content: content.clone(),
-            blame_info: Some("Test blame".to_string()),
-        };
-
-        git_lineage::main_lib::handle_task_result(&mut app, result);
-
-        assert!(!app.ui.is_loading);
-        assert_eq!(app.inspector.current_content, content);
-        assert!(app.ui.status_message.contains("File content loaded"));
-    }
 
     #[test]
     fn test_handle_next_change_found() {

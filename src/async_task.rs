@@ -17,10 +17,6 @@ pub enum Task {
         file_path: String,
         cancellation_token: CancellationToken,
     },
-    LoadFileContent {
-        file_path: String,
-        commit_hash: String,
-    },
     FindNextChange {
         file_path: String,
         current_commit: String,
@@ -51,10 +47,6 @@ pub enum TaskResult {
     CommitHistoryComplete {
         file_path: String,
         total_commits: usize,
-    },
-    FileContentLoaded {
-        content: Vec<String>,
-        blame_info: Option<String>,
     },
     NextChangeFound {
         commit_hash: String,
@@ -148,29 +140,6 @@ pub async fn run_worker(
                     Err(e) => {
                         log::warn!("🕐 run_worker: LoadCommitHistoryStreaming for '{}' failed in {:?}: {}", 
                                  file_path, load_start.elapsed(), e);
-                        TaskResult::Error {
-                            message: e.to_string(),
-                        }
-                    },
-                }
-            },
-            Task::LoadFileContent {
-                file_path,
-                commit_hash,
-            } => {
-                let load_start = Instant::now();
-                match load_file_content(&repo_path, &file_path, &commit_hash).await {
-                    Ok((content, blame_info)) => {
-                        log::info!("🕐 run_worker: LoadFileContent for '{}' at {} completed in {:?} - {} lines", 
-                                 file_path, &commit_hash[..8], load_start.elapsed(), content.len());
-                        TaskResult::FileContentLoaded {
-                            content,
-                            blame_info,
-                        }
-                    },
-                    Err(e) => {
-                        log::warn!("🕐 run_worker: LoadFileContent for '{}' at {} failed in {:?}: {}", 
-                                 file_path, &commit_hash[..8], load_start.elapsed(), e);
                         TaskResult::Error {
                             message: e.to_string(),
                         }
@@ -352,28 +321,6 @@ async fn load_commit_history_streaming(
     result
 }
 
-async fn load_file_content(
-    _repo_path: &str,
-    _file_path: &str,
-    _commit_hash: &str,
-) -> Result<(Vec<String>, Option<String>), Box<dyn std::error::Error>> {
-    // TODO: Implement using gix to get file content and blame at specific commit
-    // For now, return mock data
-    let content = vec![
-        "use std::io;".to_string(),
-        "".to_string(),
-        "fn main() {".to_string(),
-        "    println!(\"Hello, world!\");".to_string(),
-        "    let mut input = String::new();".to_string(),
-        "    io::stdin().read_line(&mut input).expect(\"Failed to read line\");".to_string(),
-        "    println!(\"You entered: {}\", input.trim());".to_string(),
-        "}".to_string(),
-    ];
-
-    let blame_info = Some("Mock blame info".to_string());
-
-    Ok((content, blame_info))
-}
 
 async fn find_next_change(
     _repo_path: &str,
@@ -538,17 +485,6 @@ mod tests {
             assert!(commits.is_empty());
         }
 
-        #[tokio::test]
-        async fn test_load_file_content_returns_mock() {
-            let result = load_file_content("test_repo", "src/main.rs", "abc123").await;
-
-            assert_ok!(&result);
-            let (content, blame_info) = result.unwrap();
-            assert!(!content.is_empty());
-            assert!(content[0].contains("use std::io"));
-            assert!(blame_info.is_some());
-            assert_eq!(blame_info.unwrap(), "Mock blame info");
-        }
 
         #[tokio::test]
         async fn test_find_next_change_returns_mock() {
@@ -644,45 +580,6 @@ mod tests {
             ).await.unwrap();
         }
 
-        #[tokio::test]
-        async fn test_worker_processes_load_file_content() {
-            let (task_tx, task_rx, result_tx, mut result_rx) = create_test_channels().await;
-
-            // Start worker
-            let worker_handle = tokio::spawn(run_worker(task_rx, result_tx, ".".to_string()));
-
-            // Send task
-            task_tx
-                .send(Task::LoadFileContent {
-                    file_path: "src/main.rs".to_string(),
-                    commit_hash: "abc123".to_string(),
-                })
-                .await
-                .unwrap();
-
-            // Receive result
-            let result = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                result_rx.recv()
-            ).await.unwrap().unwrap();
-            match result {
-                TaskResult::FileContentLoaded {
-                    content,
-                    blame_info,
-                } => {
-                    assert!(!content.is_empty());
-                    assert!(blame_info.is_some());
-                }
-                _ => panic!("Expected FileContentLoaded result"),
-            }
-
-            // Clean shutdown
-            drop(task_tx);
-            let _ = tokio::time::timeout(
-                std::time::Duration::from_secs(5),
-                worker_handle
-            ).await.unwrap();
-        }
 
         #[tokio::test]
         async fn test_worker_processes_find_next_change() {
@@ -776,16 +673,9 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            task_tx
-                .send(Task::LoadFileContent {
-                    file_path: "src/main.rs".to_string(),
-                    commit_hash: "abc123".to_string(),
-                })
-                .await
-                .unwrap();
 
             // Receive all results with timeout
-            for _ in 0..3 {
+            for _ in 0..2 {
                 let result = tokio::time::timeout(
                     std::time::Duration::from_secs(5),
                     result_rx.recv()
@@ -793,7 +683,6 @@ mod tests {
                 match result {
                     TaskResult::FileTreeLoaded { .. } => {}
                     TaskResult::CommitHistoryLoaded { .. } => {}
-                    TaskResult::FileContentLoaded { .. } => {}
                     TaskResult::Error { .. } => {} // Git operations might fail in test environment
                     _ => panic!("Unexpected result type"),
                 }
@@ -1018,21 +907,6 @@ mod tests {
                 _ => panic!("Expected Error result for invalid repo"),
             }
 
-            // Test LoadFileContent error path (covers line 75)
-            task_tx
-                .send(Task::LoadFileContent {
-                    file_path: "test.rs".to_string(),
-                    commit_hash: "invalid".to_string(),
-                })
-                .await
-                .unwrap();
-            let result = result_rx.recv().await.unwrap();
-            match result {
-                TaskResult::FileContentLoaded { .. } => {
-                    // Mock implementation always succeeds, which is expected
-                }
-                _ => panic!("Expected FileContentLoaded result for mock implementation"),
-            }
 
             // Test FindNextChange error paths (covers line 87)
             task_tx
