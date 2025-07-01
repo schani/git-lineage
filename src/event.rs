@@ -159,7 +159,10 @@ fn handle_navigator_event(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Use new navigator if available, otherwise fall back to old navigator
     if app.new_navigator.is_some() {
+        log::debug!("🆕 Using new navigator for key: {:?}", key);
         return handle_new_navigator_event(app, key, task_sender);
+    } else {
+        log::debug!("🕴️ Using old navigator for key: {:?}", key);
     }
     
     // Legacy navigator handling (fallback)
@@ -280,8 +283,11 @@ fn handle_new_navigator_event(
             KeyCode::Char(c) => {
                 let mut new_query = view_model.search_query.clone();
                 new_query.push(c);
+                log::debug!("🔍 Updating search query to: '{}'", new_query);
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
                     log::warn!("Failed to update search query: {}", e);
+                } else {
+                    log::debug!("🔍 Search query updated successfully");
                 }
                 return Ok(());
             }
@@ -407,9 +413,11 @@ fn handle_new_navigator_event(
                 }
             }
             KeyCode::Char('/') | KeyCode::Char('s') => {
+                log::info!("🔍 Starting search mode with new navigator");
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::StartSearch) {
                     log::warn!("Failed to start search: {}", e);
                 } else {
+                    log::info!("🔍 Search mode activated successfully");
                     app.ui.status_message = "Search mode activated".to_string();
                 }
             }

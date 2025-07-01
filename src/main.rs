@@ -115,8 +115,12 @@ async fn run_interactive() -> Result<()> {
     ));
 
     // Load initial data
+    log::info!("📤 main: Sending LoadFileTree task");
     if let Err(e) = task_sender.send(Task::LoadFileTree).await {
+        log::error!("📤 main: Failed to send LoadFileTree task: {}", e);
         app.ui.status_message = format!("Failed to load file tree: {}", e);
+    } else {
+        log::info!("📤 main: LoadFileTree task sent successfully");
     }
 
     // Main application loop
@@ -142,6 +146,7 @@ async fn run_interactive() -> Result<()> {
 
         // Handle async task results
         while let Ok(result) = result_receiver.try_recv() {
+            log::debug!("📨 main: Received async task result: {:?}", std::mem::discriminant(&result));
             main_lib::handle_task_result(&mut app, result);
         }
 

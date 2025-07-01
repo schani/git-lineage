@@ -175,11 +175,14 @@ pub async fn run_worker(
         };
         
         log::debug!("🕐 run_worker: Task processing completed in {:?}", task_start.elapsed());
+        log::debug!("🕐 run_worker: About to send result: {:?}", std::mem::discriminant(&result));
 
         if let Err(_) = result_sender.send(result).await {
             // Main thread has dropped the receiver, exit worker
             log::info!("🕐 run_worker: Result sender closed, exiting worker");
             break;
+        } else {
+            log::debug!("🕐 run_worker: Result sent successfully");
         }
     }
 }

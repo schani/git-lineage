@@ -7,6 +7,7 @@ use crate::error::Result;
 use std::fs;
 
 pub fn handle_task_result(app: &mut App, result: TaskResult) {
+    log::debug!("📥 handle_task_result: Processing result type: {:?}", std::mem::discriminant(&result));
     app.ui.is_loading = false;
 
     match result {
@@ -19,10 +20,20 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             app.update_file_navigator_list_state();
             
             // Initialize new navigator with the same tree
+            log::info!("🆕 Initializing new navigator with {} files", files.root.len());
             app.initialize_new_navigator(files);
             // Select first item in new navigator
             if let Err(e) = app.handle_navigator_event(crate::navigator::NavigatorEvent::NavigateDown) {
                 log::warn!("Failed to initialize new navigator selection: {}", e);
+            } else {
+                log::info!("🆕 New navigator initialized successfully");
+            }
+            
+            // Verify the new navigator is active
+            if app.new_navigator.is_some() {
+                log::info!("🆕 New navigator confirmed active");
+            } else {
+                log::error!("🆕 New navigator NOT active after initialization!");
             }
             
             app.ui.status_message = "File tree loaded (new navigator active)".to_string();
