@@ -293,7 +293,40 @@ fn handle_new_navigator_event(
                 }
                 return Ok(());
             }
-            KeyCode::Enter | KeyCode::Esc => {
+            KeyCode::Enter => {
+                // Get the currently selected search result
+                let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+                let selected_item = view_model.items.iter().find(|item| item.is_selected);
+                
+                if let Some(item) = selected_item {
+                    if item.is_dir {
+                        // For directories, exit search mode and expand the directory
+                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                            log::warn!("Failed to end search: {}", e);
+                        }
+                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ToggleExpanded(item.path.clone())) {
+                            log::warn!("Failed to toggle expansion: {}", e);
+                        }
+                        app.ui.status_message = "Exited search and expanded directory".to_string();
+                    } else {
+                        // For files, exit search mode and switch to inspector
+                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                            log::warn!("Failed to end search: {}", e);
+                        }
+                        app.ui.active_panel = crate::app::PanelFocus::Inspector;
+                        app.ui.status_message = format!("Viewing content for {}", item.path.display());
+                    }
+                    handle_new_navigator_file_selection_change(app, task_sender);
+                } else {
+                    // No selection, just exit search
+                    if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                        log::warn!("Failed to end search: {}", e);
+                    }
+                    handle_new_navigator_file_selection_change(app, task_sender);
+                }
+                return Ok(());
+            }
+            KeyCode::Esc => {
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
                     log::warn!("Failed to end search: {}", e);
                 }

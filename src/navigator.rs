@@ -333,15 +333,17 @@ impl NavigatorState {
 
     /// Search for files matching the query
     fn search_files(&self, query: &str) -> Vec<PathBuf> {
+        let mut results = Vec::new();
+        
+        // Collect all file paths from the tree
+        self.collect_all_paths(&self.tree.root, &mut results);
+        
         if query.is_empty() {
-            return Vec::new();
+            // When search query is empty, show all files
+            return results;
         }
 
         let matcher = SkimMatcherV2::default();
-        let mut results = Vec::new();
-
-        // Collect all file paths from the tree
-        self.collect_all_paths(&self.tree.root, &mut results);
 
         // Filter and sort by fuzzy match score
         let mut scored_results: Vec<(PathBuf, i64)> = results
@@ -710,8 +712,13 @@ mod tests {
         navigator.handle_event(NavigatorEvent::UpdateSearchQuery("".to_string())).unwrap();
         
         let view_model = navigator.build_view_model();
-        assert!(view_model.items.is_empty());
-        assert_eq!(navigator.get_selection(), None);
+        // Empty search should show all files
+        assert!(!view_model.items.is_empty());
+        assert!(view_model.items.len() >= 3); // At least file1.rs, file2.rs, subdir/file3.rs
+        assert!(view_model.is_searching);
+        assert_eq!(view_model.search_query, "");
+        // First item should be selected
+        assert_eq!(navigator.get_selection(), Some(view_model.items[0].path.clone()));
     }
 
     #[test]
