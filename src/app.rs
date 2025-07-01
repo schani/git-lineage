@@ -1,5 +1,5 @@
 use crate::navigator::{NavigatorState as NewNavigatorState, NavigatorEvent};
-use crate::tree::{FileTreeState, FileTree};
+use crate::tree::{FileTreeState, FileTree, TreeNode};
 use gix::Repository;
 use log::{debug, info, warn};
 use ratatui::widgets::ListState;
@@ -95,7 +95,7 @@ pub struct App {
 
 impl App {
     pub fn new(repo: Repository) -> Self {
-        Self {
+        let mut app = Self {
             repo,
             should_quit: false,
             active_file_context: None,
@@ -106,7 +106,18 @@ impl App {
             history: HistoryState::new(),
             inspector: InspectorState::new(),
             ui: UIState::new(),
+        };
+        
+        // 🚀 Initialize new navigator immediately with a mock tree when debugging
+        // This ensures the new navigator is always active for testing search functionality
+        if std::env::var("GIT_LINEAGE_LOG").is_ok() {
+            log::info!("🚀 Force-initializing new navigator with mock tree for debugging");
+            let mock_tree = Self::create_mock_tree();
+            app.initialize_new_navigator(mock_tree);
+            log::info!("🚀 New navigator force-initialized successfully");
         }
+        
+        app
     }
 
     pub fn next_panel(&mut self) {
@@ -197,6 +208,28 @@ impl App {
     /// Check if using new navigator implementation
     pub fn is_using_new_navigator(&self) -> bool {
         self.new_navigator.is_some()
+    }
+
+    /// Create a mock file tree for immediate navigator activation
+    fn create_mock_tree() -> FileTree {
+        let mut tree = FileTree::new();
+        
+        // Create a simple mock tree structure for immediate use
+        let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
+        src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs")));
+        src_dir.add_child(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs")));
+        tree.root.push(src_dir);
+        tree.root.push(TreeNode::new_file("README.md".to_string(), PathBuf::from("README.md")));
+        tree.root.push(TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml")));
+        
+        // Sort as FileTree normally does
+        tree.root.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        });
+        
+        tree
     }
 
     /// Get navigator search query (new implementation)
