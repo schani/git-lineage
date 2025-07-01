@@ -130,6 +130,8 @@ fn handle_navigator_event(
                 // Reset cursor to top when exiting search mode
                 app.navigator.cursor_position = 0;
                 app.navigator.scroll_offset = 0;
+                // Update commit history and inspector panels if a file is selected
+                handle_file_selection_change(app, task_sender);
             }
             _ => {}
         }
