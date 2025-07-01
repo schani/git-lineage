@@ -679,8 +679,18 @@ impl FileTreeState {
             }
         }
         
-        // Include this node if it matches or has matching children
-        if should_include_node || !filtered_children.is_empty() {
+        // Include this node if:
+        // 1. It's a file that matches the search query, OR
+        // 2. It's a directory that has matching children
+        let should_include = if node.is_dir {
+            // For directories: only include if they have matching children
+            !filtered_children.is_empty()
+        } else {
+            // For files: include if they match the search query
+            should_include_node
+        };
+        
+        if should_include {
             let mut filtered_node = node.clone();
             let has_children = !filtered_children.is_empty();
             filtered_node.children = filtered_children;
@@ -1625,5 +1635,77 @@ mod tests {
         assert!(middle_dir_pos < last_dir_pos, "Directories should be sorted alphabetically");
         assert!(first_file_pos < middle_file_pos, "Files should be sorted alphabetically");
         assert!(middle_file_pos < last_file_pos, "Files should be sorted alphabetically");
+    }
+
+    #[test]
+    fn test_search_filters_out_empty_directories() {
+        use tempfile::TempDir;
+        use std::process::Command;
+        
+        let temp_dir = TempDir::new().unwrap();
+        let temp_path = temp_dir.path();
+        
+        // Initialize Git repository
+        Command::new("git")
+            .args(["init"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to initialize git repository");
+        
+        // Create structure:
+        // - github_dir/ (empty directory that would match "git" search)
+        // - src/
+        //   - git_utils.rs (file that matches "git" search)
+        //   - main.rs
+        std::fs::create_dir_all(temp_path.join("github_dir")).unwrap();
+        std::fs::create_dir_all(temp_path.join("src")).unwrap();
+        std::fs::write(temp_path.join("src/git_utils.rs"), "// git utilities").unwrap();
+        std::fs::write(temp_path.join("src/main.rs"), "fn main() {}").unwrap();
+        
+        // Commit files to Git (github_dir won't be committed since it's empty)
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add files to git");
+            
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Add test files"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit files");
+        
+        // Create file tree and search for "git"
+        let tree = FileTree::from_directory(temp_path).unwrap();
+        let mut tree_state = FileTreeState::new();
+        tree_state.set_tree_data(tree, String::new(), false);
+        tree_state.set_search_query("git".to_string());
+        
+        // Get visible nodes from search results
+        let visible_nodes = tree_state.get_visible_nodes_with_depth();
+        let node_names: Vec<String> = visible_nodes.iter()
+            .map(|(node, _)| node.name.clone())
+            .collect();
+        
+        // Should contain "src" (directory with matching child) and "git_utils.rs" (matching file)
+        // Should NOT contain "github_dir" since it's empty
+        assert!(node_names.contains(&"src".to_string()), "Should include src directory with matching child");
+        assert!(node_names.contains(&"git_utils.rs".to_string()), "Should include matching file");
+        assert!(!node_names.contains(&"github_dir".to_string()), "Should NOT include empty directory even if name matches");
+        assert!(!node_names.contains(&"main.rs".to_string()), "Should NOT include non-matching file");
+        
+        // Verify that directories are only included if they have matching children
+        let src_node = visible_nodes.iter()
+            .find(|(node, _)| node.name == "src")
+            .map(|(node, _)| node);
+        
+        if let Some(src_node) = src_node {
+            assert!(src_node.is_dir, "src should be a directory");
+            assert!(!src_node.children.is_empty(), "src should have children in search results");
+            assert!(src_node.children.iter().any(|child| child.name == "git_utils.rs"), 
+                   "src should contain git_utils.rs as child");
+        } else {
+            panic!("src directory should be present in search results");
+        }
     }
 }
