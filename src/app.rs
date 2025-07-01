@@ -1,4 +1,5 @@
-use crate::tree::FileTreeState;
+use crate::navigator::{NavigatorState as NewNavigatorState, NavigatorEvent};
+use crate::tree::{FileTreeState, FileTree};
 use gix::Repository;
 use log::{debug, info, warn};
 use ratatui::widgets::ListState;
@@ -85,7 +86,8 @@ pub struct App {
     pub last_commit_for_mapping: Option<String>,
 
     // State modules
-    pub navigator: NavigatorState,
+    pub navigator: NavigatorState, // Legacy navigator - will be replaced
+    pub new_navigator: Option<NewNavigatorState>, // New state machine navigator
     pub history: HistoryState,
     pub inspector: InspectorState,
     pub ui: UIState,
@@ -100,6 +102,7 @@ impl App {
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
             navigator: NavigatorState::new(),
+            new_navigator: None, // Will be initialized when FileTree is loaded
             history: HistoryState::new(),
             inspector: InspectorState::new(),
             ui: UIState::new(),
@@ -124,29 +127,94 @@ impl App {
 
     // File tree navigation methods with viewport-based cursor movement
     pub fn navigate_tree_up(&mut self) -> bool {
-        let viewport_height = self.navigator.viewport_height;
-        self.navigate_file_navigator_up(viewport_height)
+        if self.is_using_new_navigator() {
+            self.handle_navigator_event(NavigatorEvent::NavigateUp).unwrap_or(false)
+        } else {
+            let viewport_height = self.navigator.viewport_height;
+            self.navigate_file_navigator_up(viewport_height)
+        }
     }
 
     pub fn navigate_tree_down(&mut self) -> bool {
-        let viewport_height = self.navigator.viewport_height;
-        self.navigate_file_navigator_down(viewport_height)
+        if self.is_using_new_navigator() {
+            self.handle_navigator_event(NavigatorEvent::NavigateDown).unwrap_or(false)
+        } else {
+            let viewport_height = self.navigator.viewport_height;
+            self.navigate_file_navigator_down(viewport_height)
+        }
     }
 
     pub fn expand_selected_node(&mut self) -> bool {
-        self.navigator.file_tree_state.expand_selected()
+        if self.is_using_new_navigator() {
+            self.handle_navigator_event(NavigatorEvent::ExpandSelected).unwrap_or(false)
+        } else {
+            self.navigator.file_tree_state.expand_selected()
+        }
     }
 
     pub fn collapse_selected_node(&mut self) -> bool {
-        self.navigator.file_tree_state.collapse_selected()
+        if self.is_using_new_navigator() {
+            self.handle_navigator_event(NavigatorEvent::CollapseSelected).unwrap_or(false)
+        } else {
+            self.navigator.file_tree_state.collapse_selected()
+        }
     }
 
     pub fn toggle_selected_node(&mut self) -> bool {
-        self.navigator.file_tree_state.toggle_selected()
+        if let Some(selected_path) = self.get_selected_file_path() {
+            if self.is_using_new_navigator() {
+                self.handle_navigator_event(NavigatorEvent::ToggleExpanded(selected_path)).unwrap_or(false)
+            } else {
+                self.navigator.file_tree_state.toggle_selected()
+            }
+        } else {
+            false
+        }
     }
 
     pub fn get_selected_file_path(&self) -> Option<PathBuf> {
-        self.navigator.file_tree_state.get_selected_file_path()
+        if let Some(ref new_navigator) = self.new_navigator {
+            new_navigator.get_selection()
+        } else {
+            self.navigator.file_tree_state.get_selected_file_path()
+        }
+    }
+
+    /// Initialize the new navigator with a FileTree
+    pub fn initialize_new_navigator(&mut self, tree: FileTree) {
+        self.new_navigator = Some(NewNavigatorState::new(tree));
+    }
+
+    /// Handle a navigator event using the new state machine
+    pub fn handle_navigator_event(&mut self, event: NavigatorEvent) -> Result<bool, String> {
+        if let Some(ref mut new_navigator) = self.new_navigator {
+            new_navigator.handle_event(event)
+        } else {
+            Err("New navigator not initialized".to_string())
+        }
+    }
+
+    /// Check if using new navigator implementation
+    pub fn is_using_new_navigator(&self) -> bool {
+        self.new_navigator.is_some()
+    }
+
+    /// Get navigator search query (new implementation)
+    pub fn get_navigator_search_query(&self) -> String {
+        if let Some(ref new_navigator) = self.new_navigator {
+            new_navigator.get_search_query()
+        } else {
+            self.navigator.file_tree_state.search_query.clone()
+        }
+    }
+
+    /// Check if navigator is in search mode (new implementation)
+    pub fn is_navigator_searching(&self) -> bool {
+        if let Some(ref new_navigator) = self.new_navigator {
+            new_navigator.is_searching()
+        } else {
+            self.navigator.file_tree_state.in_search_mode
+        }
     }
 
     /// Update the file navigator list state to match the current file tree selection
@@ -494,6 +562,7 @@ impl App {
                 cursor_column: config.cursor_column,
                 show_diff_view: config.show_diff_view,
             },
+            new_navigator: None, // Not used in tests yet
             ui: UIState {
                 active_panel: config.active_panel,
                 status_message: config.status_message.clone(),

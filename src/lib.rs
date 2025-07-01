@@ -9,6 +9,7 @@ pub mod executor;
 pub mod git_utils;
 pub mod line_mapping;
 pub mod main_lib;
+pub mod navigator;
 pub mod screenshot;
 pub mod test_config;
 pub mod theme;

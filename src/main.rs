@@ -20,6 +20,7 @@ mod executor;
 mod git_utils;
 mod line_mapping;
 mod main_lib;
+mod navigator;
 mod screenshot;
 mod test_config;
 mod theme;
