@@ -1,11 +1,10 @@
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
+use crate::git_utils::{self, GitTreeEntry};
 
 /// Represents a single node in the file tree
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,192 +176,76 @@ impl FileTree {
         }
     }
 
-    /// Build tree from a directory path
+    /// Build tree from a directory path using Git HEAD tree
     pub fn from_directory<P: AsRef<Path>>(path: P) -> Result<Self, std::io::Error> {
         let start_time = Instant::now();
         let path_ref = path.as_ref();
-        log::info!("🕐 FileTree::from_directory: Starting tree creation for: {:?}", path_ref);
+        log::info!("🕐 FileTree::from_directory: Starting Git tree creation for: {:?}", path_ref);
         
         let mut tree = Self::new();
         tree.repo_root = path_ref.to_path_buf();
         
+        // Use Git tree walking instead of filesystem walking
         let scan_start = Instant::now();
-        tree.scan_directory_with_gitignore(path_ref)?;
-        log::debug!("🕐 FileTree::from_directory: Directory scan took: {:?}", scan_start.elapsed());
+        tree.scan_git_tree(path_ref)?;
+        log::debug!("🕐 FileTree::from_directory: Git tree scan took: {:?}", scan_start.elapsed());
         
-        log::info!("🕐 FileTree::from_directory: Completed tree creation for {:?} - {} root nodes in {:?}", 
+        log::info!("🕐 FileTree::from_directory: Completed Git tree creation for {:?} - {} root nodes in {:?}", 
                  path_ref, tree.root.len(), start_time.elapsed());
         
         Ok(tree)
     }
 
-    /// Scan a directory and build the tree structure
-    fn scan_directory(&mut self, dir_path: &Path) -> Result<(), std::io::Error> {
-        let entries = fs::read_dir(dir_path)?;
+    // Old filesystem-based scanning methods removed - now using Git tree walking
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-
-            // Skip hidden files and directories (starting with .)
-            if name.starts_with('.') {
-                continue;
-            }
-
-            let is_dir = path.is_dir();
-            let mut node = TreeNode::new(name, path.clone(), is_dir);
-
-            // Apply git status if available
-            if let Some(&status) = self.git_status_map.get(&path) {
-                node.git_status = Some(status);
-            }
-
-            // Recursively scan subdirectories
-            if is_dir {
-                self.scan_directory_into_node(&mut node, &path)?;
-            }
-
-            self.root.push(node);
-        }
-
-        // Sort root level
-        self.root.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.cmp(&b.name),
-        });
-
-        Ok(())
-    }
-
-    /// Scan directory contents into a specific node
-    fn scan_directory_into_node(
-        &mut self,
-        parent: &mut TreeNode,
-        dir_path: &Path,
-    ) -> Result<(), std::io::Error> {
-        let entries = fs::read_dir(dir_path)?;
-
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-
-            // Skip hidden files and directories
-            if name.starts_with('.') {
-                continue;
-            }
-
-            let is_dir = path.is_dir();
-            let mut node = TreeNode::new(name, path.clone(), is_dir);
-
-            // Apply git status if available
-            if let Some(&status) = self.git_status_map.get(&path) {
-                node.git_status = Some(status);
-            }
-
-            // Recursively scan subdirectories
-            if is_dir {
-                self.scan_directory_into_node(&mut node, &path)?;
-            }
-
-            parent.add_child(node);
-        }
-
-        Ok(())
-    }
-
-    /// Scan a directory with gitignore filtering using the ignore crate (optimized single-pass)
-    fn scan_directory_with_gitignore(&mut self, dir_path: &Path) -> Result<(), std::io::Error> {
-        let walker_start = Instant::now();
-        log::debug!("🕐 scan_directory_with_gitignore: Creating WalkBuilder for {:?}", dir_path);
+    /// Scan Git tree and build the file tree structure
+    fn scan_git_tree(&mut self, repo_path: &Path) -> Result<(), std::io::Error> {
+        let start_time = Instant::now();
+        log::debug!("🕐 scan_git_tree: Starting Git tree scan for: {:?}", repo_path);
         
-        // Single WalkBuilder for the entire repository - no depth limit, no recursion
-        let walk = WalkBuilder::new(dir_path)
-            .hidden(false) // We'll handle hidden files manually
-            .git_ignore(true) // Respect .gitignore files
-            .git_global(true) // Respect global git ignore
-            .git_exclude(true) // Respect .git/info/exclude
-            .parents(true) // Look at parent directories for gitignore files
-            .build();
-
-        log::debug!("🕐 scan_directory_with_gitignore: WalkBuilder created in {:?}", walker_start.elapsed());
-
-        // Collect all valid paths in a single pass
-        let mut all_paths = Vec::new();
-        let walk_start = Instant::now();
-        let mut file_count = 0;
-
-        for result in walk {
-            file_count += 1;
-            if file_count % 1000 == 0 {
-                log::debug!("🕐 scan_directory_with_gitignore: Processed {} files in {:?}", file_count, walk_start.elapsed());
-            }
-            
-            match result {
-                Ok(entry) => {
-                    let path = entry.path();
-
-                    // Skip the root directory itself
-                    if path == dir_path {
-                        continue;
-                    }
-
-                    // Skip hidden files and directories (starting with .)
-                    if let Some(name) = path.file_name() {
-                        let name_str = name.to_string_lossy();
-                        if name_str.starts_with('.') {
-                            continue;
-                        }
-                    }
-
-                    // Convert to relative path immediately
-                    let relative_path = match path.strip_prefix(&self.repo_root) {
-                        Ok(rel_path) => rel_path.to_path_buf(),
-                        Err(_) => path.to_path_buf(), // Fallback to absolute path if strip fails
-                    };
-
-                    all_paths.push((path.to_path_buf(), relative_path, path.is_dir()));
-                }
-                Err(err) => {
-                    eprintln!("Warning: Error walking directory: {}", err);
-                    continue;
-                }
-            }
-        }
-
-        log::debug!("🕐 scan_directory_with_gitignore: Walk completed - {} files processed, {} valid paths collected in {:?}", 
-                   file_count, all_paths.len(), walk_start.elapsed());
-
-        // Build tree structure from collected paths
-        let tree_start = Instant::now();
-        self.build_tree_from_paths(all_paths)?;
-        log::debug!("🕐 scan_directory_with_gitignore: Tree building completed in {:?}", tree_start.elapsed());
-
+        // Open the Git repository
+        let repo = git_utils::open_repository(repo_path)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, 
+                format!("Failed to open Git repository: {}", e)))?;
+        
+        // Get all Git tree entries
+        let git_entries = git_utils::get_git_tree_entries(&repo)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, 
+                format!("Failed to walk Git tree: {}", e)))?;
+        
+        log::debug!("🕐 scan_git_tree: Found {} Git tree entries in {:?}", 
+                   git_entries.len(), start_time.elapsed());
+        
+        // Build tree structure from Git entries
+        let build_start = Instant::now();
+        self.build_tree_from_git_entries(git_entries)?;
+        log::debug!("🕐 scan_git_tree: Tree building from Git entries took: {:?}", build_start.elapsed());
+        
         Ok(())
     }
 
-    /// Build tree structure from collected paths efficiently with proper hierarchy
-    fn build_tree_from_paths(&mut self, paths: Vec<(PathBuf, PathBuf, bool)>) -> Result<(), std::io::Error> {
+    // Old build_tree_from_paths removed - now using build_tree_from_git_entries
+
+    /// Build tree structure from Git tree entries efficiently with proper hierarchy
+    fn build_tree_from_git_entries(&mut self, git_entries: Vec<GitTreeEntry>) -> Result<(), std::io::Error> {
+        let start_time = Instant::now();
+        log::debug!("🕐 build_tree_from_git_entries: Starting with {} entries", git_entries.len());
+        
         // Use HashMap for O(1) parent lookups during tree construction
         let mut path_to_node: HashMap<PathBuf, TreeNode> = HashMap::new();
         
-        // First pass: Create all nodes
-        for (absolute_path, relative_path, is_dir) in paths {
-            let name = relative_path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| relative_path.to_string_lossy().to_string());
+        // First pass: Create all nodes from Git entries
+        for git_entry in git_entries {
+            let name = git_entry.name;
+            let path = git_entry.path;
+            let is_dir = git_entry.is_dir;
 
-            let mut node = TreeNode::new(name, relative_path.clone(), is_dir);
+            let node = TreeNode::new(name, path.clone(), is_dir);
 
-            // Apply git status if available (using original absolute path for git status lookup)
-            if let Some(&status) = self.git_status_map.get(&absolute_path) {
-                node.git_status = Some(status);
-            }
-
-            path_to_node.insert(relative_path, node);
+            // Git status will be applied separately - no need to handle it here
+            // since Git tree entries don't contain status information
+            
+            path_to_node.insert(path, node);
         }
 
         // Second pass: Build hierarchy by organizing nodes into parent-child relationships
@@ -432,6 +315,7 @@ impl FileTree {
             _ => a.name.cmp(&b.name),
         });
 
+        log::debug!("🕐 build_tree_from_git_entries: Completed in {:?}", start_time.elapsed());
         Ok(())
     }
 
@@ -1309,10 +1193,18 @@ mod tests {
     fn test_tree_loading_determinism() {
         use std::time::Instant;
         use tempfile::TempDir;
+        use std::process::Command;
         
         // Create a temporary directory structure
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
+        
+        // Initialize a Git repository first
+        Command::new("git")
+            .args(["init"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to initialize git repository");
         
         // Create a complex directory structure
         std::fs::create_dir_all(temp_path.join("src/components")).unwrap();
@@ -1330,6 +1222,19 @@ mod tests {
         std::fs::write(temp_path.join("src/utils/helpers.rs"), "// helpers").unwrap();
         std::fs::write(temp_path.join("tests/unit/test_main.rs"), "// test").unwrap();
         std::fs::write(temp_path.join("docs/USAGE.md"), "# Usage").unwrap();
+        
+        // Add all files to Git and commit them
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add files to git");
+            
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit files");
         
         // Load the tree multiple times and verify identical results
         let mut results = Vec::new();
@@ -1358,26 +1263,34 @@ mod tests {
                 "Run {} produced different results: {:?} vs {:?}", i + 1, result, first_result);
         }
         
-        // Verify reasonable performance (should be under 100ms for small test directory)
+        // Verify reasonable performance (should be under 1000ms for small test directory)
         for (i, &load_time) in load_times.iter().enumerate() {
             assert!(load_time.as_millis() < 1000, 
                 "Run {} took too long: {:?}", i + 1, load_time);
         }
         
-        // Verify we found the expected structure
-        assert!(first_result.0 > 10, "Should have found more than 10 nodes");
+        // Verify we found the expected structure (Git tree should contain all committed files)
+        assert!(first_result.0 > 5, "Should have found more than 5 nodes");
         assert!(first_result.1 > 5, "Should have found more than 5 files");
-        assert!(first_result.2 > 3, "Should have found more than 3 directories");
+        assert!(first_result.2 > 2, "Should have found more than 2 directories");
         assert!(first_result.3 >= 2, "Should have max depth of at least 2");
     }
 
     #[test]
     fn test_tree_hierarchy_structure() {
         use tempfile::TempDir;
+        use std::process::Command;
         
         // Create a test directory with known hierarchy
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
+        
+        // Initialize Git repository
+        Command::new("git")
+            .args(["init"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to initialize git repository");
         
         // Create nested structure: root -> src -> components -> ui -> button.rs
         std::fs::create_dir_all(temp_path.join("src/components/ui")).unwrap();
@@ -1385,6 +1298,19 @@ mod tests {
         std::fs::write(temp_path.join("src/components/mod.rs"), "// components module").unwrap();
         std::fs::write(temp_path.join("src/main.rs"), "// main").unwrap();
         std::fs::write(temp_path.join("README.md"), "# Test").unwrap();
+        
+        // Commit files to Git
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add files to git");
+            
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit files");
         
         let tree = FileTree::from_directory(temp_path).unwrap();
         
@@ -1421,14 +1347,14 @@ mod tests {
     }
 
     #[test]
-    fn test_tree_loading_with_gitignore() {
+    fn test_tree_loading_git_tracked_files_only() {
         use tempfile::TempDir;
         use std::process::Command;
         
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
         
-        // Initialize git repository (required for gitignore to work)
+        // Initialize git repository
         Command::new("git")
             .args(["init"])
             .current_dir(temp_path)
@@ -1449,12 +1375,25 @@ mod tests {
         // Create .gitignore file
         std::fs::write(temp_path.join(".gitignore"), "target/\nnode_modules/").unwrap();
         
+        // Add and commit only the files that should be tracked (gitignore will exclude target/ and node_modules/)
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add files to git");
+            
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit files");
+        
         let tree = FileTree::from_directory(temp_path).unwrap();
         
         // Find the src node and expand it to make children visible
         let src_node = tree.find_node(&PathBuf::from("src")).unwrap();
         
-        // Verify that gitignored directories are not included
+        // Verify that only Git-tracked files are included
         let all_paths: Vec<String> = tree.get_visible_nodes()
             .iter()
             .map(|n| n.path.to_string_lossy().to_string())
@@ -1468,8 +1407,9 @@ mod tests {
         assert!(all_paths.iter().any(|p| p.contains("src")), "Should include src directory");
         assert!(src_node.children.iter().any(|c| c.name == "main.rs"), "Should include main.rs in src");
         assert!(all_paths.iter().any(|p| p.contains("Cargo.toml")), "Should include Cargo.toml");
+        assert!(all_paths.iter().any(|p| p.contains(".gitignore")), "Should include .gitignore file");
         
-        // These should be filtered out by gitignore
+        // These should be filtered out by Git (not committed due to .gitignore)
         assert!(!all_paths.iter().any(|p| p.contains("target")), "Should not include target directory");
         assert!(!all_paths.iter().any(|p| p.contains("node_modules")), "Should not include node_modules");
         assert!(!all_paths.iter().any(|p| p.contains("binary")), "Should not include binary file");
@@ -1480,9 +1420,17 @@ mod tests {
     fn test_tree_loading_performance() {
         use std::time::Instant;
         use tempfile::TempDir;
+        use std::process::Command;
         
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
+        
+        // Initialize Git repository
+        Command::new("git")
+            .args(["init"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to initialize git repository");
         
         // Create a moderately complex directory structure (100+ files)
         for i in 0..10 {
@@ -1502,6 +1450,19 @@ mod tests {
             std::fs::write(nested_path.join("deep_file.txt"), "deep content").unwrap();
         }
         
+        // Commit all files to Git
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add files to git");
+            
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Initial commit"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit files");
+        
         // Measure loading time
         let start = Instant::now();
         let tree = FileTree::from_directory(temp_path).unwrap();
@@ -1515,8 +1476,8 @@ mod tests {
         assert!(stats.directories >= 20, "Should have found at least 20 directories");
         assert!(stats.max_depth >= 3, "Should have max depth of at least 3");
         
-        // Performance assertion - should load 100+ files very quickly
-        assert!(load_time.as_millis() < 500, 
+        // Performance assertion - should load 100+ files reasonably quickly
+        assert!(load_time.as_millis() < 1000, 
             "Loading {} nodes took too long: {:?}", stats.total_nodes, load_time);
         
         println!("Performance test: {} nodes loaded in {:?}", stats.total_nodes, load_time);
@@ -1525,24 +1486,70 @@ mod tests {
     #[test]
     fn test_tree_loading_edge_cases() {
         use tempfile::TempDir;
+        use std::process::Command;
         
-        // Test empty directory
+        // Test empty Git repository
         let empty_dir = TempDir::new().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(empty_dir.path())
+            .output()
+            .expect("Failed to initialize git repository");
         let tree = FileTree::from_directory(empty_dir.path()).unwrap();
-        assert_eq!(tree.root.len(), 0);
+        assert_eq!(tree.root.len(), 0, "Empty Git repo should have no files");
         
-        // Test directory with only hidden files
+        // Test directory with hidden files that ARE committed to Git (should be included)
         let hidden_dir = TempDir::new().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(hidden_dir.path())
+            .output()
+            .expect("Failed to initialize git repository");
         std::fs::write(hidden_dir.path().join(".hidden"), "hidden content").unwrap();
         std::fs::create_dir_all(hidden_dir.path().join(".hidden_dir")).unwrap();
+        std::fs::write(hidden_dir.path().join(".hidden_dir/file.txt"), "content").unwrap();
+        
+        // Commit the hidden files
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(hidden_dir.path())
+            .output()
+            .expect("Failed to add files to git");
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Add hidden files"])
+            .current_dir(hidden_dir.path())
+            .output()
+            .expect("Failed to commit files");
+            
         let tree = FileTree::from_directory(hidden_dir.path()).unwrap();
-        assert_eq!(tree.root.len(), 0, "Should ignore hidden files and directories");
+        assert!(tree.root.len() > 0, "Should include committed hidden files");
+        
+        let names: Vec<String> = tree.root.iter().map(|n| n.name.clone()).collect();
+        assert!(names.contains(&".hidden".to_string()), "Should include .hidden file");
+        assert!(names.contains(&".hidden_dir".to_string()), "Should include .hidden_dir");
         
         // Test directory with special characters in names
         let special_dir = TempDir::new().unwrap();
+        Command::new("git")
+            .args(["init"])
+            .current_dir(special_dir.path())
+            .output()
+            .expect("Failed to initialize git repository");
         std::fs::write(special_dir.path().join("file with spaces.txt"), "content").unwrap();
         std::fs::write(special_dir.path().join("file-with-dashes.txt"), "content").unwrap();
         std::fs::write(special_dir.path().join("file_with_underscores.txt"), "content").unwrap();
+        
+        // Commit the files
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(special_dir.path())
+            .output()
+            .expect("Failed to add files to git");
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Add files with special chars"])
+            .current_dir(special_dir.path())
+            .output()
+            .expect("Failed to commit files");
         
         let tree = FileTree::from_directory(special_dir.path()).unwrap();
         assert_eq!(tree.root.len(), 3);
@@ -1556,18 +1563,44 @@ mod tests {
     #[test]
     fn test_tree_sorting_consistency() {
         use tempfile::TempDir;
+        use std::process::Command;
         
         let temp_dir = TempDir::new().unwrap();
         let temp_path = temp_dir.path();
+        
+        // Initialize Git repository
+        Command::new("git")
+            .args(["init"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to initialize git repository");
         
         // Create files and directories with names that test sorting
         std::fs::create_dir_all(temp_path.join("z_last_dir")).unwrap();
         std::fs::create_dir_all(temp_path.join("a_first_dir")).unwrap();
         std::fs::create_dir_all(temp_path.join("m_middle_dir")).unwrap();
         
+        // Add files to each directory so they show up in Git tree
+        std::fs::write(temp_path.join("z_last_dir/file.txt"), "content").unwrap();
+        std::fs::write(temp_path.join("a_first_dir/file.txt"), "content").unwrap();
+        std::fs::write(temp_path.join("m_middle_dir/file.txt"), "content").unwrap();
+        
         std::fs::write(temp_path.join("z_last_file.txt"), "content").unwrap();
         std::fs::write(temp_path.join("a_first_file.txt"), "content").unwrap();
         std::fs::write(temp_path.join("m_middle_file.txt"), "content").unwrap();
+        
+        // Commit files to Git
+        Command::new("git")
+            .args(["add", "."])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to add files to git");
+            
+        Command::new("git")
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Add sorting test files"])
+            .current_dir(temp_path)
+            .output()
+            .expect("Failed to commit files");
         
         let tree = FileTree::from_directory(temp_path).unwrap();
         

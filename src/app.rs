@@ -1292,12 +1292,34 @@ mod tests {
 
         #[test]
         fn test_set_file_tree_from_directory_success() {
+            use std::process::Command;
+            
             let repo = create_test_repo();
             let mut app = App::new(repo);
             let temp_dir = TempDir::new().unwrap();
 
+            // Initialize Git repository
+            Command::new("git")
+                .args(["init"])
+                .current_dir(temp_dir.path())
+                .output()
+                .expect("Failed to initialize git repository");
+
             // Create a test file in the directory
             fs::write(temp_dir.path().join("test.txt"), "test content").unwrap();
+            
+            // Commit the file to Git
+            Command::new("git")
+                .args(["add", "."])
+                .current_dir(temp_dir.path())
+                .output()
+                .expect("Failed to add files to git");
+                
+            Command::new("git")
+                .args(["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "Test commit"])
+                .current_dir(temp_dir.path())
+                .output()
+                .expect("Failed to commit files");
 
             let result = app.set_file_tree_from_directory(temp_dir.path());
 

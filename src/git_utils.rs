@@ -1,9 +1,17 @@
 use gix::Repository;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use chrono::{Local, TimeZone};
 
 use crate::app::{CommitInfo, FileTreeNode};
+
+/// Represents a file or directory entry from a Git tree
+#[derive(Debug, Clone)]
+pub struct GitTreeEntry {
+    pub name: String,
+    pub path: PathBuf,
+    pub is_dir: bool,
+}
 
 pub fn open_repository<P: AsRef<Path>>(
     path: P,
@@ -525,6 +533,76 @@ pub fn find_next_change_for_line(
     // For now, return None as placeholder
     let _ = (repo, file_path, current_commit, line_number);
     Ok(None)
+}
+
+/// Walk the Git tree from HEAD commit and return all files and directories
+pub fn get_git_tree_entries(
+    repo: &Repository,
+) -> Result<Vec<GitTreeEntry>, Box<dyn std::error::Error + Send + Sync>> {
+    let start_time = Instant::now();
+    log::info!("🕐 get_git_tree_entries: Starting Git tree traversal");
+    
+    let mut entries = Vec::new();
+    
+    // Get HEAD commit
+    let head_setup_start = Instant::now();
+    let head_id = match repo.head_id() {
+        Ok(id) => id,
+        Err(_) => {
+            // No commits yet, return empty tree
+            log::debug!("🕐 get_git_tree_entries: No commits found, returning empty tree");
+            return Ok(entries);
+        }
+    };
+    let commit = repo.find_object(head_id)?.try_into_commit()?;
+    log::debug!("🕐 get_git_tree_entries: HEAD resolution took: {:?}", head_setup_start.elapsed());
+    
+    // Get the tree from HEAD commit
+    let tree_start = Instant::now();
+    let tree = commit.tree()?;
+    log::debug!("🕐 get_git_tree_entries: Tree retrieval took: {:?}", tree_start.elapsed());
+    
+    // Walk the tree recursively
+    let walk_start = Instant::now();
+    walk_git_tree_recursive(&tree, PathBuf::new(), &mut entries)?;
+    log::debug!("🕐 get_git_tree_entries: Tree walking took: {:?}", walk_start.elapsed());
+    
+    log::info!("🕐 get_git_tree_entries: Completed - {} entries found in {:?}", 
+             entries.len(), start_time.elapsed());
+    
+    Ok(entries)
+}
+
+/// Recursively walk a Git tree and collect all entries
+fn walk_git_tree_recursive(
+    tree: &gix::Tree,
+    current_path: PathBuf,
+    entries: &mut Vec<GitTreeEntry>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Iterate through all entries in this tree
+    for entry in tree.iter() {
+        let entry = entry?;
+        let entry_name = entry.filename().to_string();
+        let entry_path = current_path.join(&entry_name);
+        
+        // Check if this entry is a tree (directory) or blob (file)
+        let is_dir = entry.mode().is_tree();
+        
+        // Add this entry to our list
+        entries.push(GitTreeEntry {
+            name: entry_name,
+            path: entry_path.clone(),
+            is_dir,
+        });
+        
+        // If this is a directory, recurse into it
+        if is_dir {
+            let subtree = entry.object()?.try_into_tree()?;
+            walk_git_tree_recursive(&subtree, entry_path, entries)?;
+        }
+    }
+    
+    Ok(())
 }
 
 #[cfg(test)]

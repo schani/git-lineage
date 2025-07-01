@@ -444,10 +444,8 @@ mod tests {
         async fn test_load_file_tree_nonexistent_path() {
             let result = load_file_tree("/nonexistent/path").await;
 
-            assert_ok!(&result);
-            let tree = result.unwrap();
-            // For non-existent paths, gitignore scan returns empty tree (no error)
-            // This is actually the expected behavior
+            assert!(result.is_err(), "Should return error for nonexistent path");
+            // For non-existent paths, Git tree walking returns error since it's not a valid Git repository
         }
 
         #[tokio::test]
@@ -861,13 +859,11 @@ mod tests {
 
         #[tokio::test]
         async fn test_load_file_tree_with_nonexistent_path() {
-            // FileTree::from_directory is resilient and doesn't fail for nonexistent paths
-            // It returns an empty tree instead, which is the expected behavior
+            // FileTree::from_directory now requires a valid Git repository
+            // Nonexistent paths should return an error
             let result = load_file_tree("/nonexistent/path/that/should/fail").await;
 
-            assert_ok!(&result);
-            let tree = result.unwrap();
-            assert!(tree.root.is_empty()); // Should be empty for nonexistent path
+            assert!(result.is_err(), "Should return error for nonexistent path");
         }
 
         #[tokio::test]
@@ -881,15 +877,15 @@ mod tests {
                 "/absolutely/invalid/repo/path".to_string(),
             ));
 
-            // Test LoadFileTree with invalid path (returns empty tree, not error)
+            // Test LoadFileTree with invalid path (now returns error)
             task_tx.send(Task::LoadFileTree).await.unwrap();
             let result = result_rx.recv().await.unwrap();
             match result {
-                TaskResult::FileTreeLoaded { files } => {
-                    // Should succeed with empty tree for invalid paths
-                    assert!(files.root.is_empty());
+                TaskResult::Error { message } => {
+                    // Should fail with error for invalid Git repository path
+                    assert!(message.contains("Failed to open Git repository") || message.contains("Failed to walk Git tree"));
                 }
-                _ => panic!("Expected FileTreeLoaded result"),
+                _ => panic!("Expected Error result, got: {:?}", result),
             }
 
             // Test LoadCommitHistory error path (covers line 62)
