@@ -116,10 +116,12 @@ fn handle_navigator_event(
                 app.navigator.file_tree_state.set_search_query(app.navigator.file_tree_state.search_query.clone());
                 log::debug!("⌨️  Added '{}' to search query, now: '{}'", c, app.navigator.file_tree_state.search_query);
                 // Filtering happens automatically in UI rendering
+                return Ok(());
             }
             KeyCode::Backspace => {
                 app.navigator.file_tree_state.search_query.pop();
                 app.navigator.file_tree_state.set_search_query(app.navigator.file_tree_state.search_query.clone());
+                return Ok(());
             }
             KeyCode::Enter | KeyCode::Esc => {
                 if key == KeyCode::Esc {
@@ -132,10 +134,12 @@ fn handle_navigator_event(
                 app.navigator.scroll_offset = 0;
                 // Update commit history and inspector panels if a file is selected
                 handle_file_selection_change(app, task_sender);
+                return Ok(());
             }
-            _ => {}
+            _ => {
+                // Let navigation keys fall through to normal handling
+            }
         }
-        return Ok(());
     }
 
     match key {
