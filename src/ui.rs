@@ -56,6 +56,19 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .border_style(border_style)
         .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
 
+    // Position cursor when in search mode and navigator is focused
+    // Do this BEFORE early return to ensure cursor shows even with no results
+    if app.navigator.file_tree_state.in_search_mode && is_active {
+        // Calculate cursor position in the title bar
+        // Title format: " File Navigator (Search: {query}) "
+        let search_prefix = " File Navigator (Search: ";
+        // Position cursor AFTER the last character, not on it
+        let cursor_x = area.x + search_prefix.len() as u16 + app.navigator.file_tree_state.search_query.len() as u16;
+        let cursor_y = area.y; // Top border of the panel
+        
+        frame.set_cursor_position((cursor_x, cursor_y));
+    }
+
     if app.navigator.file_tree_state.display_tree().root.is_empty() {
         let paragraph = Paragraph::new("No files found")
             .block(block)
@@ -190,17 +203,6 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     list_state.select(None);
 
     frame.render_stateful_widget(list, area, &mut list_state);
-
-    // Position cursor when in search mode and navigator is focused
-    if app.navigator.file_tree_state.in_search_mode && is_active {
-        // Calculate cursor position in the title bar
-        // Title format: " File Navigator (Search: {query}) "
-        let search_prefix = " File Navigator (Search: ";
-        let cursor_x = area.x + search_prefix.len() as u16 + app.navigator.file_tree_state.search_query.len() as u16;
-        let cursor_y = area.y; // Top border of the panel
-        
-        frame.set_cursor_position((cursor_x, cursor_y));
-    }
 }
 
 fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
