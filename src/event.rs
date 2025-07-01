@@ -17,21 +17,39 @@ pub fn handle_event(
             match key.code {
                 KeyCode::Char('q') => {
                     // Don't quit if in search mode - let panel handlers deal with it
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         app.should_quit = true;
                         return Ok(());
                     }
                 }
                 KeyCode::Esc => {
                     // Don't quit if in search mode - let panel handlers deal with it
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         app.should_quit = true;
                         return Ok(());
                     }
                 }
                 KeyCode::Tab => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             app.previous_panel();
                         } else {
@@ -42,28 +60,52 @@ pub fn handle_event(
                 }
                 KeyCode::Char('1') => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         app.ui.active_panel = PanelFocus::Navigator;
                         return Ok(());
                     }
                 }
                 KeyCode::Char('2') => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         app.ui.active_panel = PanelFocus::History;
                         return Ok(());
                     }
                 }
                 KeyCode::Char('3') => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         app.ui.active_panel = PanelFocus::Inspector;
                         return Ok(());
                     }
                 }
                 KeyCode::Char('[') => {
                     // Don't navigate commits if in search mode
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         if navigate_to_older_commit(app) {
                             return Ok(());
                         }
@@ -71,7 +113,13 @@ pub fn handle_event(
                 }
                 KeyCode::Char(']') => {
                     // Don't navigate commits if in search mode
-                    if !app.navigator.file_tree_state.in_search_mode {
+                    let in_search_mode = if let Some(ref navigator) = app.new_navigator {
+                        navigator.build_view_model().is_searching
+                    } else {
+                        app.navigator.file_tree_state.in_search_mode
+                    };
+                    
+                    if !in_search_mode {
                         if navigate_to_younger_commit(app) {
                             return Ok(());
                         }
@@ -109,6 +157,12 @@ fn handle_navigator_event(
     key: KeyCode,
     task_sender: &mpsc::Sender<Task>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Use new navigator if available, otherwise fall back to old navigator
+    if app.new_navigator.is_some() {
+        return handle_new_navigator_event(app, key, task_sender);
+    }
+    
+    // Legacy navigator handling (fallback)
     if app.navigator.file_tree_state.in_search_mode {
         match key {
             KeyCode::Char(c) => {
@@ -209,6 +263,162 @@ fn handle_navigator_event(
     }
 
     Ok(())
+}
+
+fn handle_new_navigator_event(
+    app: &mut App,
+    key: KeyCode,
+    task_sender: &mpsc::Sender<Task>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::navigator::NavigatorEvent;
+    
+    // Get view model to check current state
+    let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+    
+    if view_model.is_searching {
+        match key {
+            KeyCode::Char(c) => {
+                let mut new_query = view_model.search_query.clone();
+                new_query.push(c);
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
+                    log::warn!("Failed to update search query: {}", e);
+                }
+                return Ok(());
+            }
+            KeyCode::Backspace => {
+                let mut new_query = view_model.search_query.clone();
+                new_query.pop();
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
+                    log::warn!("Failed to update search query: {}", e);
+                }
+                return Ok(());
+            }
+            KeyCode::Enter | KeyCode::Esc => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                    log::warn!("Failed to end search: {}", e);
+                }
+                // Update file selection after exiting search
+                handle_new_navigator_file_selection_change(app, task_sender);
+                return Ok(());
+            }
+            KeyCode::Up => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::NavigateUp) {
+                    log::warn!("Failed to navigate up in search: {}", e);
+                }
+                return Ok(());
+            }
+            KeyCode::Down => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::NavigateDown) {
+                    log::warn!("Failed to navigate down in search: {}", e);
+                }
+                return Ok(());
+            }
+            _ => {}
+        }
+    } else {
+        // Browsing mode
+        match key {
+            KeyCode::Up => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::NavigateUp) {
+                    log::warn!("Failed to navigate up: {}", e);
+                } else {
+                    app.ui.status_message = "Navigated up".to_string();
+                    handle_new_navigator_file_selection_change(app, task_sender);
+                }
+            }
+            KeyCode::Down => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::NavigateDown) {
+                    log::warn!("Failed to navigate down: {}", e);
+                } else {
+                    app.ui.status_message = "Navigated down".to_string();
+                    handle_new_navigator_file_selection_change(app, task_sender);
+                }
+            }
+            KeyCode::Right => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ExpandSelected) {
+                    log::warn!("Failed to expand: {}", e);
+                } else {
+                    app.ui.status_message = "Expanded directory".to_string();
+                    handle_new_navigator_file_selection_change(app, task_sender);
+                }
+            }
+            KeyCode::Left => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::CollapseSelected) {
+                    log::warn!("Failed to collapse: {}", e);
+                } else {
+                    app.ui.status_message = "Collapsed directory".to_string();
+                    handle_new_navigator_file_selection_change(app, task_sender);
+                }
+            }
+            KeyCode::Enter => {
+                // Get selected item from view model
+                let selected_item = view_model.items.iter().find(|item| item.is_selected);
+                if let Some(item) = selected_item {
+                    if item.is_dir {
+                        // Toggle directory expansion
+                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ToggleExpanded(item.path.clone())) {
+                            log::warn!("Failed to toggle expansion: {}", e);
+                        } else {
+                            app.ui.status_message = if item.is_expanded {
+                                "Collapsed directory".to_string()
+                            } else {
+                                "Expanded directory".to_string()
+                            };
+                            handle_new_navigator_file_selection_change(app, task_sender);
+                        }
+                    } else {
+                        // For files, Enter switches to the Inspector panel to view content
+                        app.ui.active_panel = crate::app::PanelFocus::Inspector;
+                        app.ui.status_message = format!("Viewing content for {}", item.path.display());
+                    }
+                }
+            }
+            KeyCode::Char('/') | KeyCode::Char('s') => {
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::StartSearch) {
+                    log::warn!("Failed to start search: {}", e);
+                } else {
+                    app.ui.status_message = "Search mode activated".to_string();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_new_navigator_file_selection_change(
+    app: &mut App,
+    task_sender: &mpsc::Sender<Task>,
+) {
+    let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+    let selected_item = view_model.items.iter().find(|item| item.is_selected);
+    
+    if let Some(item) = selected_item {
+        if !item.is_dir {
+            // Only load history for files, not directories
+            app.active_file_context = Some(item.path.clone());
+            
+            // Send async task to load commit history
+            let task = Task::LoadCommitHistory {
+                file_path: item.path.to_string_lossy().to_string(),
+            };
+            
+            if let Err(e) = task_sender.try_send(task) {
+                log::warn!("Failed to send LoadCommitHistory task: {}", e);
+                app.ui.status_message = "Failed to load commit history".to_string();
+            } else {
+                app.ui.is_loading = true;
+                app.ui.status_message = format!("Loading history for {}", item.name);
+            }
+        } else {
+            // For directories, clear the active file context
+            app.active_file_context = None;
+            app.history.commit_list.clear();
+            app.history.list_state.select(None);
+            app.inspector.current_content.clear();
+        }
+    }
 }
 
 fn handle_history_event(
