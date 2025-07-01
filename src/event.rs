@@ -105,6 +105,7 @@ fn handle_navigator_event(
         match key {
             KeyCode::Char(c) => {
                 app.navigator.search_query.push(c);
+                log::debug!("⌨️  Added '{}' to search query, now: '{}'", c, app.navigator.search_query);
                 // Filtering happens automatically in UI rendering
             }
             KeyCode::Backspace => {

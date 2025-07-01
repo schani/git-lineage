@@ -729,14 +729,20 @@ impl FileTree {
             })
             .collect();
 
-        // Sort by score (higher score = better match), then by directory/file type, then by name
+        // Sort by directory/file type first (directories before files), then by score, then by name
         scored_nodes.sort_by(|a, b| {
-            b.1.cmp(&a.1) // Higher score first
-                .then_with(|| match (a.0.0.is_dir, b.0.0.is_dir) {
-                    (true, false) => std::cmp::Ordering::Less,  // Directories before files
-                    (false, true) => std::cmp::Ordering::Greater, // Files after directories  
-                    _ => a.0.0.name.cmp(&b.0.0.name), // Same type: alphabetical
-                })
+            // First: directories before files
+            let type_cmp = match (a.0.0.is_dir, b.0.0.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,  // Directories before files
+                (false, true) => std::cmp::Ordering::Greater, // Files after directories  
+                _ => std::cmp::Ordering::Equal, // Same type, continue to next criteria
+            };
+            // Second: higher score is better (within same type)
+            let score_cmp = b.1.cmp(&a.1);
+            // Third: alphabetical by name (within same type and score)
+            let name_cmp = a.0.0.name.cmp(&b.0.0.name);
+            
+            type_cmp.then_with(|| score_cmp).then_with(|| name_cmp)
         });
 
         // Extract the nodes, preserving their original depth for display
@@ -1095,6 +1101,69 @@ mod tests {
         let names: Vec<&str> = results.iter().map(|(node, _)| node.name.as_str()).collect();
         assert!(names.contains(&"config.toml"), "Should find config.toml for 'c'");
         assert!(names.contains(&"src"), "Should find src directory for 'c'");
+    }
+
+    #[test]
+    fn test_fuzzy_search_sorting_debug() {
+        env_logger::try_init().ok(); // Initialize logging for this test
+
+        let mut tree = FileTree::new();
+
+        // Create a realistic test structure like the real codebase
+        tree.root.push(TreeNode::new_file(
+            "ASSESSMENT.md".to_string(),
+            PathBuf::from("ASSESSMENT.md"),
+        ));
+        tree.root.push(TreeNode::new_dir(
+            "src".to_string(),
+            PathBuf::from("src"),
+        ));
+        tree.root.push(TreeNode::new_dir(
+            "tests".to_string(),
+            PathBuf::from("tests"),
+        ));
+        tree.root.push(TreeNode::new_file(
+            "update_test_screenshots.sh".to_string(),
+            PathBuf::from("update_test_screenshots.sh"),
+        ));
+
+        println!("=== NORMAL TREE ===");
+        let normal = tree.get_visible_nodes_with_depth();
+        for (i, (node, depth)) in normal.iter().enumerate() {
+            println!("{}: '{}' (dir: {}, depth: {})", i, node.name, node.is_dir, depth);
+        }
+
+        println!("\n=== SEARCH FOR 's' (should match 'src', 'tests', and some files) ===");
+        let filtered = tree.get_fuzzy_filtered_visible_nodes("s");
+        for (i, (node, depth)) in filtered.iter().enumerate() {
+            println!("{}: '{}' (dir: {}, depth: {})", i, node.name, node.is_dir, depth);
+        }
+
+        // Check that ALL directories come before ALL files
+        let dirs: Vec<_> = filtered.iter().filter(|(node, _)| node.is_dir).collect();
+        let files: Vec<_> = filtered.iter().filter(|(node, _)| !node.is_dir).collect();
+        
+        let mut result_iter = filtered.iter();
+        
+        // First, all directories should appear
+        for expected_dir in &dirs {
+            if let Some(actual) = result_iter.next() {
+                if actual.0.path != expected_dir.0.path {
+                    panic!("Expected directory '{}' but found '{}' - sorting is wrong!", expected_dir.0.name, actual.0.name);
+                }
+            }
+        }
+        
+        // Then, all files should appear  
+        for expected_file in &files {
+            if let Some(actual) = result_iter.next() {
+                if actual.0.path != expected_file.0.path {
+                    panic!("Expected file '{}' but found '{}' - sorting is wrong!", expected_file.0.name, actual.0.name);
+                }
+            }
+        }
+
+        println!("✅ Sorting test passed - all {} directories come before all {} files", dirs.len(), files.len());
     }
 
     #[test]

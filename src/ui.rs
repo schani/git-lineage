@@ -63,9 +63,18 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 
     // Get visible nodes with their display depths from the file tree
     let all_visible_nodes = if !app.navigator.search_query.is_empty() {
-        app.navigator.file_tree.get_fuzzy_filtered_visible_nodes(&app.navigator.search_query)
+        log::debug!("🎨 UI: Using fuzzy filtered nodes for query: '{}'", app.navigator.search_query);
+        let nodes = app.navigator.file_tree.get_fuzzy_filtered_visible_nodes(&app.navigator.search_query);
+        log::debug!("🎨 UI: Got {} fuzzy filtered nodes", nodes.len());
+        for (i, (node, depth)) in nodes.iter().enumerate() {
+            log::debug!("🎨 UI: Node {}: '{}' (dir: {}, depth: {})", i, node.name, node.is_dir, depth);
+        }
+        nodes
     } else {
-        app.navigator.file_tree.get_visible_nodes_with_depth()
+        log::debug!("🎨 UI: Using normal visible nodes (no search)");
+        let nodes = app.navigator.file_tree.get_visible_nodes_with_depth();
+        log::debug!("🎨 UI: Got {} normal nodes", nodes.len());
+        nodes
     };
 
     // Calculate viewport bounds based on scroll offset
