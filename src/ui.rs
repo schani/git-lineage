@@ -42,6 +42,14 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let title = if app.navigator.file_tree_state.in_search_mode {
+        // When actively searching and navigator is focused, show cursor
+        if is_active {
+            format!(" File Navigator (Search: {}|) ", app.navigator.file_tree_state.search_query)
+        } else {
+            format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
+        }
+    } else if !app.navigator.file_tree_state.search_query.is_empty() {
+        // When search is applied but not actively editing, always show the search query
         format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
     } else {
         " File Navigator ".to_string()
