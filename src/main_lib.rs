@@ -11,15 +11,21 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
 
     match result {
         TaskResult::FileTreeLoaded { files } => {
-            app.navigator.file_tree_state.set_tree_data(files, String::new(), false);
-            // Automatically select the first item in the tree
+            // Initialize both old and new navigator implementations
+            app.navigator.file_tree_state.set_tree_data(files.clone(), String::new(), false);
             app.navigator.file_tree_state.navigate_down();
-            // Reset viewport state
             app.navigator.scroll_offset = 0;
             app.navigator.cursor_position = 0;
-            // Update the list state to match the selection
             app.update_file_navigator_list_state();
-            app.ui.status_message = "File tree loaded".to_string();
+            
+            // Initialize new navigator with the same tree
+            app.initialize_new_navigator(files);
+            // Select first item in new navigator
+            if let Err(e) = app.handle_navigator_event(crate::navigator::NavigatorEvent::NavigateDown) {
+                log::warn!("Failed to initialize new navigator selection: {}", e);
+            }
+            
+            app.ui.status_message = "File tree loaded (new navigator active)".to_string();
         }
         TaskResult::CommitHistoryLoaded { file_path, commits } => {
             // Race condition protection: Only apply commits if they're for the currently active file

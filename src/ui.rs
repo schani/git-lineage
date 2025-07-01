@@ -33,6 +33,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
+    // Use new navigator if available, otherwise fall back to old one
+    if let Some(ref new_navigator) = app.new_navigator {
+        draw_file_navigator_new(frame, app, new_navigator, area);
+    } else {
+        draw_file_navigator_old(frame, app, area);
+    }
+}
+
+fn draw_file_navigator_new(frame: &mut Frame, app: &App, navigator: &crate::navigator::NavigatorState, area: Rect) {
     let theme = get_theme();
     let is_active = app.ui.active_panel == PanelFocus::Navigator;
     let border_style = if is_active {
@@ -41,11 +50,11 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(theme.inactive_border)
     };
 
-    let title = if app.navigator.file_tree_state.in_search_mode {
-        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
-    } else if !app.navigator.file_tree_state.search_query.is_empty() {
-        // When search is applied but not actively editing, always show the search query
-        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
+    // Get view model from new navigator
+    let view_model = navigator.build_view_model();
+    
+    let title = if view_model.is_searching {
+        format!(" File Navigator (Search: {}) ", view_model.search_query)
     } else {
         " File Navigator ".to_string()
     };
@@ -57,16 +66,133 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
 
     // Position cursor when in search mode and navigator is focused
-    // Do this BEFORE early return to ensure cursor shows even with no results
-    if app.navigator.file_tree_state.in_search_mode && is_active {
-        // Calculate cursor position in the title bar
-        // Title format: " File Navigator (Search: {query}) "
+    if view_model.is_searching && is_active {
         let search_prefix = " File Navigator (Search: ";
-        // Position cursor AFTER the last character, not on it
-        // Add +1 to account for border offset or positioning issue
+        let cursor_x = area.x + search_prefix.len() as u16 + view_model.search_query.len() as u16 + 1;
+        let cursor_y = area.y;
+        frame.set_cursor_position((cursor_x, cursor_y));
+    }
+
+    if view_model.items.is_empty() {
+        let paragraph = Paragraph::new("No files found")
+            .block(block)
+            .style(Style::default().fg(theme.panel_title));
+        frame.render_widget(paragraph, area);
+        return;
+    }
+
+    // Convert visible items to list items
+    let items: Vec<ListItem> = view_model.items
+        .iter()
+        .map(|item| {
+            let status_char = match item.git_status {
+                Some('M') => 'M',
+                Some('A') => 'A',
+                Some('D') => 'D',
+                Some('?') => '?',
+                _ => ' ',
+            };
+
+            let display_name = if item.is_dir {
+                let expand_char = if item.is_expanded { "▼" } else { "▶" };
+                if item.depth == 0 {
+                    format!("{} {}", expand_char, item.name)
+                } else {
+                    format!(
+                        "{}{} {}",
+                        " ".repeat(item.depth * 2),
+                        expand_char,
+                        item.name
+                    )
+                }
+            } else {
+                if item.depth == 0 {
+                    if status_char == ' ' {
+                        format!("  {}", item.name)
+                    } else {
+                        format!("{} {}", status_char, item.name)
+                    }
+                } else {
+                    if status_char == ' ' {
+                        format!("{}  {}", " ".repeat(item.depth * 2), item.name)
+                    } else {
+                        format!(
+                            "{}{} {}",
+                            " ".repeat(item.depth * 2),
+                            status_char,
+                            item.name
+                        )
+                    }
+                }
+            };
+
+            let line = if item.is_selected {
+                // Highlight selected item
+                let content_width = (area.width as usize).saturating_sub(2);
+                let display_len = display_name.chars().count();
+                let padding_needed = content_width.saturating_sub(display_len);
+                let padded_name = format!("{}{}", display_name, " ".repeat(padding_needed));
+                Line::from(vec![Span::styled(
+                    padded_name,
+                    Style::default()
+                        .fg(theme.file_selected_fg)
+                        .bg(theme.file_selected_bg)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                )])
+            } else {
+                let style = if item.is_dir {
+                    Style::default()
+                        .fg(theme.file_directory)
+                        .add_modifier(ratatui::style::Modifier::BOLD)
+                } else {
+                    match item.git_status {
+                        Some('M') => Style::default().fg(theme.file_git_modified),
+                        Some('A') => Style::default().fg(theme.file_git_added),
+                        Some('D') => Style::default().fg(theme.file_git_deleted),
+                        Some('?') => Style::default().fg(theme.file_git_untracked),
+                        _ => Style::default().fg(theme.file_default),
+                    }
+                };
+                Line::from(vec![Span::styled(display_name, style)])
+            };
+
+            ListItem::new(line)
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+    let mut list_state = ListState::default();
+    list_state.select(None);
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn draw_file_navigator_old(frame: &mut Frame, app: &App, area: Rect) {
+    let theme = get_theme();
+    let is_active = app.ui.active_panel == PanelFocus::Navigator;
+    let border_style = if is_active {
+        Style::default().fg(theme.active_border)
+    } else {
+        Style::default().fg(theme.inactive_border)
+    };
+
+    let title = if app.navigator.file_tree_state.in_search_mode {
+        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
+    } else if !app.navigator.file_tree_state.search_query.is_empty() {
+        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
+    } else {
+        " File Navigator ".to_string()
+    };
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(border_style)
+        .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
+
+    if app.navigator.file_tree_state.in_search_mode && is_active {
+        let search_prefix = " File Navigator (Search: ";
         let cursor_x = area.x + search_prefix.len() as u16 + app.navigator.file_tree_state.search_query.len() as u16 + 1;
-        let cursor_y = area.y; // Top border of the panel
-        
+        let cursor_y = area.y;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 
@@ -78,30 +204,19 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Get visible nodes with their display depths from the display tree (always correct)
     let all_visible_nodes = app.navigator.file_tree_state.get_visible_nodes_with_depth();
-    log::debug!("🎨 UI: Got {} nodes from display tree", all_visible_nodes.len());
-
-    // Calculate viewport bounds based on scroll offset
-    let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders
+    let viewport_height = (area.height as usize).saturating_sub(2);
     let scroll_offset = app.navigator.scroll_offset;
-    let _viewport_end = (scroll_offset + viewport_height).min(all_visible_nodes.len());
-
-    // Get only the nodes that should be visible in the current viewport
+    
     let visible_nodes_with_depth: Vec<_> = all_visible_nodes
         .iter()
         .skip(scroll_offset)
         .take(viewport_height)
         .collect();
 
-    // CRITICAL FAILSAFE: The actual rendered viewport is the minimum of calculated height and available nodes
     let actual_rendered_height = visible_nodes_with_depth.len();
-    let safe_cursor_position = app
-        .navigator
-        .cursor_position
-        .min(actual_rendered_height.saturating_sub(1));
+    let safe_cursor_position = app.navigator.cursor_position.min(actual_rendered_height.saturating_sub(1));
 
-    // Convert visible nodes to list items with proper highlighting
     let items: Vec<ListItem> = visible_nodes_with_depth
         .iter()
         .enumerate()
@@ -114,7 +229,6 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 _ => ' ',
             };
 
-            // Use display depth for indentation (how deep in the currently visible tree)
             let display_name = if node.is_dir {
                 let expand_char = if node.is_expanded { "▼" } else { "▶" };
                 if *display_depth == 0 {
@@ -129,14 +243,12 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 }
             } else {
                 if *display_depth == 0 {
-                    // Root level files - align with directory names (after expand char + space)
                     if status_char == ' ' {
                         format!("  {}", node.name)
                     } else {
                         format!("{} {}", status_char, node.name)
                     }
                 } else {
-                    // Nested files - align with nested directory names
                     if status_char == ' ' {
                         format!("{}  {}", " ".repeat(display_depth * 2), node.name)
                     } else {
@@ -150,12 +262,10 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                 }
             };
 
-            // Check if this node is at the cursor position within the viewport
             let is_selected = viewport_index == safe_cursor_position;
 
             let line = if is_selected {
-                // Highlight selected item with high contrast - pad to full width
-                let content_width = (area.width as usize).saturating_sub(2); // Account for borders
+                let content_width = (area.width as usize).saturating_sub(2);
                 let display_len = display_name.chars().count();
                 let padding_needed = content_width.saturating_sub(display_len);
                 let padded_name = format!("{}{}", display_name, " ".repeat(padding_needed));
@@ -167,7 +277,6 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                         .add_modifier(ratatui::style::Modifier::BOLD),
                 )])
             } else {
-                // Style based on git status and type with moderate, readable colors
                 let style = if node.is_dir {
                     Style::default()
                         .fg(theme.file_directory)
@@ -178,7 +287,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
                         Some('A') => Style::default().fg(theme.file_git_added),
                         Some('D') => Style::default().fg(theme.file_git_deleted),
                         Some('?') => Style::default().fg(theme.file_git_untracked),
-                        _ => Style::default().fg(theme.file_default), // Default terminal color
+                        _ => Style::default().fg(theme.file_default),
                     }
                 };
                 Line::from(vec![Span::styled(display_name, style)])
@@ -188,21 +297,9 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(theme.file_selected_bg)
-                .fg(theme.file_selected_fg)
-                .add_modifier(ratatui::style::Modifier::BOLD),
-        )
-        .highlight_symbol("");
-
-    // Don't use ListState selection for highlighting - we handle it manually with cursor position
-    // Set no selection to prevent automatic scrolling
+    let list = List::new(items).block(block);
     let mut list_state = ListState::default();
     list_state.select(None);
-
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
