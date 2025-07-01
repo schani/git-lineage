@@ -257,9 +257,9 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     // Add a loading indicator at the bottom if more commits are being loaded
     if !app.history.history_complete {
         let loading_line = if app.history.is_loading_more {
-            Line::from(Span::styled("⏳ Loading more commits...", Style::default().fg(theme.panel_title)))
+            Line::from(Span::styled("Loading more commits...", Style::default().fg(theme.panel_title)))
         } else {
-            Line::from(Span::styled("📥 More commits available (scroll to load)", Style::default().fg(theme.panel_title)))
+            Line::from(Span::styled("More commits available (scroll to load)", Style::default().fg(theme.panel_title)))
         };
         items.push(ListItem::new(loading_line));
     }
