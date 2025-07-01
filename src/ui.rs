@@ -63,7 +63,8 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         // Title format: " File Navigator (Search: {query}) "
         let search_prefix = " File Navigator (Search: ";
         // Position cursor AFTER the last character, not on it
-        let cursor_x = area.x + search_prefix.len() as u16 + app.navigator.file_tree_state.search_query.len() as u16;
+        // Add +1 to account for border offset or positioning issue
+        let cursor_x = area.x + search_prefix.len() as u16 + app.navigator.file_tree_state.search_query.len() as u16 + 1;
         let cursor_y = area.y; // Top border of the panel
         
         frame.set_cursor_position((cursor_x, cursor_y));
