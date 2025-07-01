@@ -1,12 +1,12 @@
 use crate::app::{CommitInfo, PanelFocus};
-use crate::tree::{FileTree, TreeNode};
+use crate::tree::{FileTreeState, TreeNode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
     pub active_panel: PanelFocus,
-    pub file_tree: FileTree,
+    pub file_tree_state: FileTreeState,
     pub selected_file_navigator_index: Option<usize>,
     pub search_query: String,
     pub in_search_mode: bool,
@@ -20,11 +20,14 @@ pub struct TestConfig {
     pub show_diff_view: bool,
     pub status_message: String,
     pub is_loading: bool,
+    // Missing fields needed for UI rendering
+    pub active_file_context: Option<PathBuf>,
+    pub selected_commit_hash: Option<String>,
 }
 
 impl Default for TestConfig {
     fn default() -> Self {
-        let mut file_tree = FileTree::new();
+        let mut file_tree_state = FileTreeState::new();
 
         // Create sample tree structure
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
@@ -41,15 +44,14 @@ impl Default for TestConfig {
         let cargo_toml = TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml"))
             .with_git_status('M');
 
-        file_tree.root.push(src_dir);
-        file_tree.root.push(cargo_toml);
+        file_tree_state.add_root_node(src_dir);
+        file_tree_state.add_root_node(cargo_toml);
 
-        // Select the main.rs file by default
-        file_tree.select_node(&PathBuf::from("src/main.rs"));
+        // Note: selection is handled separately now in FileTreeState
 
         Self {
             active_panel: PanelFocus::Navigator,
-            file_tree,
+            file_tree_state,
             selected_file_navigator_index: Some(0),
             search_query: String::new(),
             in_search_mode: false,
@@ -95,6 +97,8 @@ impl Default for TestConfig {
             show_diff_view: false,
             status_message: "Ready".to_string(),
             is_loading: false,
+            active_file_context: Some(PathBuf::from("src/main.rs")),
+            selected_commit_hash: Some("a1b2c3d4e5f6789012345678901234567890abcd".to_string()),
         }
     }
 }
@@ -115,10 +119,10 @@ impl TestConfig {
     pub fn from_app(app: &crate::app::App) -> Self {
         TestConfig {
             active_panel: app.ui.active_panel.clone(),
-            file_tree: app.navigator.file_tree.clone(),
+            file_tree_state: app.navigator.file_tree_state.clone(),
             selected_file_navigator_index: app.navigator.list_state.selected(),
-            search_query: app.navigator.search_query.clone(),
-            in_search_mode: app.navigator.in_search_mode,
+            search_query: app.navigator.file_tree_state.search_query.clone(),
+            in_search_mode: app.navigator.file_tree_state.in_search_mode,
             commit_list: app.history.commit_list.clone(),
             selected_commit_index: app.history.list_state.selected(),
             current_content: app.inspector.current_content.clone(),
@@ -129,6 +133,8 @@ impl TestConfig {
             show_diff_view: app.inspector.show_diff_view,
             status_message: app.ui.status_message.clone(),
             is_loading: app.ui.is_loading,
+            active_file_context: app.active_file_context.clone(),
+            selected_commit_hash: app.history.selected_commit_hash.clone(),
         }
     }
 }

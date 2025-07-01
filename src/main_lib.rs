@@ -1,6 +1,7 @@
 // Library module containing testable functions from main.rs
 
 use crate::app::App;
+use crate::tree::FileTreeState;
 use crate::async_task::TaskResult;
 use crate::error::Result;
 use std::fs;
@@ -10,9 +11,9 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
 
     match result {
         TaskResult::FileTreeLoaded { files } => {
-            app.navigator.file_tree = files;
+            app.navigator.file_tree_state.set_tree_data(files, String::new(), false);
             // Automatically select the first item in the tree
-            app.navigator.file_tree.navigate_to_first();
+            app.navigator.file_tree_state.navigate_down();
             // Reset viewport state
             app.navigator.scroll_offset = 0;
             app.navigator.cursor_position = 0;
@@ -248,9 +249,9 @@ pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
     // Load the file tree directly
     match crate::async_task::load_file_tree(".").await {
         Ok(tree) => {
-            app.navigator.file_tree = tree;
+            app.navigator.file_tree_state = FileTreeState::from_directory(".")?;
             // Automatically select the first item in the tree
-            app.navigator.file_tree.navigate_to_first();
+            app.navigator.file_tree_state.navigate_down();
             // Reset viewport state
             app.navigator.scroll_offset = 0;
             app.navigator.cursor_position = 0;

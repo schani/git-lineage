@@ -1,48 +1,97 @@
 {
   "active_panel": "Navigator",
-  "file_tree": {
-    "root": [
-      {
-        "name": "src",
-        "path": "src",
-        "is_dir": true,
-        "git_status": null,
-        "is_expanded": true,
-        "children": [
-          {
-            "name": "lib.rs",
-            "path": "src/lib.rs",
-            "is_dir": false,
-            "git_status": "A",
-            "is_expanded": false,
-            "children": [],
-            "parent_path": "src"
-          },
-          {
-            "name": "main.rs",
-            "path": "src/main.rs",
-            "is_dir": false,
-            "git_status": "M",
-            "is_expanded": false,
-            "children": [],
-            "parent_path": "src"
-          }
-        ],
-        "parent_path": null
-      },
-      {
-        "name": "Cargo.toml",
-        "path": "Cargo.toml",
-        "is_dir": false,
-        "git_status": "M",
-        "is_expanded": false,
-        "children": [],
-        "parent_path": null
-      }
-    ],
+  "file_tree_state": {
+    "original_tree": {
+      "root": [
+        {
+          "name": "src",
+          "path": "src",
+          "is_dir": true,
+          "git_status": null,
+          "is_expanded": true,
+          "children": [
+            {
+              "name": "lib.rs",
+              "path": "src/lib.rs",
+              "is_dir": false,
+              "git_status": "A",
+              "is_expanded": false,
+              "children": [],
+              "parent_path": "src"
+            },
+            {
+              "name": "main.rs",
+              "path": "src/main.rs",
+              "is_dir": false,
+              "git_status": "M",
+              "is_expanded": false,
+              "children": [],
+              "parent_path": "src"
+            }
+          ],
+          "parent_path": null
+        },
+        {
+          "name": "Cargo.toml",
+          "path": "Cargo.toml",
+          "is_dir": false,
+          "git_status": "M",
+          "is_expanded": false,
+          "children": [],
+          "parent_path": null
+        }
+      ],
+      "repo_root": "",
+      "git_status_map": {}
+    },
+    "display_tree": {
+      "root": [
+        {
+          "name": "src",
+          "path": "src",
+          "is_dir": true,
+          "git_status": null,
+          "is_expanded": true,
+          "children": [
+            {
+              "name": "lib.rs",
+              "path": "src/lib.rs",
+              "is_dir": false,
+              "git_status": "A",
+              "is_expanded": false,
+              "children": [],
+              "parent_path": "src"
+            },
+            {
+              "name": "main.rs",
+              "path": "src/main.rs",
+              "is_dir": false,
+              "git_status": "M",
+              "is_expanded": false,
+              "children": [],
+              "parent_path": "src"
+            }
+          ],
+          "parent_path": null
+        },
+        {
+          "name": "Cargo.toml",
+          "path": "Cargo.toml",
+          "is_dir": false,
+          "git_status": "M",
+          "is_expanded": false,
+          "children": [],
+          "parent_path": null
+        }
+      ],
+      "repo_root": "",
+      "git_status_map": {}
+    },
     "current_selection": "src/main.rs",
-    "git_status_map": {}
+    "search_query": "",
+    "in_search_mode": false
   },
+  "selected_file_navigator_index": null,
   "search_query": "",
   "in_search_mode": false,
   "commit_list": [
@@ -68,5 +117,7 @@
   "inspector_scroll_horizontal": 0,
   "show_diff_view": false,
   "status_message": "Ready",
-  "is_loading": false
+  "is_loading": false,
+  "active_file_context": "src/main.rs",
+  "selected_commit_hash": "a1b2c3d4e5f6789012345678901234567890abcd"
 }

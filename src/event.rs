@@ -1,10 +1,10 @@
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use log::{debug, info, warn};
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 use crate::app::{App, PanelFocus};
 use crate::async_task::Task;
+use crate::tree::FileTree;
 
 pub fn handle_event(
     event: Event,
@@ -17,21 +17,21 @@ pub fn handle_event(
             match key.code {
                 KeyCode::Char('q') => {
                     // Don't quit if in search mode - let panel handlers deal with it
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         app.should_quit = true;
                         return Ok(());
                     }
                 }
                 KeyCode::Esc => {
                     // Don't quit if in search mode - let panel handlers deal with it
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         app.should_quit = true;
                         return Ok(());
                     }
                 }
                 KeyCode::Tab => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         if key.modifiers.contains(KeyModifiers::SHIFT) {
                             app.previous_panel();
                         } else {
@@ -42,28 +42,28 @@ pub fn handle_event(
                 }
                 KeyCode::Char('1') => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         app.ui.active_panel = PanelFocus::Navigator;
                         return Ok(());
                     }
                 }
                 KeyCode::Char('2') => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         app.ui.active_panel = PanelFocus::History;
                         return Ok(());
                     }
                 }
                 KeyCode::Char('3') => {
                     // Don't switch panels if in search mode
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         app.ui.active_panel = PanelFocus::Inspector;
                         return Ok(());
                     }
                 }
                 KeyCode::Char('[') => {
                     // Don't navigate commits if in search mode
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         if navigate_to_older_commit(app) {
                             return Ok(());
                         }
@@ -71,7 +71,7 @@ pub fn handle_event(
                 }
                 KeyCode::Char(']') => {
                     // Don't navigate commits if in search mode
-                    if !app.navigator.in_search_mode {
+                    if !app.navigator.file_tree_state.in_search_mode {
                         if navigate_to_younger_commit(app) {
                             return Ok(());
                         }
@@ -101,20 +101,23 @@ fn handle_navigator_event(
     key: KeyCode,
     task_sender: &mpsc::Sender<Task>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if app.navigator.in_search_mode {
+    if app.navigator.file_tree_state.in_search_mode {
         match key {
             KeyCode::Char(c) => {
-                app.navigator.search_query.push(c);
-                log::debug!("⌨️  Added '{}' to search query, now: '{}'", c, app.navigator.search_query);
+                app.navigator.file_tree_state.search_query.push(c);
+                app.navigator.file_tree_state.set_search_query(app.navigator.file_tree_state.search_query.clone());
+                log::debug!("⌨️  Added '{}' to search query, now: '{}'", c, app.navigator.file_tree_state.search_query);
                 // Filtering happens automatically in UI rendering
             }
             KeyCode::Backspace => {
-                app.navigator.search_query.pop();
+                app.navigator.file_tree_state.search_query.pop();
+                app.navigator.file_tree_state.set_search_query(app.navigator.file_tree_state.search_query.clone());
             }
             KeyCode::Enter | KeyCode::Esc => {
-                app.navigator.in_search_mode = false;
                 if key == KeyCode::Esc {
-                    app.navigator.search_query.clear();
+                    app.navigator.file_tree_state.clear_search();
+                } else {
+                    app.navigator.file_tree_state.exit_search_mode();
                 }
                 // Reset cursor to top when exiting search mode
                 app.navigator.cursor_position = 0;
@@ -154,16 +157,16 @@ fn handle_navigator_event(
             if let Some(selected_path) = app.get_selected_file_path() {
                 let is_dir = app
                     .navigator
-                    .file_tree
-                    .find_node(&selected_path)
+                    .file_tree_state
+                    .find_node_in_tree(app.navigator.file_tree_state.display_tree(), &selected_path)
                     .map(|node| node.is_dir)
                     .unwrap_or(false);
 
                 if is_dir {
                     let was_expanded = app
                         .navigator
-                        .file_tree
-                        .find_node(&selected_path)
+                        .file_tree_state
+                        .find_node_in_tree(app.navigator.file_tree_state.display_tree(), &selected_path)
                         .map(|node| node.is_expanded)
                         .unwrap_or(false);
 
@@ -183,8 +186,7 @@ fn handle_navigator_event(
             }
         }
         KeyCode::Char('/') => {
-            app.navigator.in_search_mode = true;
-            app.navigator.search_query.clear();
+            app.navigator.file_tree_state.enter_search_mode();
             // Reset cursor to top when entering search mode
             app.navigator.cursor_position = 0;
             app.navigator.scroll_offset = 0;
@@ -557,8 +559,8 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
     if let Some(selected_path) = app.get_selected_file_path() {
         let is_dir = app
             .navigator
-            .file_tree
-            .find_node(&selected_path)
+            .file_tree_state
+            .find_node_in_tree(app.navigator.file_tree_state.display_tree(), &selected_path)
             .map(|node| node.is_dir)
             .unwrap_or(false);
 
@@ -755,9 +757,11 @@ mod tests {
         tests_dir.add_child(test_file);
 
         // Add nodes to the file tree root
-        app.navigator.file_tree.root.push(src_main);
-        app.navigator.file_tree.root.push(src_lib);
-        app.navigator.file_tree.root.push(tests_dir);
+        let mut tree = FileTree::new();
+        tree.root.push(src_main);
+        tree.root.push(src_lib);
+        tree.root.push(tests_dir);
+        app.navigator.file_tree_state.set_tree_data(tree, String::new(), false);
 
         // Add some commits for testing
         app.history.commit_list = vec![
@@ -916,73 +920,73 @@ mod tests {
         async fn test_search_mode_activation() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.in_search_mode = false;
+            app.navigator.file_tree_state.in_search_mode = false;
             let (tx, _rx) = create_test_channel().await;
 
             let event = create_key_event(KeyCode::Char('/'));
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            assert!(app.navigator.in_search_mode);
-            assert!(app.navigator.search_query.is_empty());
+            assert!(app.navigator.file_tree_state.in_search_mode);
+            assert!(app.navigator.file_tree_state.search_query.is_empty());
         }
 
         #[tokio::test]
         async fn test_search_input_handling() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.in_search_mode = true;
+            app.navigator.file_tree_state.in_search_mode = true;
             let (tx, _rx) = create_test_channel().await;
 
             // Test character input
             let event = create_key_event(KeyCode::Char('t'));
             let result = handle_event(event, &mut app, &tx);
             assert!(result.is_ok());
-            assert_eq!(app.navigator.search_query, "t");
+            assert_eq!(app.navigator.file_tree_state.search_query, "t");
 
             // Test more characters
             let event = create_key_event(KeyCode::Char('e'));
             let result = handle_event(event, &mut app, &tx);
             assert!(result.is_ok());
-            assert_eq!(app.navigator.search_query, "te");
+            assert_eq!(app.navigator.file_tree_state.search_query, "te");
 
             // Test backspace
             let event = create_key_event(KeyCode::Backspace);
             let result = handle_event(event, &mut app, &tx);
             assert!(result.is_ok());
-            assert_eq!(app.navigator.search_query, "t");
+            assert_eq!(app.navigator.file_tree_state.search_query, "t");
         }
 
         #[tokio::test]
         async fn test_search_escape() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.in_search_mode = true;
-            app.navigator.search_query = "test query".to_string();
+            app.navigator.file_tree_state.in_search_mode = true;
+            app.navigator.file_tree_state.search_query = "test query".to_string();
             let (tx, _rx) = create_test_channel().await;
 
             let event = create_key_event(KeyCode::Esc);
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            assert!(!app.navigator.in_search_mode);
-            assert!(app.navigator.search_query.is_empty());
+            assert!(!app.navigator.file_tree_state.in_search_mode);
+            assert!(app.navigator.file_tree_state.search_query.is_empty());
         }
 
         #[tokio::test]
         async fn test_search_enter() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.in_search_mode = true;
-            app.navigator.search_query = "test query".to_string();
+            app.navigator.file_tree_state.in_search_mode = true;
+            app.navigator.file_tree_state.search_query = "test query".to_string();
             let (tx, _rx) = create_test_channel().await;
 
             let event = create_key_event(KeyCode::Enter);
             let result = handle_event(event, &mut app, &tx);
 
             assert!(result.is_ok());
-            assert!(!app.navigator.in_search_mode);
-            assert_eq!(app.navigator.search_query, "test query"); // Should preserve query on Enter
+            assert!(!app.navigator.file_tree_state.in_search_mode);
+            assert_eq!(app.navigator.file_tree_state.search_query, "test query"); // Should preserve query on Enter
         }
 
         #[tokio::test]
@@ -990,7 +994,7 @@ mod tests {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
             // Start with no selection
-            app.navigator.file_tree.current_selection = None;
+            app.navigator.file_tree_state.current_selection = None;
             let (tx, mut rx) = create_test_channel().await;
 
             // Navigate down should trigger automatic loading for the first file
@@ -1015,7 +1019,7 @@ mod tests {
         async fn test_enter_on_file_switches_to_inspector() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/main.rs"));
             let (tx, _rx) = create_test_channel().await;
 
             let event = create_key_event(KeyCode::Enter);
@@ -1024,6 +1028,55 @@ mod tests {
             assert!(result.is_ok());
             assert_eq!(app.ui.active_panel, PanelFocus::Inspector);
             assert!(app.ui.status_message.contains("Viewing content"));
+        }
+
+        #[tokio::test]
+        async fn test_navigation_updates_visual_cursor() {
+            let mut app = create_test_app();
+            app.ui.active_panel = PanelFocus::Navigator;
+            let (tx, _rx) = create_test_channel().await;
+
+            // Start with cursor at top
+            app.navigator.cursor_position = 0;
+            app.navigator.scroll_offset = 0;
+
+            // Navigate down - should move cursor and update selection
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Verify that both the file tree state and cursor position are updated
+            assert!(app.navigator.file_tree_state.current_selection.is_some());
+            let first_cursor_pos = app.navigator.cursor_position;
+
+            // Navigate down again
+            let event = create_key_event(KeyCode::Down);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Verify cursor position moved to next item
+            let second_cursor_pos = app.navigator.cursor_position;
+            assert!(second_cursor_pos > first_cursor_pos || 
+                   (second_cursor_pos == first_cursor_pos && app.navigator.scroll_offset > 0), 
+                "Cursor should move down or scroll should occur: cursor {} -> {} (scroll: {})", 
+                first_cursor_pos, second_cursor_pos, app.navigator.scroll_offset);
+
+            // Navigate up
+            let event = create_key_event(KeyCode::Up);
+            let result = handle_event(event, &mut app, &tx);
+            assert!(result.is_ok());
+
+            // Verify cursor position moved back (accounting for scrolling)
+            let final_cursor_pos = app.navigator.cursor_position;
+            let final_scroll = app.navigator.scroll_offset;
+            
+            // The actual visual position is cursor_position + scroll_offset
+            let first_visual_pos = first_cursor_pos + 0; // Initial scroll was 0
+            let final_visual_pos = final_cursor_pos + final_scroll;
+            
+            assert_eq!(final_visual_pos, first_visual_pos,
+                "Visual position should return to original: {} -> {} (cursor: {}, scroll: {})", 
+                first_visual_pos, final_visual_pos, final_cursor_pos, final_scroll);
         }
     }
 
@@ -1266,7 +1319,7 @@ mod tests {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Inspector;
             app.inspector.cursor_line = 5;
-            app.navigator.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/main.rs"));
             app.history.selected_commit_hash = Some("abc123".to_string());
             let (tx, mut rx) = create_test_channel().await;
 
@@ -1298,7 +1351,7 @@ mod tests {
         async fn test_next_change_without_context() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Inspector;
-            app.navigator.file_tree.current_selection = None; // No file selected
+            app.navigator.file_tree_state.current_selection = None; // No file selected
             app.history.selected_commit_hash = None; // No commit selected
             let (tx, _rx) = create_test_channel().await;
 
@@ -1422,7 +1475,7 @@ mod tests {
         #[test]
         fn test_handle_next_change_task_send_failure() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection = Some(PathBuf::from("src/main.rs"));
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/main.rs"));
             app.history.selected_commit_hash = Some("abc123".to_string());
             app.inspector.cursor_line = 5;
 
@@ -1444,7 +1497,7 @@ mod tests {
         #[test]
         fn test_handle_file_selection_change_with_file() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection =
+            app.navigator.file_tree_state.current_selection =
                 Some(std::path::PathBuf::from("src/main.rs"));
             let (tx, mut rx) = tokio::sync::mpsc::channel(100);
 
@@ -1472,7 +1525,7 @@ mod tests {
         #[test]
         fn test_handle_file_selection_change_with_directory() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection = Some(std::path::PathBuf::from("tests"));
+            app.navigator.file_tree_state.current_selection = Some(std::path::PathBuf::from("tests"));
             app.active_file_context = Some(std::path::PathBuf::from("old_file.rs"));
             app.history.commit_list.push(crate::app::CommitInfo {
                 hash: "test".to_string(),
@@ -1495,7 +1548,7 @@ mod tests {
         #[test]
         fn test_handle_file_selection_change_no_selection() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection = None;
+            app.navigator.file_tree_state.current_selection = None;
             app.active_file_context = Some(std::path::PathBuf::from("old_file.rs"));
             let (tx, _rx) = tokio::sync::mpsc::channel(100);
 
@@ -1511,7 +1564,7 @@ mod tests {
         #[test]
         fn test_handle_file_selection_change_task_send_failure() {
             let mut app = create_test_app();
-            app.navigator.file_tree.current_selection =
+            app.navigator.file_tree_state.current_selection =
                 Some(std::path::PathBuf::from("src/main.rs"));
 
             // Create a channel and immediately drop the receiver to simulate failure
@@ -1663,7 +1716,7 @@ mod tests {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
             // Start with no selection to trigger navigation
-            app.navigator.file_tree.current_selection = None;
+            app.navigator.file_tree_state.current_selection = None;
 
             // Create a channel and immediately drop the receiver to simulate failure
             let (tx, rx) = create_test_channel().await;
@@ -1804,7 +1857,7 @@ mod tests {
         async fn test_search_with_special_characters() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.in_search_mode = true;
+            app.navigator.file_tree_state.in_search_mode = true;
             let (tx, _rx) = create_test_channel().await;
 
             let special_chars = vec!['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+'];
@@ -1815,15 +1868,15 @@ mod tests {
                 assert!(result.is_ok());
             }
 
-            assert_eq!(app.navigator.search_query.len(), 12);
+            assert_eq!(app.navigator.file_tree_state.search_query.len(), 12);
         }
 
         #[tokio::test]
         async fn test_multiple_backspaces_in_search() {
             let mut app = create_test_app();
             app.ui.active_panel = PanelFocus::Navigator;
-            app.navigator.in_search_mode = true;
-            app.navigator.search_query = "test".to_string();
+            app.navigator.file_tree_state.in_search_mode = true;
+            app.navigator.file_tree_state.search_query = "test".to_string();
             let (tx, _rx) = create_test_channel().await;
 
             // Backspace more times than there are characters
@@ -1833,7 +1886,7 @@ mod tests {
                 assert!(result.is_ok());
             }
 
-            assert!(app.navigator.search_query.is_empty());
+            assert!(app.navigator.file_tree_state.search_query.is_empty());
         }
     }
 }

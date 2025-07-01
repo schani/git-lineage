@@ -99,7 +99,7 @@ fn create_test_app() -> App {
     let mut tree = FileTree::new();
     let src_node = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
     tree.root.push(src_node);
-    app.navigator.file_tree = tree;
+    app.navigator.file_tree_state.set_tree_data(tree, String::new(), false);
 
     app.history.commit_list = vec![CommitInfo {
         hash: "abc123".to_string(),
@@ -247,7 +247,7 @@ mod task_result_handling {
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
         assert!(!app.ui.is_loading);
-        assert_eq!(app.navigator.file_tree.root.len(), 1);
+        assert_eq!(app.navigator.file_tree_state.original_tree().root.len(), 1);
         assert_eq!(app.navigator.scroll_offset, 0);
         assert_eq!(app.navigator.cursor_position, 0);
         assert!(app.ui.status_message.contains("File tree loaded"));

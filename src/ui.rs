@@ -41,8 +41,8 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(theme.inactive_border)
     };
 
-    let title = if app.navigator.in_search_mode {
-        format!(" File Navigator (Search: {}) ", app.navigator.search_query)
+    let title = if app.navigator.file_tree_state.in_search_mode {
+        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
     } else {
         " File Navigator ".to_string()
     };
@@ -53,7 +53,7 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         .border_style(border_style)
         .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
 
-    if app.navigator.file_tree.root.is_empty() {
+    if app.navigator.file_tree_state.display_tree().root.is_empty() {
         let paragraph = Paragraph::new("No files found")
             .block(block)
             .style(Style::default().fg(theme.panel_title));
@@ -61,21 +61,9 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Get visible nodes with their display depths from the file tree
-    let all_visible_nodes = if !app.navigator.search_query.is_empty() {
-        log::debug!("🎨 UI: Using fuzzy filtered nodes for query: '{}'", app.navigator.search_query);
-        let nodes = app.navigator.file_tree.get_fuzzy_filtered_visible_nodes(&app.navigator.search_query);
-        log::debug!("🎨 UI: Got {} fuzzy filtered nodes", nodes.len());
-        for (i, (node, depth)) in nodes.iter().enumerate() {
-            log::debug!("🎨 UI: Node {}: '{}' (dir: {}, depth: {})", i, node.name, node.is_dir, depth);
-        }
-        nodes
-    } else {
-        log::debug!("🎨 UI: Using normal visible nodes (no search)");
-        let nodes = app.navigator.file_tree.get_visible_nodes_with_depth();
-        log::debug!("🎨 UI: Got {} normal nodes", nodes.len());
-        nodes
-    };
+    // Get visible nodes with their display depths from the display tree (always correct)
+    let all_visible_nodes = app.navigator.file_tree_state.get_visible_nodes_with_depth();
+    log::debug!("🎨 UI: Got {} nodes from display tree", all_visible_nodes.len());
 
     // Calculate viewport bounds based on scroll offset
     let viewport_height = (area.height as usize).saturating_sub(2); // Account for borders

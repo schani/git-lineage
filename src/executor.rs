@@ -1,4 +1,4 @@
-use crate::{app::PanelFocus, command::Command, test_config::TestConfig};
+use crate::{app::PanelFocus, command::Command, test_config::TestConfig, tree::FileTreeState};
 
 /// Result of executing a command
 #[derive(Debug, Clone)]
@@ -251,7 +251,7 @@ impl Executor {
 // Implementation of specific command handlers
 impl Executor {
     fn execute_navigate_up(config: &mut TestConfig, status_message: &mut Option<String>) {
-        if config.file_tree.navigate_up() {
+        if config.file_tree_state.navigate_up() {
             *status_message = Some("Navigated up in file tree".to_string());
         } else {
             *status_message = Some("Already at top".to_string());
@@ -259,7 +259,7 @@ impl Executor {
     }
 
     fn execute_navigate_down(config: &mut TestConfig, status_message: &mut Option<String>) {
-        if config.file_tree.navigate_down() {
+        if config.file_tree_state.navigate_down() {
             *status_message = Some("Navigated down in file tree".to_string());
         } else {
             *status_message = Some("Already at bottom".to_string());
@@ -267,49 +267,72 @@ impl Executor {
     }
 
     fn execute_expand_node(config: &mut TestConfig, status_message: &mut Option<String>) {
-        if let Some(selected_path) = config.file_tree.current_selection.clone() {
-            if config.file_tree.expand_node(&selected_path) {
-                *status_message = Some("Expanded directory node".to_string());
+        if let Some(ref selection_path) = config.file_tree_state.current_selection.clone() {
+            if let Some(node) = config.file_tree_state.find_node_in_tree(&config.file_tree_state.display_tree(), selection_path) {
+                if node.is_dir {
+                    if config.file_tree_state.expand_selected() {
+                        *status_message = Some("Expanded directory".to_string());
+                    } else {
+                        *status_message = Some("Directory already expanded".to_string());
+                    }
+                } else {
+                    *status_message = Some("Cannot expand file".to_string());
+                }
             } else {
-                *status_message = Some("Cannot expand this node".to_string());
+                *status_message = Some("Cannot find selected node".to_string());
             }
+        } else {
+            *status_message = Some("No file selected".to_string());
         }
     }
 
     fn execute_collapse_node(config: &mut TestConfig, status_message: &mut Option<String>) {
-        if let Some(selected_path) = config.file_tree.current_selection.clone() {
-            if config.file_tree.collapse_node(&selected_path) {
-                *status_message = Some("Collapsed directory node".to_string());
+        if let Some(ref selection_path) = config.file_tree_state.current_selection.clone() {
+            if let Some(node) = config.file_tree_state.find_node_in_tree(&config.file_tree_state.display_tree(), selection_path) {
+                if node.is_dir {
+                    if config.file_tree_state.collapse_selected() {
+                        *status_message = Some("Collapsed directory".to_string());
+                    } else {
+                        *status_message = Some("Directory already collapsed".to_string());
+                    }
+                } else {
+                    *status_message = Some("Cannot collapse file".to_string());
+                }
             } else {
-                *status_message = Some("Cannot collapse this node".to_string());
+                *status_message = Some("Cannot find selected node".to_string());
             }
+        } else {
+            *status_message = Some("No file selected".to_string());
         }
     }
 
     fn execute_select_file(config: &mut TestConfig, status_message: &mut Option<String>) {
-        if let Some(selected_path) = config.file_tree.current_selection.clone() {
-            let is_dir = config
-                .file_tree
-                .find_node(&selected_path)
-                .map(|node| node.is_dir)
-                .unwrap_or(false);
-
-            if !is_dir {
-                *status_message = Some(format!("Selected file: {}", selected_path.display()));
-            } else {
-                // Toggle directory expansion
-                let was_expanded = config
-                    .file_tree
-                    .find_node(&selected_path)
-                    .map(|n| n.is_expanded)
-                    .unwrap_or(false);
-
-                config.file_tree.toggle_node(&selected_path);
-                *status_message = Some(if was_expanded {
-                    "Collapsed directory".to_string()
+        if let Some(ref selection_path) = config.file_tree_state.current_selection.clone() {
+            // First, get the node information without borrowing mutably
+            let node_info = config.file_tree_state.find_node_in_tree(&config.file_tree_state.display_tree(), selection_path)
+                .map(|node| (node.is_dir, node.is_expanded));
+            
+            if let Some((is_dir, was_expanded)) = node_info {
+                if is_dir {
+                    // For directories, toggle expansion
+                    if config.file_tree_state.toggle_selected() {
+                        if was_expanded {
+                            *status_message = Some("Collapsed directory".to_string());
+                        } else {
+                            *status_message = Some("Expanded directory".to_string());
+                        }
+                    } else {
+                        *status_message = Some("Cannot toggle directory".to_string());
+                    }
                 } else {
-                    "Expanded directory".to_string()
-                });
+                    // For files, just confirm selection
+                    let file_name = selection_path.file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    *status_message = Some(format!("Selected file: {}", file_name));
+                }
+            } else {
+                *status_message = Some("Cannot find selected node".to_string());
             }
         } else {
             *status_message = Some("No file selected".to_string());
@@ -416,11 +439,14 @@ mod tests {
             PathBuf::from("Cargo.toml"),
         ));
 
+        // Create FileTreeState from the tree
+        let mut file_tree_state = FileTreeState::new();
+        file_tree_state.set_tree_data(tree, String::new(), false);
         // Select the first item (src directory)
-        tree.navigate_to_first();
+        file_tree_state.navigate_down();
 
         TestConfig {
-            file_tree: tree,
+            file_tree_state,
             active_panel: PanelFocus::Navigator,
             ..TestConfig::default()
         }
@@ -578,12 +604,15 @@ mod tests {
             let mut config = create_test_config_with_tree();
 
             // Navigate to the bottom
-            while config.file_tree.navigate_down() {
+            loop {
                 let result = Executor::execute(&config, Command::NavigateDown);
                 config = result.config;
+                if result.status_message.as_ref().map_or(false, |msg| msg.contains("Already at bottom")) {
+                    break;
+                }
             }
 
-            // Try to navigate down when at bottom
+            // Try to navigate down when at bottom again (should still be at bottom)
             let result = Executor::execute(&config, Command::NavigateDown);
             assert!(result.status_message.unwrap().contains("Already at bottom"));
         }
@@ -614,7 +643,7 @@ mod tests {
             let mut config = create_test_config_with_tree();
 
             // Navigate to a file (Cargo.toml)
-            config.file_tree.select_node(&PathBuf::from("Cargo.toml"));
+            config.file_tree_state.current_selection = Some(PathBuf::from("Cargo.toml"));
 
             // Try to expand a file (should fail)
             let result = Executor::execute(&config, Command::ExpandNode);
@@ -630,7 +659,7 @@ mod tests {
             let mut config = create_test_config_with_tree();
 
             // Select a file
-            config.file_tree.select_node(&PathBuf::from("Cargo.toml"));
+            config.file_tree_state.current_selection = Some(PathBuf::from("Cargo.toml"));
             let result = Executor::execute(&config, Command::SelectFile);
             assert!(result
                 .status_message
@@ -642,10 +671,12 @@ mod tests {
         fn test_select_directory_toggles_expansion() {
             let mut config = create_test_config_with_tree();
 
-            // Start with collapsed src directory
+            // Start with src directory - first ensure it's collapsed
             let src_path = PathBuf::from("src");
-            config.file_tree.collapse_node(&src_path);
-            config.file_tree.select_node(&src_path);
+            config.file_tree_state.current_selection = Some(src_path.clone());
+            
+            // Make sure src directory is collapsed first
+            config.file_tree_state.collapse_selected();
 
             // Select directory should expand it
             let result = Executor::execute(&config, Command::SelectFile);
@@ -668,11 +699,11 @@ mod tests {
         fn test_select_file_no_selection() {
             let mut config = TestConfig {
                 active_panel: PanelFocus::Navigator,
-                file_tree: FileTree::new(), // Truly empty file tree
+                file_tree_state: FileTreeState::new(), // Truly empty file tree state
                 ..TestConfig::default()
             };
             // Ensure no selection
-            config.file_tree.current_selection = None;
+            config.file_tree_state.current_selection = None;
 
             let result = Executor::execute(&config, Command::SelectFile);
             assert!(result.status_message.unwrap().contains("No file selected"));

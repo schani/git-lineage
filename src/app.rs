@@ -1,11 +1,10 @@
-use crate::tree::FileTree;
+use crate::tree::FileTreeState;
 use gix::Repository;
 use log::{debug, info, warn};
 use ratatui::widgets::ListState;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tui_tree_widget::TreeState;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,14 +34,11 @@ pub struct CommitInfo {
 
 #[derive(Debug)]
 pub struct NavigatorState {
-    pub file_tree: FileTree,
-    pub file_tree_state: TreeState<usize>,
+    pub file_tree_state: FileTreeState,
     pub list_state: ListState,
     pub scroll_offset: usize,
     pub cursor_position: usize,
     pub viewport_height: usize,
-    pub search_query: String,
-    pub in_search_mode: bool,
 }
 
 #[derive(Debug)]
@@ -137,38 +133,26 @@ impl App {
     }
 
     pub fn expand_selected_node(&mut self) -> bool {
-        if let Some(selected_path) = self.navigator.file_tree.current_selection.clone() {
-            self.navigator.file_tree.expand_node(&selected_path)
-        } else {
-            false
-        }
+        self.navigator.file_tree_state.expand_selected()
     }
 
     pub fn collapse_selected_node(&mut self) -> bool {
-        if let Some(selected_path) = self.navigator.file_tree.current_selection.clone() {
-            self.navigator.file_tree.collapse_node(&selected_path)
-        } else {
-            false
-        }
+        self.navigator.file_tree_state.collapse_selected()
     }
 
     pub fn toggle_selected_node(&mut self) -> bool {
-        if let Some(selected_path) = self.navigator.file_tree.current_selection.clone() {
-            self.navigator.file_tree.toggle_node(&selected_path)
-        } else {
-            false
-        }
+        self.navigator.file_tree_state.toggle_selected()
     }
 
     pub fn get_selected_file_path(&self) -> Option<PathBuf> {
-        self.navigator.file_tree.current_selection.clone()
+        self.navigator.file_tree_state.get_selected_file_path()
     }
 
     /// Update the file navigator list state to match the current file tree selection
     pub fn update_file_navigator_list_state(&mut self) {
-        if let Some(ref current_selection) = self.navigator.file_tree.current_selection {
+        if let Some(ref current_selection) = self.navigator.file_tree_state.current_selection {
             // Get visible nodes with depth to find the current selection index
-            let visible_nodes_with_depth = self.navigator.file_tree.get_visible_nodes_with_depth();
+            let visible_nodes_with_depth = self.navigator.file_tree_state.get_visible_nodes_with_depth();
             let selected_index = visible_nodes_with_depth
                 .iter()
                 .position(|(node, _)| &node.path == current_selection);
@@ -186,14 +170,14 @@ impl App {
             return false;
         }
 
-        let visible_nodes = self.navigator.file_tree.get_visible_nodes_with_depth();
+        let visible_nodes = self.navigator.file_tree_state.get_visible_nodes_with_depth();
         if visible_nodes.is_empty() {
             return false;
         }
 
         // Find current absolute position
         let current_absolute_pos =
-            if let Some(ref current_selection) = self.navigator.file_tree.current_selection {
+            if let Some(ref current_selection) = self.navigator.file_tree_state.current_selection {
                 visible_nodes
                     .iter()
                     .position(|(node, _)| &node.path == current_selection)
@@ -238,7 +222,7 @@ impl App {
 
         // Update the actual file tree selection
         if let Some((node, _)) = visible_nodes.get(new_absolute_pos) {
-            self.navigator.file_tree.current_selection = Some(node.path.clone());
+            self.navigator.file_tree_state.current_selection = Some(node.path.clone());
             self.update_file_navigator_list_state();
             true
         } else {
@@ -253,14 +237,14 @@ impl App {
             return false;
         }
 
-        let visible_nodes = self.navigator.file_tree.get_visible_nodes_with_depth();
+        let visible_nodes = self.navigator.file_tree_state.get_visible_nodes_with_depth();
         if visible_nodes.is_empty() {
             return false;
         }
 
         // Find current absolute position
         let current_absolute_pos =
-            if let Some(ref current_selection) = self.navigator.file_tree.current_selection {
+            if let Some(ref current_selection) = self.navigator.file_tree_state.current_selection {
                 visible_nodes
                     .iter()
                     .position(|(node, _)| &node.path == current_selection)
@@ -306,7 +290,7 @@ impl App {
 
         // Update the actual file tree selection
         if let Some((node, _)) = visible_nodes.get(new_absolute_pos) {
-            self.navigator.file_tree.current_selection = Some(node.path.clone());
+            self.navigator.file_tree_state.current_selection = Some(node.path.clone());
             self.update_file_navigator_list_state();
             true
         } else {
@@ -324,14 +308,14 @@ impl App {
         &mut self,
         path: &std::path::Path,
     ) -> Result<(), std::io::Error> {
-        self.navigator.file_tree = FileTree::from_directory(path)?;
+        self.navigator.file_tree_state = FileTreeState::from_directory(path)?;
         Ok(())
     }
 
     /// Load file content for the Inspector panel based on current selections
     pub fn load_inspector_content(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Check if we have both a selected file and commit
-        let file_path = match &self.navigator.file_tree.current_selection {
+        let file_path = match &self.navigator.file_tree_state.current_selection {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
                 self.inspector.current_content.clear();
@@ -385,7 +369,7 @@ impl App {
         self.history.selected_commit_hash = Some(commit_hash);
 
         // Auto-load content if we have a file selected
-        if self.navigator.file_tree.current_selection.is_some() {
+        if self.navigator.file_tree_state.current_selection.is_some() {
             self.load_inspector_content()?;
         }
 
@@ -422,7 +406,7 @@ impl App {
     pub fn load_commit_history_for_selected_file(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_path = match &self.navigator.file_tree.current_selection {
+        let file_path = match &self.navigator.file_tree_state.current_selection {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
                 self.history.commit_list.clear();
@@ -476,23 +460,24 @@ impl App {
         let mut app = Self {
             repo,
             should_quit: false,
-            active_file_context: None, // Will be set below based on selection
+            active_file_context: config.active_file_context.clone(),
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
             navigator: NavigatorState {
-                file_tree: config.file_tree.clone(),
-                file_tree_state: TreeState::default(),
+                file_tree_state: {
+                    let mut state = FileTreeState::new();
+                    state.set_tree_data(config.file_tree_state.original_tree().clone(), config.search_query.clone(), config.in_search_mode);
+                    state
+                },
                 list_state: ListState::default(),
                 scroll_offset: 0,
                 cursor_position: 0,
                 viewport_height: 18, // Default reasonable value
-                search_query: config.search_query.clone(),
-                in_search_mode: config.in_search_mode,
             },
             history: HistoryState {
                 commit_list: config.commit_list.clone(),
                 list_state: ListState::default(),
-                selected_commit_hash: None,
+                selected_commit_hash: None, // Will be set below based on valid commit index
                 is_loading_more: false,
                 history_complete: false,
                 next_chunk_offset: 0,
@@ -530,11 +515,11 @@ impl App {
         }
 
         // Set active_file_context based on current selection (only if it's a file, not directory)
-        if let Some(ref selected_path) = app.navigator.file_tree.current_selection {
+        if let Some(ref selected_path) = app.navigator.file_tree_state.current_selection {
             let is_dir = app
                 .navigator
-                .file_tree
-                .find_node(selected_path)
+                .file_tree_state
+                .find_node_in_tree(app.navigator.file_tree_state.display_tree(), selected_path)
                 .map(|node| node.is_dir)
                 .unwrap_or(false);
 
@@ -774,7 +759,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tree::{FileTree, TreeNode};
+    use crate::tree::{FileTree, FileTreeState, TreeNode};
     use gix::Repository;
     use std::fs;
     use std::path::PathBuf;
@@ -840,7 +825,7 @@ mod tests {
         tree.root.push(file3);
 
         // Set a current selection
-        tree.current_selection = Some(PathBuf::from("src/main.rs"));
+        // Selection is now handled in FileTreeState, not FileTree
 
         tree
     }
@@ -877,8 +862,8 @@ mod tests {
             assert_eq!(app.navigator.scroll_offset, 0);
             assert_eq!(app.navigator.cursor_position, 0);
             assert_eq!(app.navigator.viewport_height, 18);
-            assert!(app.navigator.search_query.is_empty());
-            assert!(!app.navigator.in_search_mode);
+            assert!(app.navigator.file_tree_state.search_query.is_empty());
+            assert!(!app.navigator.file_tree_state.in_search_mode);
             assert!(app.history.commit_list.is_empty());
             assert_eq!(app.history.selected_commit_hash, None);
             assert!(app.inspector.current_content.is_empty());
@@ -912,15 +897,19 @@ mod tests {
         fn test_from_test_config_with_file_tree() {
             let repo = create_test_repo();
             let mut config = crate::test_config::TestConfig::default();
-            config.file_tree = create_test_file_tree();
+            config.file_tree_state = {
+                let mut state = FileTreeState::new();
+                state.set_tree_data(create_test_file_tree(), String::new(), false);
+                state
+            };
             config.search_query = "test search".to_string();
             config.in_search_mode = true;
 
             let app = App::from_test_config(&config, repo);
 
-            assert_eq!(app.navigator.file_tree.root.len(), 3);
-            assert_eq!(app.navigator.search_query, "test search");
-            assert!(app.navigator.in_search_mode);
+            assert_eq!(app.navigator.file_tree_state.original_tree().root.len(), 3);
+            assert_eq!(app.navigator.file_tree_state.search_query, "test search");
+            assert!(app.navigator.file_tree_state.in_search_mode);
         }
 
         #[test]
@@ -1063,7 +1052,7 @@ mod tests {
         fn test_navigate_tree_up() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
             app.navigator.viewport_height = 10;
 
             let result = app.navigate_tree_up();
@@ -1077,7 +1066,7 @@ mod tests {
         fn test_navigate_tree_down() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
             app.navigator.viewport_height = 10;
 
             let result = app.navigate_tree_down();
@@ -1089,7 +1078,7 @@ mod tests {
         fn test_expand_selected_node_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
 
             let result = app.expand_selected_node();
 
@@ -1102,7 +1091,7 @@ mod tests {
         fn test_expand_selected_node_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             let result = app.expand_selected_node();
 
@@ -1113,7 +1102,7 @@ mod tests {
         fn test_collapse_selected_node_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
 
             let result = app.collapse_selected_node();
 
@@ -1125,7 +1114,7 @@ mod tests {
         fn test_collapse_selected_node_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             let result = app.collapse_selected_node();
 
@@ -1136,7 +1125,7 @@ mod tests {
         fn test_toggle_selected_node_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
 
             let result = app.toggle_selected_node();
 
@@ -1148,7 +1137,7 @@ mod tests {
         fn test_toggle_selected_node_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             let result = app.toggle_selected_node();
 
@@ -1159,7 +1148,10 @@ mod tests {
         fn test_get_selected_file_path_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
+            
+            // Set a selection manually since FileTreeState doesn't auto-select
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/main.rs"));
 
             let path = app.get_selected_file_path();
 
@@ -1170,7 +1162,7 @@ mod tests {
         fn test_get_selected_file_path_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             let path = app.get_selected_file_path();
 
@@ -1185,7 +1177,7 @@ mod tests {
         fn test_navigate_file_navigator_up_empty_tree() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             let result = app.navigate_file_navigator_up(10);
 
@@ -1196,7 +1188,7 @@ mod tests {
         fn test_navigate_file_navigator_down_empty_tree() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             let result = app.navigate_file_navigator_down(10);
 
@@ -1207,8 +1199,8 @@ mod tests {
         fn test_navigate_file_navigator_up_from_first_item() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
-            app.navigator.file_tree.current_selection = Some(PathBuf::from("src/main.rs")); // First item
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/main.rs")); // First item
 
             let result = app.navigate_file_navigator_up(10);
 
@@ -1219,8 +1211,8 @@ mod tests {
         fn test_navigate_file_navigator_down_from_last_item() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
-            app.navigator.file_tree.current_selection = Some(PathBuf::from("tests/test.rs")); // Last item
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("tests/test.rs")); // Last item
 
             let result = app.navigate_file_navigator_down(10);
 
@@ -1241,8 +1233,8 @@ mod tests {
                 );
                 tree.root.push(file);
             }
-            tree.current_selection = Some(PathBuf::from("src/file10.rs"));
-            app.navigator.file_tree = tree;
+            app.navigator.file_tree_state.set_tree_data(tree, String::new(), false);
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/file10.rs"));
             app.navigator.viewport_height = 5; // Small viewport
 
             // Test navigation with scrolling
@@ -1261,7 +1253,10 @@ mod tests {
         fn test_update_file_navigator_list_state_with_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
+            
+            // Set a selection so there's something to map to the list state
+            app.navigator.file_tree_state.current_selection = Some(PathBuf::from("src/main.rs"));
 
             app.update_file_navigator_list_state();
 
@@ -1273,7 +1268,7 @@ mod tests {
         fn test_update_file_navigator_list_state_without_selection() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = FileTree::new(); // Empty tree with no selection
+            app.navigator.file_tree_state.set_tree_data(FileTree::new(), String::new(), false); // Empty tree
 
             app.update_file_navigator_list_state();
 
@@ -1330,7 +1325,7 @@ mod tests {
         fn test_navigation_with_zero_viewport_height() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
 
             // Zero viewport height should be handled gracefully (returns early)
             let result = app.navigate_file_navigator_up(0);
@@ -1345,7 +1340,7 @@ mod tests {
         fn test_navigation_with_very_large_viewport() {
             let repo = create_test_repo();
             let mut app = App::new(repo);
-            app.navigator.file_tree = create_test_file_tree();
+            app.navigator.file_tree_state.set_tree_data(create_test_file_tree(), String::new(), false);
 
             let result = app.navigate_file_navigator_up(1000);
             assert!(result || !result); // Should handle gracefully
@@ -1647,14 +1642,11 @@ mod tests {
 impl NavigatorState {
     pub fn new() -> Self {
         Self {
-            file_tree: FileTree::new(),
-            file_tree_state: TreeState::default(),
+            file_tree_state: FileTreeState::new(),
             list_state: ListState::default(),
             scroll_offset: 0,
             cursor_position: 0,
             viewport_height: 18, // Default reasonable value
-            search_query: String::new(),
-            in_search_mode: false,
         }
     }
 }
