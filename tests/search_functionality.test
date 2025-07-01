@@ -1,0 +1,54 @@
+# Search Functionality Test
+# Tests the search functionality in the navigator
+
+# Ensure we start at the navigator
+assert:active_panel:Navigator
+
+# Enter search mode
+key:/
+
+# Type a search query
+char:s
+char:r
+char:c
+
+# Should be able to navigate in search results
+key:down
+key:up
+
+# Exit search mode with Enter
+key:enter
+
+# Should be back to normal browsing mode
+# The search query should still be there
+
+# Test escaping search mode
+key:/
+char:t
+char:e
+char:s
+char:t
+
+# Escape should clear search and exit search mode
+key:esc
+
+# Test immediate mode for rapid command execution
+immediate
+
+# Execute several commands rapidly without waiting
+key:down
+key:down
+key:up
+key:right
+key:left
+
+# Back to normal settle mode
+settle_mode
+
+# One final command that will wait for settlement
+key:tab
+assert:active_panel:History
+
+# Test quit
+key:q
+assert:should_quit:true

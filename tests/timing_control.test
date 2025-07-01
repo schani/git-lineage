@@ -1,0 +1,63 @@
+# Timing Control Test
+# Demonstrates different timing controls and wait mechanisms
+
+# Disable initial settle to test starting immediately
+no_initial_settle
+
+# Start with some basic navigation
+key:down
+key:down
+
+# Explicit wait for settlement
+settle
+
+# Custom wait time (100ms)
+wait:100
+
+# Switch to immediate mode for rapid commands
+immediate
+
+# These commands will execute without waiting
+key:tab
+key:tab
+key:tab
+
+# Back to settle mode
+settle_mode
+
+# This command will wait for settlement
+assert:active_panel:Navigator
+
+# Manual wait with specific duration
+wait:250
+
+# Test file selection with history loading
+key:down
+settle  # Wait for any async file loading
+
+# Navigate to inspector to see content
+key:tab
+key:tab
+assert:active_panel:Inspector
+
+# Test cursor positioning in inspector
+key:down
+key:down
+key:up
+
+# Check cursor position (this might vary depending on content)
+# assert:cursor_line:1
+
+# Test more immediate mode operations
+immediate
+key:down
+key:down
+key:down
+key:up
+settle_mode
+
+# Final settlement before quit
+wait
+
+key:q
+assert:should_quit:true

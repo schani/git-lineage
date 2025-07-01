@@ -1,0 +1,38 @@
+# Basic Navigation Test
+# Tests basic file tree navigation and panel switching
+
+# Start by checking initial state
+assert:active_panel:Navigator
+assert:is_loading:false
+
+# Navigate down in file tree
+key:down
+key:down
+key:down
+
+# Check that we can switch panels
+key:tab
+assert:active_panel:History
+
+# Switch to inspector
+key:tab
+assert:active_panel:Inspector
+
+# Go back to navigator
+key:tab
+assert:active_panel:Navigator
+
+# Navigate up a bit
+key:up
+key:up
+
+# Test Enter key to select a file (if it's a file)
+key:enter
+
+# Should have switched to inspector if we selected a file
+# (Note: this assertion might fail if we're on a directory)
+# assert:active_panel:Inspector
+
+# Test quit functionality
+key:q
+assert:should_quit:true

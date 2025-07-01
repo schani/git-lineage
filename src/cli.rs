@@ -54,4 +54,19 @@ pub enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Run headless tests from a test script
+    Test {
+        /// Path to the test script file
+        #[arg(short, long)]
+        script: String,
+        /// Initial configuration file (optional)
+        #[arg(short, long)]
+        config: Option<String>,
+        /// Maximum time to wait for settlement (seconds)
+        #[arg(long, default_value = "5")]
+        settle_timeout: u64,
+        /// Verbose logging
+        #[arg(short, long)]
+        verbose: bool,
+    },
 }
