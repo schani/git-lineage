@@ -121,6 +121,12 @@ async fn run_interactive() -> Result<()> {
     // Main application loop
     let tick_rate = Duration::from_millis(250);
     loop {
+        // Handle forced screen redraw
+        if app.ui.force_redraw {
+            terminal.clear()?;
+            app.ui.force_redraw = false;
+        }
+        
         // Draw UI
         terminal.draw(|f| ui::draw(f, &mut app))?;
 

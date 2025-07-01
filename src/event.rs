@@ -77,6 +77,14 @@ pub fn handle_event(
                         }
                     }
                 }
+                KeyCode::Char('l') => {
+                    // Ctrl+L to force screen redraw
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        app.ui.force_redraw = true;
+                        app.ui.status_message = "Screen refreshed".to_string();
+                        return Ok(());
+                    }
+                }
                 _ => {}
             }
 
@@ -732,13 +740,40 @@ fn navigate_to_older_commit(app: &mut App) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::{App, PanelFocus};
-    use crate::async_task::Task;
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
+    use crossterm::event::{KeyEvent, KeyCode, KeyModifiers};
     use tokio::sync::mpsc;
+    use crate::git_utils;
+    
+    #[test]
+    fn test_ctrl_l_force_redraw() {
+        // Setup
+        let repo = git_utils::open_repository(".").expect("Should open test repo");
+        let mut app = App::new(repo);
+        let (task_sender, _task_receiver) = mpsc::channel::<Task>(32);
+        
+        // Initially force_redraw should be false
+        assert!(!app.ui.force_redraw);
+        
+        // Create Ctrl+L key event
+        let key_event = KeyEvent {
+            code: KeyCode::Char('l'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: crossterm::event::KeyEventKind::Press,
+            state: crossterm::event::KeyEventState::NONE,
+        };
+        let event = Event::Key(key_event);
+        
+        // Handle the event
+        handle_event(event, &mut app, &task_sender).expect("Should handle Ctrl+L");
+        
+        // Verify force_redraw is set and status message is updated
+        assert!(app.ui.force_redraw, "force_redraw should be set to true");
+        assert_eq!(app.ui.status_message, "Screen refreshed");
+    }
 
     // Test utilities
+    use std::path::PathBuf;
+    
     fn create_test_app() -> App {
         let repo = crate::git_utils::open_repository(".")
             .unwrap_or_else(|_| panic!("Failed to open test repository"));

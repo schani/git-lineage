@@ -69,6 +69,7 @@ pub struct UIState {
     pub active_panel: PanelFocus,
     pub status_message: String,
     pub is_loading: bool,
+    pub force_redraw: bool,
 }
 
 pub struct App {
@@ -497,6 +498,7 @@ impl App {
                 active_panel: config.active_panel,
                 status_message: config.status_message.clone(),
                 is_loading: config.is_loading,
+                force_redraw: false,
             },
         };
 
@@ -1723,6 +1725,7 @@ impl UIState {
             active_panel: PanelFocus::Navigator,
             status_message: "Ready".to_string(),
             is_loading: false,
+            force_redraw: false,
         }
     }
 }
