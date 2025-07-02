@@ -300,27 +300,11 @@ fn handle_new_navigator_event(
                 return Ok(());
             }
             KeyCode::Enter => {
-                // Get the currently selected search result
-                let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
-                let selected_item = view_model.items.iter().find(|item| item.is_selected);
-                
-                if let Some(item) = selected_item {
-                    if item.is_dir {
-                        // For directories, expand the directory but STAY IN SEARCH MODE
-                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ToggleExpanded(item.path.clone())) {
-                            log::warn!("Failed to toggle expansion: {}", e);
-                        }
-                        app.ui.status_message = "Expanded directory in search mode".to_string();
-                    } else {
-                        // For files, switch to inspector but STAY IN SEARCH MODE
-                        app.ui.active_panel = crate::app::PanelFocus::Inspector;
-                        app.ui.status_message = format!("Viewing content for {}", item.path.display());
-                    }
-                    handle_new_navigator_file_selection_change(app, task_sender);
-                } else {
-                    // No selection, do nothing but stay in search mode
-                    app.ui.status_message = "No item selected in search".to_string();
+                // Exit search mode but keep the query active
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearchKeepQuery) {
+                    log::warn!("Failed to end search with keep query: {}", e);
                 }
+                app.ui.status_message = "Exited search mode - query preserved".to_string();
                 return Ok(());
             }
             KeyCode::Esc => {

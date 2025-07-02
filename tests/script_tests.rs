@@ -177,6 +177,7 @@ macro_rules! script_test {
 
 // Define actual test functions using the macro
 script_test!(test_search_label_immediate, "search_label_immediate");
+script_test!(test_search_exit_with_enter, "test_search_exit_with_enter");
 
 // Additional script tests can be added here as they are created
 // script_test!(test_basic_navigation, "basic_navigation");

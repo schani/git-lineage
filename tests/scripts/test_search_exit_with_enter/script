@@ -1,0 +1,21 @@
+# Test that pressing Enter in search mode exits search mode but keeps search string active
+immediate
+
+# Start in search mode
+char:/
+screenshot:before_search.txt
+
+# Type a search term
+char:d
+char:i
+char:r
+screenshot:during_search.txt
+
+# Press Enter - this should exit search mode but keep the search string
+key:enter
+screenshot:after_enter.txt
+
+# Verify we're out of search mode by checking the UI shows the search is still active
+# but we're no longer in input mode (cursor should not be in search bar)
+wait:100
+screenshot:final_state.txt
