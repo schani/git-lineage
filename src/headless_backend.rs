@@ -42,7 +42,18 @@ impl HeadlessBackend {
         for y in 0..self.height {
             for x in 0..self.width {
                 let cell = &self.buffer[(x, y)];
-                content.push(cell.symbol().chars().next().unwrap_or(' '));
+                let mut symbol = cell.symbol().chars().next().unwrap_or(' ');
+                
+                // If cursor is visible and at this position, use cursor character
+                if self.cursor_visible {
+                    if let Some((cursor_x, cursor_y)) = self.cursor_position {
+                        if x == cursor_x && y == cursor_y {
+                            symbol = '█'; // Block cursor character
+                        }
+                    }
+                }
+                
+                content.push(symbol);
             }
             if y < self.height - 1 {
                 content.push('\n');

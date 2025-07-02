@@ -1,24 +1,30 @@
-┌ File Navigator ──────────┐┌ Code Inspector ──────────────────────────────────┐
-│▶ .github                 ││Select a file to view its content                 │
-│▶ src                     ││                                                  │
-│▶ tests                   ││                                                  │
-│  .codecov.yml            ││                                                  │
-│  .gitignore              ││                                                  │
-│  ASSESSMENT.md           ││                                                  │
-│  CLAUDE.md               ││                                                  │
-│  Cargo.lock              ││                                                  │
-│  Cargo.toml              ││                                                  │
-│  FILE-TREE.md            ││                                                  │
-└──────────────────────────┘│                                                  │
-┌ Commit History ──────────┐│                                                  │
-│Select a file to view its ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-│                          ││                                                  │
-File tree loaded (new navigator active) | Tab: Switch panel | 1/2/3: Direct pane
+┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+│▶ .github                               ││Select a file to view its content                                           │
+│▶ src                                   ││                                                                            │
+│▶ tests                                 ││                                                                            │
+│  .codecov.yml                          ││                                                                            │
+│  .gitignore                            ││                                                                            │
+│  ASSESSMENT.md                         ││                                                                            │
+│  CLAUDE.md                             ││                                                                            │
+│  Cargo.lock                            ││                                                                            │
+│  Cargo.toml                            ││                                                                            │
+│  FILE-TREE.md                          ││                                                                            │
+│  Makefile                              ││                                                                            │
+│  NEW-STATE-MODEL.md                    ││                                                                            │
+│  README.md                             ││                                                                            │
+└────────────────────────────────────────┘│                                                                            │
+┌ Commit History ────────────────────────┐│                                                                            │
+│Select a file to view its history       ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+File tree loaded (new navigator active) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: 

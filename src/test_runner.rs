@@ -406,7 +406,7 @@ impl TestRunner {
         use ratatui::Terminal;
         
         // Create a headless backend to capture the UI
-        let backend = HeadlessBackend::new(80, 24);
+        let backend = HeadlessBackend::new(120, 30);
         let mut terminal = Terminal::new(backend)?;
         
         // Render the app to capture the current state
