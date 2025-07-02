@@ -39,49 +39,6 @@ Three-panel persistent layout:
 - Panel 2 selection drives Panel 3 content
 - Focus cycles between panels with Tab/Shift+Tab
 
-### Core Features
-- **Previous Change (`p` key)**: Jump to the blame commit for current line
-- **Next Change (`n` key)**: Find next modification to current line (async operation)
-- **Diff Toggle (`d` key)**: Switch between full file and diff view
-- **Search (`/` key)**: Search and filter files in navigator
-
-### Technology Stack
-- **TUI Framework**: `ratatui` with `crossterm` backend
-- **Git Operations**: `gix` (pure Rust Git implementation)
-- **Async Runtime**: `tokio` with `mpsc` channels for UI/worker communication
-- **Syntax Highlighting**: `syntect`
-- **Tree Widget**: `tui-tree-widget`
-- **Text Diffing**: `similar` crate
-- **Fuzzy Finding**: `fuzzy-matcher`
-
-## Development Commands
-
-```bash
-# Build the project
-cargo build
-
-# Run the application
-cargo run
-
-# Run all tests
-cargo test
-
-# Run a specific test
-cargo test test_name
-
-# Run script tests only
-cargo test --test script_tests
-
-# Check code without building
-cargo check
-
-# Format code
-cargo fmt
-
-# Run clippy lints
-cargo clippy
-```
-
 ## Testing Infrastructure
 
 ### Overview
@@ -164,9 +121,7 @@ driver.update_script_test("test_name").await?;
 
 ### Test Environment
 - **Controlled Repository**: Tests run in `tests/test-repo` submodule
-- **Isolated Environment**: Contains only `README.md`, `file-in-root`, `dir/file-in-dir`
 - **No Test Artifacts**: Screenshots and temporary files never committed to test-repo
-- **Async Task Support**: Full async worker setup with proper file tree loading
 
 ### Key Testing Principles
 1. **Never commit to test-repo**: Only use it as execution environment
@@ -184,11 +139,6 @@ The Code Inspector panel shows blame information for each line. When viewing his
 
 ### State Management
 All application state lives in the `App` struct in `app.rs`. Event handlers in `event.rs` either modify state directly (for fast operations) or send tasks to the async worker (for expensive operations).
-
-### Performance Considerations
-- Use `gix::Repository::rev_walk().all().path_filter()` for efficient commit history filtering
-- Cache blame results to avoid repeated Git operations
-- Implement proper scroll state management for large files and long commit histories
 
 ## Module Responsibilities
 
