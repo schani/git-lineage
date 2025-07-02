@@ -1,17 +1,17 @@
-┌ File Navigator (Search: s█ ────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│▼ src                                   ││Select a file to view its content                                           │
-│    app.rs                              ││                                                                            │
-│    async_task.rs                       ││                                                                            │
-│    cli.rs                              ││                                                                            │
-│    command.rs                          ││                                                                            │
-│    config.rs                           ││                                                                            │
-│    error.rs                            ││                                                                            │
-│    event.rs                            ││                                                                            │
-│    executor.rs                         ││                                                                            │
-│    git_utils.rs                        ││                                                                            │
-│    headless_backend.rs                 ││                                                                            │
-│    lib.rs                              ││                                                                            │
-│    line_mapping.rs                     ││                                                                            │
+┌ File Navigator (Search: █ ─────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+│▶ dir                                   ││Select a file to view its content                                           │
+│  README.md                             ││                                                                            │
+│  file-in-root                          ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
 └────────────────────────────────────────┘│                                                                            │
 ┌ Commit History ────────────────────────┐│                                                                            │
 │Select a file to view its history       ││                                                                            │

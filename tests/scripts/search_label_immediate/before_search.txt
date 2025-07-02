@@ -1,17 +1,17 @@
 ┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│▶ .github                               ││Select a file to view its content                                           │
-│▶ src                                   ││                                                                            │
-│▶ tests                                 ││                                                                            │
-│  .codecov.yml                          ││                                                                            │
-│  .gitignore                            ││                                                                            │
-│  ASSESSMENT.md                         ││                                                                            │
-│  CLAUDE.md                             ││                                                                            │
-│  Cargo.lock                            ││                                                                            │
-│  Cargo.toml                            ││                                                                            │
-│  FILE-TREE.md                          ││                                                                            │
-│  Makefile                              ││                                                                            │
-│  NEW-STATE-MODEL.md                    ││                                                                            │
+│▶ dir                                   ││Select a file to view its content                                           │
 │  README.md                             ││                                                                            │
+│  file-in-root                          ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
 └────────────────────────────────────────┘│                                                                            │
 ┌ Commit History ────────────────────────┐│                                                                            │
 │Select a file to view its history       ││                                                                            │

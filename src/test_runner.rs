@@ -22,7 +22,7 @@ use tokio::time::timeout;
 /// - `settle_mode` - Set settle mode (wait between commands)
 ///
 /// Examples:
-/// ```
+/// ```text
 /// # Navigate to a file and view its content
 /// key:down
 /// key:down  
@@ -62,6 +62,7 @@ pub struct TestRunner {
     pub immediate_mode: bool,
     pub max_settle_time: Duration,
     pub overwrite_mode: bool,
+    pub screenshot_base_dir: Option<std::path::PathBuf>,
 }
 
 impl TestRunner {
@@ -150,6 +151,7 @@ impl TestRunner {
             immediate_mode: false,
             max_settle_time: Duration::from_secs(5),
             overwrite_mode: false,
+            screenshot_base_dir: None,
         })
     }
 
@@ -417,27 +419,36 @@ impl TestRunner {
         // Get the rendered content
         let content = terminal.backend().get_content();
         
+        // Resolve the final screenshot path
+        let final_path = if let Some(base_dir) = &self.screenshot_base_dir {
+            base_dir.join(filename)
+        } else {
+            std::path::PathBuf::from(filename)
+        };
+        
+        let final_filename = final_path.to_string_lossy();
+        
         if self.overwrite_mode {
             // Overwrite mode: always write the file
-            std::fs::write(filename, content)?;
-            println!("📸 Screenshot saved to: {}", filename);
+            std::fs::write(&final_path, content)?;
+            println!("📸 Screenshot saved to: {}", final_filename);
         } else {
             // Verify mode: compare with existing file
-            match std::fs::read_to_string(filename) {
+            match std::fs::read_to_string(&final_path) {
                 Ok(existing_content) => {
                     if content == existing_content {
-                        println!("✅ Screenshot verification passed: {}", filename);
+                        println!("✅ Screenshot verification passed: {}", final_filename);
                     } else {
                         return Err(format!(
                             "❌ Screenshot verification failed: {}. Content differs from expected. Use --overwrite to update.",
-                            filename
+                            final_filename
                         ).into());
                     }
                 }
                 Err(_) => {
                     return Err(format!(
                         "❌ Screenshot verification failed: {} does not exist. Use --overwrite to create.",
-                        filename
+                        final_filename
                     ).into());
                 }
             }
@@ -577,6 +588,7 @@ impl TestRunner {
             immediate_mode: false,
             max_settle_time: Duration::from_secs(5),
             overwrite_mode: false,
+            screenshot_base_dir: None,
         }
     }
 }
