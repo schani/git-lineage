@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Whenever you hit an important checkpoint and all the tests pass, commit all the changes with a meaningful commit description.
 - Line coverage for each file must be at least 70%!
-- ALL TESTS MUST PASS BEFORE COMMITTING!  NO EXCEPTIONS!
+- ALL TESTS MUST PASS BEFORE COMMITTING! NO EXCEPTIONS!
 - Use emojis.
 
 ## Project Overview
@@ -43,6 +43,7 @@ Three-panel persistent layout:
 - **Previous Change (`p` key)**: Jump to the blame commit for current line
 - **Next Change (`n` key)**: Find next modification to current line (async operation)
 - **Diff Toggle (`d` key)**: Switch between full file and diff view
+- **Search (`/` key)**: Search and filter files in navigator
 
 ### Technology Stack
 - **TUI Framework**: `ratatui` with `crossterm` backend
@@ -55,8 +56,6 @@ Three-panel persistent layout:
 
 ## Development Commands
 
-Since this is a new Rust project, standard Cargo commands will apply:
-
 ```bash
 # Build the project
 cargo build
@@ -64,11 +63,14 @@ cargo build
 # Run the application
 cargo run
 
-# Run tests
+# Run all tests
 cargo test
 
 # Run a specific test
 cargo test test_name
+
+# Run script tests only
+cargo test --test script_tests
 
 # Check code without building
 cargo check
@@ -79,6 +81,98 @@ cargo fmt
 # Run clippy lints
 cargo clippy
 ```
+
+## Testing Infrastructure
+
+### Overview
+The project has a comprehensive testing infrastructure with multiple test types:
+
+- **Unit Tests**: Standard Rust unit tests in `src/` modules
+- **Integration Tests**: Complex scenario tests in `tests/`
+- **Script Tests**: UI behavior verification with screenshot comparison
+- **Rendering Tests**: Visual output verification
+
+### Script Testing System
+Script tests provide automated UI testing with screenshot-based verification:
+
+#### Directory Structure
+```
+tests/scripts/
+├── {test_name}/
+│   ├── script           # Test commands (key presses, assertions, screenshots)
+│   ├── before_X.txt     # Expected screenshot files
+│   ├── after_Y.txt
+│   └── ...
+```
+
+#### Test Script Format
+Test scripts use a simple text format:
+```text
+# Comments start with #
+key:down              # Send key press
+key:enter             # Send key press
+char:a                # Send character
+screenshot:file.txt   # Take/verify screenshot
+wait                  # Wait for async operations
+wait:500              # Wait specific milliseconds
+assert:property:value # Assert application state
+immediate             # Set immediate mode (no delays)
+settle_mode           # Set settle mode (with delays)
+```
+
+#### Creating New Script Tests
+1. **Create test directory**: `tests/scripts/my_new_test/`
+2. **Write script file**: `tests/scripts/my_new_test/script`
+3. **Add to script_tests.rs**:
+   ```rust
+   script_test!(test_my_new_test, "my_new_test");
+   ```
+4. **Generate screenshots** (first time):
+   ```bash
+   cd tests/test-repo
+   cargo run --bin git-lineage -- test --script ../../tests/scripts/my_new_test/script --overwrite
+   cp *.txt ../../tests/scripts/my_new_test/
+   rm *.txt
+   ```
+
+#### Running Script Tests
+```bash
+# Run all script tests
+cargo test --test script_tests
+
+# Run specific script test
+cargo test test_search_label_immediate
+
+# Update screenshots (development only)
+cd tests/test-repo
+cargo run --bin git-lineage -- test --script ../../tests/scripts/test_name/script --overwrite
+```
+
+#### ScriptTestDriver API
+The `ScriptTestDriver` provides a reusable testing interface:
+
+```rust
+// Create driver
+let driver = ScriptTestDriver::new()?;
+
+// Run test in verify mode (CI/standard testing)
+driver.run_script_test("test_name").await?;
+
+// Run test in update mode (development)
+driver.update_script_test("test_name").await?;
+```
+
+### Test Environment
+- **Controlled Repository**: Tests run in `tests/test-repo` submodule
+- **Isolated Environment**: Contains only `README.md`, `file-in-root`, `dir/file-in-dir`
+- **No Test Artifacts**: Screenshots and temporary files never committed to test-repo
+- **Async Task Support**: Full async worker setup with proper file tree loading
+
+### Key Testing Principles
+1. **Never commit to test-repo**: Only use it as execution environment
+2. **Screenshot-based verification**: Visual regression testing for UI behavior
+3. **Organized test structure**: Each test is self-contained in its directory
+4. **Reusable infrastructure**: ScriptTestDriver handles all boilerplate
 
 ## Critical Implementation Notes
 
@@ -102,5 +196,7 @@ All application state lives in the `App` struct in `app.rs`. Event handlers in `
 - **ui.rs**: Pure rendering - reads from App state but never modifies it
 - **event.rs**: Translates user input into state changes or async tasks
 - **async_task.rs**: Handles expensive Git operations without blocking UI
+- **test_runner.rs**: Headless test execution with screenshot capture
+- **tests/script_tests.rs**: Reusable script test driver and test definitions
 
-The architecture enforces clear boundaries between Git operations, UI rendering, and state management to maintain code clarity and testability.
+The architecture enforces clear boundaries between Git operations, UI rendering, state management, and testing to maintain code clarity and testability.
