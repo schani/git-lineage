@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Whenever you hit an important checkpoint and all the tests pass, commit all the changes with a meaningful commit description.
 - Line coverage for each file must be at least 70%!
-- All test must pass before committing!
+- ALL TESTS MUST PASS BEFORE COMMITTING!  NO EXCEPTIONS!
 - Use emojis.
 
 ## Project Overview
