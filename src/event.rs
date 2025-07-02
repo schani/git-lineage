@@ -288,6 +288,8 @@ fn handle_new_navigator_event(
                     log::warn!("Failed to update search query: {}", e);
                 } else {
                     log::debug!("🔍 Search query updated successfully");
+                    // Update other panels when search query changes selection
+                    handle_new_navigator_file_selection_change(app, task_sender);
                 }
                 return Ok(());
             }
@@ -296,6 +298,9 @@ fn handle_new_navigator_event(
                 new_query.pop();
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
                     log::warn!("Failed to update search query: {}", e);
+                } else {
+                    // Update other panels when search query changes selection
+                    handle_new_navigator_file_selection_change(app, task_sender);
                 }
                 return Ok(());
             }
@@ -309,6 +314,9 @@ fn handle_new_navigator_event(
                 
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(event) {
                     log::warn!("Failed to end search: {}", e);
+                } else {
+                    // Update other panels when exiting search mode
+                    handle_new_navigator_file_selection_change(app, task_sender);
                 }
                 
                 app.ui.status_message = if view_model.search_query.is_empty() {
@@ -329,12 +337,18 @@ fn handle_new_navigator_event(
             KeyCode::Up => {
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::NavigateUp) {
                     log::warn!("Failed to navigate up in search: {}", e);
+                } else {
+                    // Update other panels when search navigation changes selection
+                    handle_new_navigator_file_selection_change(app, task_sender);
                 }
                 return Ok(());
             }
             KeyCode::Down => {
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::NavigateDown) {
                     log::warn!("Failed to navigate down in search: {}", e);
+                } else {
+                    // Update other panels when search navigation changes selection
+                    handle_new_navigator_file_selection_change(app, task_sender);
                 }
                 return Ok(());
             }
