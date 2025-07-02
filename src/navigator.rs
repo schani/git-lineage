@@ -17,6 +17,7 @@ pub enum NavigatorEvent {
     StartSearch,
     UpdateSearchQuery(String),
     EndSearch,
+    EndSearchKeepQuery,
     NavigateUp,
     NavigateDown,
     ToggleExpanded(PathBuf),
@@ -67,6 +68,7 @@ pub struct NavigatorViewModel {
 pub struct NavigatorState {
     tree: FileTree,
     mode: NavigatorMode,
+    last_search_query: String,
 }
 
 impl NavigatorState {
@@ -80,6 +82,7 @@ impl NavigatorState {
                 expanded,
                 scroll_offset: 0,
             },
+            last_search_query: String::new(),
         }
     }
 
@@ -125,6 +128,22 @@ impl NavigatorState {
             // End search and restore browsing context
             (NavigatorMode::Searching { saved_browsing, .. }, NavigatorEvent::EndSearch) => {
                 *saved_browsing.clone()
+            }
+
+            // End search but keep query in browsing context (for Enter key)
+            (NavigatorMode::Searching { saved_browsing, query, .. }, NavigatorEvent::EndSearchKeepQuery) => {
+                // Save the search query before exiting search mode
+                self.last_search_query = query.clone();
+                
+                if let NavigatorMode::Browsing { selection, expanded, scroll_offset } = saved_browsing.as_ref() {
+                    NavigatorMode::Browsing {
+                        selection: selection.clone(),
+                        expanded: expanded.clone(),
+                        scroll_offset: *scroll_offset,
+                    }
+                } else {
+                    *saved_browsing.clone()
+                }
             }
 
             // Update search query
@@ -326,7 +345,7 @@ impl NavigatorState {
     pub fn get_search_query(&self) -> String {
         match &self.mode {
             NavigatorMode::Searching { query, .. } => query.clone(),
-            _ => String::new(),
+            _ => self.last_search_query.clone(),
         }
     }
 
@@ -344,7 +363,7 @@ impl NavigatorState {
                     items,
                     scroll_offset: *scroll_offset,
                     cursor_position,
-                    search_query: String::new(),
+                    search_query: self.last_search_query.clone(),
                     is_searching: false,
                 }
             }

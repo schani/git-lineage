@@ -1,0 +1,11 @@
+# Test that pressing enter in search mode preserves the search query
+char:/
+char:c
+char:o
+char:n
+char:f
+char:i
+char:g
+assert:search_query:config
+key:enter
+assert:search_query:config

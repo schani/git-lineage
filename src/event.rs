@@ -307,7 +307,7 @@ fn handle_new_navigator_event(
                 if let Some(item) = selected_item {
                     if item.is_dir {
                         // For directories, exit search mode and expand the directory
-                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearchKeepQuery) {
                             log::warn!("Failed to end search: {}", e);
                         }
                         if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ToggleExpanded(item.path.clone())) {
@@ -316,7 +316,7 @@ fn handle_new_navigator_event(
                         app.ui.status_message = "Exited search and expanded directory".to_string();
                     } else {
                         // For files, exit search mode and switch to inspector
-                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearchKeepQuery) {
                             log::warn!("Failed to end search: {}", e);
                         }
                         app.ui.active_panel = crate::app::PanelFocus::Inspector;
@@ -325,7 +325,7 @@ fn handle_new_navigator_event(
                     handle_new_navigator_file_selection_change(app, task_sender);
                 } else {
                     // No selection, just exit search
-                    if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearch) {
+                    if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearchKeepQuery) {
                         log::warn!("Failed to end search: {}", e);
                     }
                     handle_new_navigator_file_selection_change(app, task_sender);
