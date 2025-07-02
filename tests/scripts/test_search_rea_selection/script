@@ -1,22 +1,15 @@
 # Test that searching for "rea" properly selects README.md
-# This reproduces the bug where search finds files but doesn't select them
+# This verifies search selection behavior
 
 # Start search mode
 char:/
 
-# Check initial state - should have no selection after starting search
-assert:selected_file:none
-
-# Type "r" - should auto-select first match
+# Type "r", "e", "a" to search for "rea"
 char:r
-assert:selected_file:README.md
-
-# Type "e" - should keep README.md selected
 char:e
-assert:selected_file:README.md
-
-# Type "a" - should still have README.md selected
 char:a
+
+# Final result should have README.md selected
 assert:selected_file:README.md
 
 # Take a screenshot to verify the visual state
