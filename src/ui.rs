@@ -34,14 +34,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
     // Use new navigator if available, otherwise fall back to old one
-    if let Some(ref new_navigator) = app.new_navigator {
-        draw_file_navigator_new(frame, app, new_navigator, area);
+    if let Some(ref view_model) = app.cached_navigator_view_model {
+        draw_file_navigator_new(frame, app, view_model, area);
     } else {
         draw_file_navigator_old(frame, app, area);
     }
 }
 
-fn draw_file_navigator_new(frame: &mut Frame, app: &App, navigator: &crate::navigator::NavigatorState, area: Rect) {
+fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::navigator::NavigatorViewModel, area: Rect) {
     let theme = get_theme();
     let is_active = app.ui.active_panel == PanelFocus::Navigator;
     let border_style = if is_active {
@@ -49,9 +49,6 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, navigator: &crate::navi
     } else {
         Style::default().fg(theme.inactive_border)
     };
-
-    // Get view model from new navigator
-    let view_model = navigator.build_view_model();
     
     let title = if view_model.is_searching || !view_model.search_query.is_empty() {
         format!(" File Navigator (Search: {}) ", view_model.search_query)

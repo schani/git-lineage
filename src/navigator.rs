@@ -54,6 +54,11 @@ pub struct NavigatorState {
     scroll_offset: usize,
     query: String,  // Empty string means show all files, non-empty means filter
     editing_search: bool,  // UI state for showing search cursor
+    
+    // View model caching
+    cached_view_model: Option<NavigatorViewModel>,
+    view_model_dirty: bool,
+    last_state_hash: u64,
 }
 
 impl NavigatorState {
@@ -67,6 +72,9 @@ impl NavigatorState {
             scroll_offset: 0,
             query: String::new(),
             editing_search: false,
+            cached_view_model: None,
+            view_model_dirty: true,
+            last_state_hash: 0,
         }
     }
 
@@ -168,7 +176,13 @@ impl NavigatorState {
         }
         
         let state_after = (self.selection.clone(), self.query.clone(), self.editing_search, self.expanded.clone());
-        Ok(state_before != state_after)
+        let state_changed = state_before != state_after;
+        
+        if state_changed {
+            self.invalidate_view_model();
+        }
+        
+        Ok(state_changed)
     }
 
     /// Get the current selection
@@ -186,9 +200,34 @@ impl NavigatorState {
         self.query.clone()
     }
 
-    /// Build view model for rendering
-    pub fn build_view_model(&self) -> NavigatorViewModel {
+    /// Build view model for rendering (with caching)
+    pub fn build_view_model(&mut self) -> &NavigatorViewModel {
+        let current_hash = self.compute_state_hash();
+        
+        // Only rebuild if state actually changed
+        if !self.view_model_dirty && self.last_state_hash == current_hash {
+            if let Some(ref cached) = self.cached_view_model {
+                log::debug!("View model: using cached (no state change)");
+                return cached;
+            }
+        }
+        
+        log::debug!("View model: rebuilding due to state change");
         let start = std::time::Instant::now();
+        
+        // Expensive computation only when needed
+        let view_model = self.rebuild_view_model();
+        
+        self.cached_view_model = Some(view_model);
+        self.view_model_dirty = false;
+        self.last_state_hash = current_hash;
+        
+        log::debug!("View model: rebuilt in {:?}", start.elapsed());
+        self.cached_view_model.as_ref().unwrap()
+    }
+    
+    /// Actually rebuild the view model (expensive operation)
+    fn rebuild_view_model(&self) -> NavigatorViewModel {
         let items = if self.query.is_empty() {
             // Show full tree
             self.get_browsing_visible_items(&self.expanded, &self.selection)
@@ -197,9 +236,8 @@ impl NavigatorState {
             let results = self.search_files(&self.query);
             self.get_search_visible_items(&results, &self.selection)
         };
-        let items_time = start.elapsed();
         
-        log::debug!("View model: computed {} items in {:?}", items.len(), items_time);
+        log::debug!("View model: computed {} items", items.len());
         
         let cursor_position = self.selection
             .as_ref()
@@ -213,6 +251,25 @@ impl NavigatorState {
             search_query: self.query.clone(),
             is_searching: self.editing_search,
         }
+    }
+    
+    /// Compute a fast hash of state that affects view model
+    fn compute_state_hash(&self) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        self.query.hash(&mut hasher);
+        self.selection.hash(&mut hasher);
+        self.expanded.len().hash(&mut hasher); // Just count, not full set
+        self.editing_search.hash(&mut hasher);
+        self.scroll_offset.hash(&mut hasher);
+        hasher.finish()
+    }
+    
+    /// Mark view model as needing rebuild
+    pub fn invalidate_view_model(&mut self) {
+        self.view_model_dirty = true;
     }
     
     /// Get the currently visible items based on current state
@@ -757,7 +814,7 @@ mod tests {
         navigator.handle_event(NavigatorEvent::SelectFile(PathBuf::from("README.md"))).unwrap();
         navigator.handle_event(NavigatorEvent::ToggleExpanded(PathBuf::from("src"))).unwrap();
         
-        let original_view = navigator.build_view_model();
+        let original_view = navigator.build_view_model().clone();
         
         // Enter search mode
         navigator.handle_event(NavigatorEvent::StartSearch).unwrap();
@@ -773,7 +830,7 @@ mod tests {
         assert_eq!(navigator.get_selection(), Some(PathBuf::from("Cargo.toml")));
         assert!(!navigator.is_searching());
         
-        let restored_view = navigator.build_view_model();
+        let restored_view = navigator.build_view_model().clone();
         
         // Check that expanded state is preserved
         let src_expanded_original = original_view.items.iter()
@@ -824,7 +881,7 @@ mod tests {
         navigator.handle_event(NavigatorEvent::StartSearch).unwrap();
         navigator.handle_event(NavigatorEvent::UpdateSearchQuery("".to_string())).unwrap();
         
-        let view_model = navigator.build_view_model();
+        let view_model = navigator.build_view_model().clone();
         // Empty search should show all files
         assert!(!view_model.items.is_empty());
         assert!(view_model.items.len() >= 3); // At least file1.rs, file2.rs, subdir/file3.rs

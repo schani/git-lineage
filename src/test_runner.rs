@@ -189,6 +189,7 @@ impl TestRunner {
                         errors.push(format!("Key event failed: {}", e));
                     } else {
                         events_processed += 1;
+                        app.refresh_navigator_view_model();
                     }
                 }
                 CommandType::Char => {
@@ -199,6 +200,7 @@ impl TestRunner {
                         errors.push(format!("Character event failed: {}", e));
                     } else {
                         events_processed += 1;
+                        app.refresh_navigator_view_model();
                     }
                 }
                 CommandType::Wait => {
@@ -207,6 +209,7 @@ impl TestRunner {
                         if let Err(e) = self.wait_for_settlement(app, &mut task_receiver).await {
                             errors.push(format!("Settlement wait failed: {}", e));
                         }
+                        app.refresh_navigator_view_model();
                     } else {
                         // Wait for specific duration
                         let ms: u64 = command.value.parse()
@@ -215,6 +218,7 @@ impl TestRunner {
                     }
                 }
                 CommandType::Assert => {
+                    app.refresh_navigator_view_model();
                     match self.evaluate_assertion(app, &command.value) {
                         Ok(true) => {
                             assertions_passed += 1;
@@ -373,29 +377,26 @@ impl TestRunner {
             "visible_files_count" => {
                 let expected_count = expected.parse::<usize>()
                     .map_err(|_| "visible_files_count expects numeric value")?;
-                if let Some(new_navigator) = &app.new_navigator {
-                    let view_model = new_navigator.build_view_model();
+                if let Some(ref view_model) = app.cached_navigator_view_model {
                     Ok(view_model.items.len() == expected_count)
                 } else {
-                    Err("New navigator not available".into())
+                    Err("Navigator view model not available".into())
                 }
             }
             "is_searching" => {
                 let expected_bool = expected.parse::<bool>()
                     .map_err(|_| "is_searching expects boolean value")?;
-                if let Some(new_navigator) = &app.new_navigator {
-                    let view_model = new_navigator.build_view_model();
+                if let Some(ref view_model) = app.cached_navigator_view_model {
                     Ok(view_model.is_searching == expected_bool)
                 } else {
-                    Err("New navigator not available".into())
+                    Err("Navigator view model not available".into())
                 }
             }
             "search_query" => {
-                if let Some(new_navigator) = &app.new_navigator {
-                    let view_model = new_navigator.build_view_model();
+                if let Some(ref view_model) = app.cached_navigator_view_model {
                     Ok(view_model.search_query == expected)
                 } else {
-                    Err("New navigator not available".into())
+                    Err("Navigator view model not available".into())
                 }
             }
             "selected_file" => {

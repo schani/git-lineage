@@ -3,6 +3,7 @@ immediate
 
 # Start in search mode
 char:/
+wait:50
 screenshot:before_search.txt
 
 # Type a search term

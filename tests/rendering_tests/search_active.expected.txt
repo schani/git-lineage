@@ -1,7 +1,7 @@
 ┌ File Navigator (Search: c┐┌ Code Inspector ──────────────────────────────────┐
-│M config.toml             ││Select a file to view its content                 │
-│▼ src                     ││                                                  │
+│▼ src                     ││Select a file to view its content                 │
 │  A config.rs             ││                                                  │
+│M config.toml             ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │
 │                          ││                                                  │

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PanelFocus {
     Navigator,
     History,
@@ -85,6 +85,12 @@ pub struct App {
     pub per_commit_cursor_positions: HashMap<(String, PathBuf), usize>,
     pub last_commit_for_mapping: Option<String>,
 
+    // Background task tracking for event-driven architecture
+    pub active_background_tasks: usize,
+    
+    // Cached view model for UI rendering (to avoid mutable access in draw)
+    pub cached_navigator_view_model: Option<crate::navigator::NavigatorViewModel>,
+
     // State modules
     pub navigator: NavigatorState, // Legacy navigator - will be replaced
     pub new_navigator: Option<NewNavigatorState>, // New state machine navigator
@@ -94,6 +100,56 @@ pub struct App {
 }
 
 impl App {
+    /// Compute a hash of the UI state to detect changes
+    pub fn get_ui_state_hash(&self) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        
+        // Hash the core UI state that affects rendering
+        self.ui.active_panel.hash(&mut hasher);
+        self.ui.status_message.hash(&mut hasher);
+        self.ui.is_loading.hash(&mut hasher);
+        self.ui.force_redraw.hash(&mut hasher);
+        self.should_quit.hash(&mut hasher);
+        
+        // Hash navigator state
+        if let Some(ref navigator) = self.new_navigator {
+            // Hash key navigator properties that affect display
+            navigator.get_search_query().hash(&mut hasher);
+            navigator.is_searching().hash(&mut hasher);
+            if let Some(selection) = navigator.get_selection() {
+                selection.hash(&mut hasher);
+            }
+        } else {
+            self.navigator.file_tree_state.search_query.hash(&mut hasher);
+            self.navigator.file_tree_state.in_search_mode.hash(&mut hasher);
+            self.navigator.file_tree_state.current_selection.hash(&mut hasher);
+            self.navigator.cursor_position.hash(&mut hasher);
+            self.navigator.scroll_offset.hash(&mut hasher);
+        }
+        
+        // Hash history state
+        self.history.commit_list.len().hash(&mut hasher);
+        self.history.list_state.selected().hash(&mut hasher);
+        self.history.selected_commit_hash.hash(&mut hasher);
+        self.history.is_loading_more.hash(&mut hasher);
+        
+        // Hash inspector state
+        self.inspector.current_content.len().hash(&mut hasher);
+        self.inspector.scroll_vertical.hash(&mut hasher);
+        self.inspector.scroll_horizontal.hash(&mut hasher);
+        self.inspector.cursor_line.hash(&mut hasher);
+        self.inspector.cursor_column.hash(&mut hasher);
+        self.inspector.show_diff_view.hash(&mut hasher);
+        
+        // Hash active file context
+        self.active_file_context.hash(&mut hasher);
+        
+        hasher.finish()
+    }
+
     pub fn new(repo: Repository) -> Self {
         let mut app = Self {
             repo,
@@ -101,6 +157,8 @@ impl App {
             active_file_context: None,
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
+            active_background_tasks: 0,
+            cached_navigator_view_model: None,
             navigator: NavigatorState::new(),
             new_navigator: None, // Will be initialized when FileTree is loaded
             history: HistoryState::new(),
@@ -586,6 +644,8 @@ impl App {
             active_file_context: config.active_file_context.clone(),
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
+            active_background_tasks: 0,
+            cached_navigator_view_model: None,
             navigator: NavigatorState {
                 file_tree_state: {
                     let mut state = FileTreeState::new();
@@ -692,6 +752,30 @@ impl App {
     ) -> Option<usize> {
         let key = (commit_hash.to_string(), file_path.clone());
         self.per_commit_cursor_positions.get(&key).copied()
+    }
+
+    /// Start a background task and track it
+    pub fn start_background_task(&mut self) {
+        self.active_background_tasks += 1;
+    }
+    
+    /// Complete a background task and update tracking
+    pub fn complete_background_task(&mut self) {
+        self.active_background_tasks = self.active_background_tasks.saturating_sub(1);
+    }
+    
+    /// Check if there are active background tasks
+    pub fn has_active_background_tasks(&self) -> bool {
+        self.active_background_tasks > 0
+    }
+    
+    /// Update cached navigator view model
+    pub fn refresh_navigator_view_model(&mut self) {
+        if let Some(ref mut navigator) = self.new_navigator {
+            self.cached_navigator_view_model = Some(navigator.build_view_model().clone());
+        } else {
+            self.cached_navigator_view_model = None;
+        }
     }
 
     /// Get the mapped line position using line mapping between commits with fallback strategies

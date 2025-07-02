@@ -221,10 +221,23 @@ async fn run_interactive() -> Result<()> {
         app.ui.status_message = format!("Failed to load file tree: {}", e);
     } else {
         log::info!("📤 main: LoadFileTree task sent successfully");
+        app.start_background_task();
     }
 
-    // Main application loop
-    let tick_rate = Duration::from_millis(250);
+    // Event-driven main application loop
+    #[derive(Debug)]
+    enum AppState {
+        Idle,                           // No background tasks - true idle state
+        Processing(usize),              // N active background tasks
+    }
+    
+    // Start in Processing state since we immediately have the LoadFileTree background task
+    let mut app_state = AppState::Processing(1);
+    
+    // Initial draw to show the UI when app starts
+    app.refresh_navigator_view_model();
+    terminal.draw(|f| ui::draw(f, &mut app))?;
+    
     loop {
         // Handle forced screen redraw
         if app.ui.force_redraw {
@@ -232,24 +245,70 @@ async fn run_interactive() -> Result<()> {
             app.ui.force_redraw = false;
         }
         
-        // Draw UI
-        terminal.draw(|f| ui::draw(f, &mut app))?;
-
-        // Handle events with timeout
-        let timeout = tick_rate;
-        if crossterm::event::poll(timeout)? {
-            let event = crossterm::event::read()?;
-            if let Err(e) = event::handle_event(event, &mut app, &task_sender) {
-                app.ui.status_message = format!("Error handling event: {}", e);
+        match app_state {
+            AppState::Idle => {
+                // TRUE IDLE STATE - Block indefinitely waiting for events
+                let event = crossterm::event::read()?;
+                match event::handle_event(event, &mut app, &task_sender) {
+                    Ok(needs_render) => {
+                        if needs_render {
+                            app.refresh_navigator_view_model();
+                            terminal.draw(|f| ui::draw(f, &mut app))?;
+                        }
+                    }
+                    Err(e) => {
+                        app.ui.status_message = format!("Error handling event: {}", e);
+                        app.refresh_navigator_view_model();
+                        terminal.draw(|f| ui::draw(f, &mut app))?;
+                    }
+                }
+                
+                // Check if background tasks were started
+                if app.has_active_background_tasks() {
+                    app_state = AppState::Processing(app.active_background_tasks);
+                }
+            }
+            
+            AppState::Processing(task_count) => {
+                // ACTIVE STATE - Poll for events and check background tasks frequently
+                if crossterm::event::poll(Duration::from_millis(50))? {
+                    let event = crossterm::event::read()?;
+                    match event::handle_event(event, &mut app, &task_sender) {
+                        Ok(needs_render) => {
+                            if needs_render {
+                                app.refresh_navigator_view_model();
+                                terminal.draw(|f| ui::draw(f, &mut app))?;
+                            }
+                        }
+                        Err(e) => {
+                            app.ui.status_message = format!("Error handling event: {}", e);
+                            app.refresh_navigator_view_model();
+                            terminal.draw(|f| ui::draw(f, &mut app))?;
+                        }
+                    }
+                }
+                
+                // Check background tasks frequently when active
+                let mut tasks_completed = 0;
+                while let Ok(result) = result_receiver.try_recv() {
+                    log::debug!("📨 main: Received async task result: {:?}", std::mem::discriminant(&result));
+                    app.complete_background_task();
+                    main_lib::handle_task_result(&mut app, result);
+                    tasks_completed += 1;
+                    // Render immediately when background task completes
+                    app.refresh_navigator_view_model();
+                    terminal.draw(|f| ui::draw(f, &mut app))?;
+                }
+                
+                // Update state based on actual task count
+                if app.active_background_tasks == 0 {
+                    app_state = AppState::Idle;
+                } else {
+                    app_state = AppState::Processing(app.active_background_tasks);
+                }
             }
         }
-
-        // Handle async task results
-        while let Ok(result) = result_receiver.try_recv() {
-            log::debug!("📨 main: Received async task result: {:?}", std::mem::discriminant(&result));
-            main_lib::handle_task_result(&mut app, result);
-        }
-
+        
         // Check if we should quit
         if app.should_quit {
             break;

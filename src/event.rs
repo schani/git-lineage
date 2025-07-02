@@ -10,7 +10,9 @@ pub fn handle_event(
     event: Event,
     app: &mut App,
     async_sender: &mpsc::Sender<Task>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<bool, Box<dyn std::error::Error>> { // Returns true if UI needs update
+    let state_before = app.get_ui_state_hash();
+    
     match event {
         Event::Key(key) => {
             // Global keybindings
@@ -25,7 +27,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         app.should_quit = true;
-                        return Ok(());
+                        return Ok(false); // No render needed when quitting
                     }
                 }
                 KeyCode::Esc => {
@@ -38,7 +40,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         app.should_quit = true;
-                        return Ok(());
+                        return Ok(false); // No render needed when quitting
                     }
                 }
                 KeyCode::Tab => {
@@ -55,7 +57,7 @@ pub fn handle_event(
                         } else {
                             app.next_panel();
                         }
-                        return Ok(());
+                        return Ok(true); // Panel change needs render
                     }
                 }
                 KeyCode::Char('1') => {
@@ -68,7 +70,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         app.ui.active_panel = PanelFocus::Navigator;
-                        return Ok(());
+                        return Ok(true); // Panel change needs render
                     }
                 }
                 KeyCode::Char('2') => {
@@ -81,7 +83,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         app.ui.active_panel = PanelFocus::History;
-                        return Ok(());
+                        return Ok(true); // Panel change needs render
                     }
                 }
                 KeyCode::Char('3') => {
@@ -94,7 +96,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         app.ui.active_panel = PanelFocus::Inspector;
-                        return Ok(());
+                        return Ok(true); // Panel change needs render
                     }
                 }
                 KeyCode::Char('[') => {
@@ -107,7 +109,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         if navigate_to_older_commit(app) {
-                            return Ok(());
+                            return Ok(true); // Commit navigation needs render
                         }
                     }
                 }
@@ -121,7 +123,7 @@ pub fn handle_event(
                     
                     if !in_search_mode {
                         if navigate_to_younger_commit(app) {
-                            return Ok(());
+                            return Ok(true); // Commit navigation needs render
                         }
                     }
                 }
@@ -130,7 +132,7 @@ pub fn handle_event(
                     if key.modifiers.contains(KeyModifiers::CONTROL) {
                         app.ui.force_redraw = true;
                         app.ui.status_message = "Screen refreshed".to_string();
-                        return Ok(());
+                        return Ok(true); // Force redraw needs render
                     }
                 }
                 _ => {}
@@ -138,9 +140,9 @@ pub fn handle_event(
 
             // Panel-specific keybindings
             match app.ui.active_panel {
-                PanelFocus::Navigator => handle_navigator_event(app, key.code, async_sender)?,
-                PanelFocus::History => handle_history_event(app, key.code, async_sender)?,
-                PanelFocus::Inspector => handle_inspector_event(app, key.code, async_sender)?,
+                PanelFocus::Navigator => { handle_navigator_event(app, key.code, async_sender)?; },
+                PanelFocus::History => { handle_history_event(app, key.code, async_sender)?; },
+                PanelFocus::Inspector => { handle_inspector_event(app, key.code, async_sender)?; },
             }
         }
         Event::Resize(_, _) => {
@@ -149,7 +151,8 @@ pub fn handle_event(
         _ => {}
     }
 
-    Ok(())
+    let state_after = app.get_ui_state_hash();
+    Ok(state_before != state_after) // Only render if state changed
 }
 
 fn handle_navigator_event(
@@ -276,7 +279,7 @@ fn handle_new_navigator_event(
     use crate::navigator::NavigatorEvent;
     
     // Get view model to check current state
-    let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+    let view_model = app.new_navigator.as_mut().unwrap().build_view_model().clone();
     
     if view_model.is_searching {
         match key {
@@ -432,7 +435,7 @@ fn handle_new_navigator_file_selection_change(
     app: &mut App,
     task_sender: &mpsc::Sender<Task>,
 ) {
-    let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+    let view_model = app.new_navigator.as_mut().unwrap().build_view_model().clone();
     let selected_item = view_model.items.iter().find(|item| item.is_selected);
     
     if let Some(item) = selected_item {
@@ -449,6 +452,7 @@ fn handle_new_navigator_file_selection_change(
                 log::warn!("Failed to send LoadCommitHistory task: {}", e);
                 app.ui.status_message = "Failed to load commit history".to_string();
             } else {
+                app.start_background_task();
                 app.ui.is_loading = true;
                 app.ui.status_message = format!("Loading history for {}", item.name);
             }
@@ -812,6 +816,8 @@ fn handle_next_change(
         if let Err(e) = async_sender.try_send(task) {
             app.ui.is_loading = false;
             app.ui.status_message = format!("Failed to start search: {}", e);
+        } else {
+            app.start_background_task();
         }
     } else {
         app.ui.status_message = "No file or commit selected".to_string();
@@ -854,6 +860,7 @@ fn handle_file_selection_change(app: &mut App, task_sender: &mpsc::Sender<Task>)
             }) {
                 app.ui.status_message = format!("Failed to start history loading: {}", e);
             } else {
+                app.start_background_task();
                 app.history.is_loading_more = true;
                 // Status message set by load_file_content_at_head will indicate content loaded + history loading
             }
@@ -1357,7 +1364,8 @@ mod tests {
             app.initialize_new_navigator(tree);
             
             // Test 1: When not searching and no query, should not show search
-            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            app.refresh_navigator_view_model();
+            let view_model = app.cached_navigator_view_model.as_ref().unwrap();
             assert!(!view_model.is_searching);
             assert_eq!(view_model.search_query, "");
             
@@ -1368,7 +1376,8 @@ mod tests {
                 panic!("Failed to start search: {}", e);
             }
             
-            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            app.refresh_navigator_view_model();
+            let view_model = app.cached_navigator_view_model.as_ref().unwrap();
             assert!(view_model.is_searching);
             assert_eq!(view_model.search_query, "");
             // UI should show "Search:" for cursor positioning
@@ -1380,7 +1389,8 @@ mod tests {
                 panic!("Failed to update search query: {}", e);
             }
             
-            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            app.refresh_navigator_view_model();
+            let view_model = app.cached_navigator_view_model.as_ref().unwrap();
             assert!(view_model.is_searching);
             assert_eq!(view_model.search_query, "foo");
             
@@ -1391,7 +1401,8 @@ mod tests {
                 panic!("Failed to end search keeping query: {}", e);
             }
             
-            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            app.refresh_navigator_view_model();
+            let view_model = app.cached_navigator_view_model.as_ref().unwrap();
             assert!(!view_model.is_searching);
             assert_eq!(view_model.search_query, "foo");
             // UI should still show "Search: foo" but no cursor

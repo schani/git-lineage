@@ -1,7 +1,7 @@
-┌ File Navigator (Search: rea█ ──────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│  README.md                             ││Select a file to view its content                                           │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
+┌ File Navigator (Search: rea█ ──────────┐┌ Code Inspector - README.md @ 9a4a274d ─────────────────────────────────────┐
+│  README.md                             ││   1 # git-lineage-test                                                     │
+│                                        ││   2                                                                        │
+│                                        ││   3 This repo is test data for [git-lineage](https://github.com/schani/git-│
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -13,8 +13,9 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘│                                                                            │
-┌ Commit History ────────────────────────┐│                                                                            │
-│Select a file to view its history       ││                                                                            │
+┌ Commit History (README.md) - 1 commits ┐│                                                                            │
+│>> 9a4a274d 2025-07-02 06:33 Mark Probst││                                                                            │
+│   More commits available (scroll to loa││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -26,5 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-│                                        ││                                                                            │
-Search mode activated | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navig
+Loaded README.md (3 lines) at commit 9a4a274d | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit
