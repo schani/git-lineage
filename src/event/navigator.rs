@@ -129,13 +129,15 @@ pub fn handle_new_navigator_event(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use crate::navigator::NavigatorEvent;
     
-    // Get view model to check current state
-    let view_model = app.new_navigator.as_mut().unwrap().build_view_model().clone();
+    // Check current state without rebuilding view model
+    let navigator = app.new_navigator.as_mut().unwrap();
+    let is_searching = navigator.is_searching();
+    let search_query = navigator.get_search_query();
     
-    if view_model.is_searching {
+    if is_searching {
         match key {
             KeyCode::Char(c) => {
-                let mut new_query = view_model.search_query.clone();
+                let mut new_query = search_query.clone();
                 new_query.push(c);
                 debug!("🔍 Updating search query to: '{}'", new_query);
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
@@ -148,7 +150,7 @@ pub fn handle_new_navigator_event(
                 return Ok(());
             }
             KeyCode::Backspace => {
-                let mut new_query = view_model.search_query.clone();
+                let mut new_query = search_query.clone();
                 new_query.pop();
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
                     warn!("Failed to update search query: {}", e);
@@ -160,7 +162,7 @@ pub fn handle_new_navigator_event(
             }
             KeyCode::Enter => {
                 // Exit search mode - keep query if it's not empty, clear if empty
-                let event = if view_model.search_query.is_empty() {
+                let event = if search_query.is_empty() {
                     NavigatorEvent::EndSearch
                 } else {
                     NavigatorEvent::EndSearchKeepQuery
@@ -173,7 +175,7 @@ pub fn handle_new_navigator_event(
                     handle_new_navigator_file_selection_change(app, task_sender);
                 }
                 
-                app.ui.status_message = if view_model.search_query.is_empty() {
+                app.ui.status_message = if search_query.is_empty() {
                     "Exited search mode".to_string()
                 } else {
                     "Exited search mode - query preserved".to_string()
@@ -249,24 +251,21 @@ pub fn handle_new_navigator_event(
         }
         KeyCode::Enter => {
             if let Some(selected_path) = app.new_navigator.as_mut().unwrap().get_selection() {
-                // Check if it's a directory by finding it in the view model
-                let view_model = app.new_navigator.as_mut().unwrap().build_view_model().clone();
-                let selected_item = view_model.items.iter().find(|item| item.path == selected_path);
+                // Check if it's a directory without rebuilding the view model
+                let is_dir = app.new_navigator.as_mut().unwrap().is_path_directory(&selected_path);
                 
-                if let Some(item) = selected_item {
-                    if item.is_dir {
-                        // Toggle directory expansion
-                        if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ToggleExpanded(selected_path.clone())) {
-                            warn!("Failed to toggle directory: {}", e);
-                        } else {
-                            app.ui.status_message = "Toggled directory".to_string();
-                            handle_new_navigator_file_selection_change(app, task_sender);
-                        }
+                if is_dir {
+                    // Toggle directory expansion
+                    if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::ToggleExpanded(selected_path.clone())) {
+                        warn!("Failed to toggle directory: {}", e);
                     } else {
-                        // Switch to Inspector panel for files
-                        app.ui.active_panel = crate::app::PanelFocus::Inspector;
-                        app.ui.status_message = format!("Viewing content for {}", selected_path.display());
+                        app.ui.status_message = "Toggled directory".to_string();
+                        handle_new_navigator_file_selection_change(app, task_sender);
                     }
+                } else {
+                    // Switch to Inspector panel for files
+                    app.ui.active_panel = crate::app::PanelFocus::Inspector;
+                    app.ui.status_message = format!("Viewing content for {}", selected_path.display());
                 }
             }
         }

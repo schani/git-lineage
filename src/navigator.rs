@@ -199,6 +199,13 @@ impl NavigatorState {
     pub fn get_search_query(&self) -> String {
         self.query.clone()
     }
+    
+    /// Check if a given path is a directory
+    pub fn is_path_directory(&self, path: &PathBuf) -> bool {
+        self.tree.find_node(path)
+            .map(|node| node.is_dir)
+            .unwrap_or(false)
+    }
 
     /// Build view model for rendering (with caching)
     pub fn build_view_model(&mut self) -> &NavigatorViewModel {
