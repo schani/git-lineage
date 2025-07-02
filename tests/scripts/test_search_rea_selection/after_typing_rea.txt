@@ -1,5 +1,5 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│No files found                          ││Select a file to view its content                                           │
+┌ File Navigator (Search: rea█ ──────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+│  README.md                             ││Select a file to view its content                                           │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -27,4 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-Exited search mode - query preserved | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Sea
+Search mode activated | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navig

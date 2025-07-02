@@ -1,12 +1,9 @@
-//! New state machine-based navigator implementation
+//! Simplified navigator implementation
 //! 
-//! This module implements the new NavigatorState with a state machine architecture
-//! that eliminates the dual-tree anti-pattern and provides proper context preservation
-//! during search mode transitions.
+//! This module implements the NavigatorState with a unified architecture
+//! that treats search as a filter rather than a separate mode.
 
 use crate::tree::{FileTree, TreeNode};
-use fuzzy_matcher::skim::SkimMatcherV2;
-use fuzzy_matcher::FuzzyMatcher;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -25,21 +22,6 @@ pub enum NavigatorEvent {
     CollapseSelected,
 }
 
-/// Different modes the navigator can be in
-#[derive(Debug, PartialEq)]
-pub enum NavigatorMode {
-    Browsing {
-        selection: Option<PathBuf>,
-        expanded: HashSet<PathBuf>,
-        scroll_offset: usize,
-    },
-    Searching {
-        query: String,
-        results: Vec<PathBuf>,
-        selected_index: Option<usize>,
-        saved_browsing: Box<NavigatorMode>,
-    },
-}
 
 /// A visible item in the navigator view
 #[derive(Debug, Clone, PartialEq)]
@@ -63,12 +45,15 @@ pub struct NavigatorViewModel {
     pub is_searching: bool,
 }
 
-/// The new navigator state with state machine architecture
+/// The simplified navigator state
 #[derive(Debug)]
 pub struct NavigatorState {
     tree: FileTree,
-    mode: NavigatorMode,
-    last_search_query: String,
+    selection: Option<PathBuf>,
+    expanded: HashSet<PathBuf>,
+    scroll_offset: usize,
+    query: String,  // Empty string means show all files, non-empty means filter
+    editing_search: bool,  // UI state for showing search cursor
 }
 
 impl NavigatorState {
@@ -77,12 +62,11 @@ impl NavigatorState {
         let expanded = Self::extract_expanded_paths(&tree);
         Self {
             tree,
-            mode: NavigatorMode::Browsing {
-                selection: None,
-                expanded,
-                scroll_offset: 0,
-            },
-            last_search_query: String::new(),
+            selection: None,
+            expanded,
+            scroll_offset: 0,
+            query: String::new(),
+            editing_search: false,
         }
     }
 
@@ -105,280 +89,135 @@ impl NavigatorState {
 
     /// Handle an event and return whether the state changed
     pub fn handle_event(&mut self, event: NavigatorEvent) -> Result<bool, String> {
-        let old_mode = self.mode.clone();
+        let state_before = (self.selection.clone(), self.query.clone(), self.editing_search, self.expanded.clone());
         
-        self.mode = match (&self.mode, event) {
-            // Start search from browsing mode
-            (NavigatorMode::Browsing { selection, expanded, scroll_offset }, NavigatorEvent::StartSearch) => {
-                // For empty query, show same items as browsing mode
-                let browsing_items = self.get_browsing_visible_items(expanded, selection);
-                let results: Vec<PathBuf> = browsing_items.iter().map(|item| item.path.clone()).collect();
-                NavigatorMode::Searching {
-                    query: String::new(),
-                    results: results.clone(),
-                    selected_index: if results.is_empty() { None } else { Some(0) },
-                    saved_browsing: Box::new(NavigatorMode::Browsing {
-                        selection: selection.clone(),
-                        expanded: expanded.clone(),
-                        scroll_offset: *scroll_offset,
-                    }),
+        match event {
+            NavigatorEvent::StartSearch => {
+                self.editing_search = true;
+                // Only ensure selection if we don't have one
+                if self.selection.is_none() {
+                    self.ensure_valid_selection();
                 }
             }
-
-            // End search and restore browsing context
-            (NavigatorMode::Searching { saved_browsing, .. }, NavigatorEvent::EndSearch) => {
-                *saved_browsing.clone()
+            
+            NavigatorEvent::UpdateSearchQuery(new_query) => {
+                if self.editing_search {
+                    self.query = new_query;
+                    // After updating query, ensure selection is still valid
+                    self.ensure_valid_selection();
+                }
             }
-
-            // End search but keep query in browsing context (for Enter key)
-            (NavigatorMode::Searching { saved_browsing, query, .. }, NavigatorEvent::EndSearchKeepQuery) => {
-                // Save the search query before exiting search mode
-                self.last_search_query = query.clone();
-                
-                if let NavigatorMode::Browsing { selection, expanded, scroll_offset } = saved_browsing.as_ref() {
-                    NavigatorMode::Browsing {
-                        selection: selection.clone(),
-                        expanded: expanded.clone(),
-                        scroll_offset: *scroll_offset,
-                    }
+            
+            NavigatorEvent::EndSearch => {
+                self.editing_search = false;
+                self.query.clear();
+                // When returning to full tree, keep current selection if it exists
+                // No need to call ensure_valid_selection - let user navigate if needed
+            }
+            
+            NavigatorEvent::EndSearchKeepQuery => {
+                self.editing_search = false;
+                // query stays as-is, selection should remain valid
+            }
+            
+            NavigatorEvent::NavigateUp => {
+                let visible_items = self.get_current_visible_items();
+                self.selection = self.find_previous_item(&visible_items, &self.selection);
+                self.scroll_offset = self.calculate_scroll_offset(&self.selection, &visible_items);
+            }
+            
+            NavigatorEvent::NavigateDown => {
+                let visible_items = self.get_current_visible_items();
+                self.selection = self.find_next_item(&visible_items, &self.selection);
+                self.scroll_offset = self.calculate_scroll_offset(&self.selection, &visible_items);
+            }
+            
+            NavigatorEvent::ToggleExpanded(path) => {
+                if self.expanded.contains(&path) {
+                    self.expanded.remove(&path);
                 } else {
-                    *saved_browsing.clone()
+                    self.expanded.insert(path);
                 }
             }
-
-            // Update search query
-            (NavigatorMode::Searching { saved_browsing, .. }, NavigatorEvent::UpdateSearchQuery(query)) => {
-                let results = if query.is_empty() {
-                    // When query becomes empty, show same items as the saved browsing mode
-                    if let NavigatorMode::Browsing { selection, expanded, .. } = saved_browsing.as_ref() {
-                        let browsing_items = self.get_browsing_visible_items(expanded, selection);
-                        browsing_items.iter().map(|item| item.path.clone()).collect()
-                    } else {
-                        Vec::new()
-                    }
-                } else {
-                    // For non-empty queries, build directory structure containing matching files
-                    self.build_search_tree_structure(&query)
-                };
-                NavigatorMode::Searching {
-                    query,
-                    selected_index: if results.is_empty() { None } else { Some(0) },
-                    results,
-                    saved_browsing: saved_browsing.clone(),
-                }
+            
+            NavigatorEvent::SelectFile(path) => {
+                self.selection = Some(path);
+                let visible_items = self.get_current_visible_items();
+                self.scroll_offset = self.calculate_scroll_offset(&self.selection, &visible_items);
             }
-
-            // Navigation in browsing mode
-            (NavigatorMode::Browsing { selection, expanded, .. }, NavigatorEvent::NavigateUp) => {
-                let visible_items = self.get_browsing_visible_items(expanded, selection);
-                let new_selection = self.find_previous_item(&visible_items, selection);
-                let new_scroll = self.calculate_scroll_offset(&new_selection, &visible_items);
-                
-                NavigatorMode::Browsing {
-                    selection: new_selection,
-                    expanded: expanded.clone(),
-                    scroll_offset: new_scroll,
-                }
-            }
-
-            (NavigatorMode::Browsing { selection, expanded, .. }, NavigatorEvent::NavigateDown) => {
-                let visible_items = self.get_browsing_visible_items(expanded, selection);
-                let new_selection = self.find_next_item(&visible_items, selection);
-                let new_scroll = self.calculate_scroll_offset(&new_selection, &visible_items);
-                
-                NavigatorMode::Browsing {
-                    selection: new_selection,
-                    expanded: expanded.clone(),
-                    scroll_offset: new_scroll,
-                }
-            }
-
-            // Navigation in search mode
-            (NavigatorMode::Searching { selected_index, query, results, saved_browsing }, NavigatorEvent::NavigateUp) => {
-                let new_index = selected_index
-                    .and_then(|i| if i > 0 { Some(i - 1) } else { None })
-                    .or_else(|| if !results.is_empty() { Some(results.len() - 1) } else { None });
-                
-                NavigatorMode::Searching {
-                    selected_index: new_index,
-                    query: query.clone(),
-                    results: results.clone(),
-                    saved_browsing: saved_browsing.clone(),
-                }
-            }
-
-            (NavigatorMode::Searching { selected_index, query, results, saved_browsing }, NavigatorEvent::NavigateDown) => {
-                let new_index = selected_index
-                    .map(|i| (i + 1) % results.len().max(1))
-                    .or_else(|| if !results.is_empty() { Some(0) } else { None });
-                
-                NavigatorMode::Searching {
-                    selected_index: new_index,
-                    query: query.clone(),
-                    results: results.clone(),
-                    saved_browsing: saved_browsing.clone(),
-                }
-            }
-
-            // Toggle expansion in browsing mode
-            (NavigatorMode::Browsing { selection, expanded, scroll_offset }, NavigatorEvent::ToggleExpanded(path)) => {
-                let mut new_expanded = expanded.clone();
-                if new_expanded.contains(&path) {
-                    new_expanded.remove(&path);
-                } else {
-                    new_expanded.insert(path);
-                }
-                
-                NavigatorMode::Browsing {
-                    selection: selection.clone(),
-                    expanded: new_expanded,
-                    scroll_offset: *scroll_offset,
-                }
-            }
-
-            // Direct selection in browsing mode
-            (NavigatorMode::Browsing { expanded, .. }, NavigatorEvent::SelectFile(path)) => {
-                let visible_items = self.get_browsing_visible_items(expanded, &Some(path.clone()));
-                let new_scroll = self.calculate_scroll_offset(&Some(path.clone()), &visible_items);
-                
-                NavigatorMode::Browsing {
-                    selection: Some(path),
-                    expanded: expanded.clone(),
-                    scroll_offset: new_scroll,
-                }
-            }
-
-            // Expand/collapse selected in browsing mode
-            (NavigatorMode::Browsing { selection, expanded, scroll_offset }, NavigatorEvent::ExpandSelected) => {
-                if let Some(ref sel) = selection {
+            
+            NavigatorEvent::ExpandSelected => {
+                if let Some(ref sel) = self.selection {
                     if let Some(node) = self.tree.find_node(sel) {
                         if node.is_dir {
-                            let mut new_expanded = expanded.clone();
-                            new_expanded.insert(sel.clone());
-                            
-                            NavigatorMode::Browsing {
-                                selection: selection.clone(),
-                                expanded: new_expanded,
-                                scroll_offset: *scroll_offset,
-                            }
-                        } else {
-                            NavigatorMode::Browsing {
-                                selection: selection.clone(),
-                                expanded: expanded.clone(),
-                                scroll_offset: *scroll_offset,
-                            }
+                            self.expanded.insert(sel.clone());
                         }
-                    } else {
-                        NavigatorMode::Browsing {
-                            selection: selection.clone(),
-                            expanded: expanded.clone(),
-                            scroll_offset: *scroll_offset,
-                        }
-                    }
-                } else {
-                    NavigatorMode::Browsing {
-                        selection: selection.clone(),
-                        expanded: expanded.clone(),
-                        scroll_offset: *scroll_offset,
                     }
                 }
             }
-
-            (NavigatorMode::Browsing { selection, expanded, scroll_offset }, NavigatorEvent::CollapseSelected) => {
-                if let Some(ref sel) = selection {
+            
+            NavigatorEvent::CollapseSelected => {
+                if let Some(ref sel) = self.selection {
                     if let Some(node) = self.tree.find_node(sel) {
                         if node.is_dir {
-                            let mut new_expanded = expanded.clone();
-                            new_expanded.remove(sel);
-                            
-                            NavigatorMode::Browsing {
-                                selection: selection.clone(),
-                                expanded: new_expanded,
-                                scroll_offset: *scroll_offset,
-                            }
-                        } else {
-                            NavigatorMode::Browsing {
-                                selection: selection.clone(),
-                                expanded: expanded.clone(),
-                                scroll_offset: *scroll_offset,
-                            }
+                            self.expanded.remove(sel);
                         }
-                    } else {
-                        NavigatorMode::Browsing {
-                            selection: selection.clone(),
-                            expanded: expanded.clone(),
-                            scroll_offset: *scroll_offset,
-                        }
-                    }
-                } else {
-                    NavigatorMode::Browsing {
-                        selection: selection.clone(),
-                        expanded: expanded.clone(),
-                        scroll_offset: *scroll_offset,
                     }
                 }
             }
-
-            // Events not applicable to current mode - no state change
-            _ => self.mode.clone(),
-        };
-
-        Ok(old_mode != self.mode)
+        }
+        
+        let state_after = (self.selection.clone(), self.query.clone(), self.editing_search, self.expanded.clone());
+        Ok(state_before != state_after)
     }
 
     /// Get the current selection
     pub fn get_selection(&self) -> Option<PathBuf> {
-        match &self.mode {
-            NavigatorMode::Browsing { selection, .. } => selection.clone(),
-            NavigatorMode::Searching { results, selected_index, .. } => {
-                selected_index.and_then(|i| results.get(i).cloned())
-            }
-        }
+        self.selection.clone()
     }
 
-    /// Check if currently in search mode
+    /// Check if currently editing search
     pub fn is_searching(&self) -> bool {
-        matches!(self.mode, NavigatorMode::Searching { .. })
+        self.editing_search
     }
 
     /// Get current search query
     pub fn get_search_query(&self) -> String {
-        match &self.mode {
-            NavigatorMode::Searching { query, .. } => query.clone(),
-            _ => self.last_search_query.clone(),
-        }
+        self.query.clone()
     }
 
     /// Build view model for rendering
     pub fn build_view_model(&self) -> NavigatorViewModel {
-        match &self.mode {
-            NavigatorMode::Browsing { selection, expanded, scroll_offset } => {
-                let items = self.get_browsing_visible_items(expanded, selection);
-                let cursor_position = selection
-                    .as_ref()
-                    .and_then(|sel| items.iter().position(|item| &item.path == sel))
-                    .unwrap_or(0);
-
-                NavigatorViewModel {
-                    items,
-                    scroll_offset: *scroll_offset,
-                    cursor_position,
-                    search_query: self.last_search_query.clone(),
-                    is_searching: false,
-                }
-            }
-            NavigatorMode::Searching { query, results, selected_index, .. } => {
-                let items = self.get_search_visible_items(results, selected_index);
-                let cursor_position = selected_index.unwrap_or(0);
-
-                NavigatorViewModel {
-                    items,
-                    scroll_offset: 0, // Search results start at top
-                    cursor_position,
-                    search_query: query.clone(),
-                    is_searching: true,
-                }
-            }
+        let items = if self.query.is_empty() {
+            // Show full tree
+            self.get_browsing_visible_items(&self.expanded, &self.selection)
+        } else {
+            // Show filtered tree (same logic always)
+            let results = self.search_files(&self.query);
+            self.get_search_visible_items(&results, &self.selection)
+        };
+        
+        let cursor_position = self.selection
+            .as_ref()
+            .and_then(|sel| items.iter().position(|item| &item.path == sel))
+            .unwrap_or(0);
+        
+        NavigatorViewModel {
+            items,
+            scroll_offset: self.scroll_offset,
+            cursor_position,
+            search_query: self.query.clone(),
+            is_searching: self.editing_search,
+        }
+    }
+    
+    /// Get the currently visible items based on current state
+    fn get_current_visible_items(&self) -> Vec<VisibleItem> {
+        if self.query.is_empty() {
+            self.get_browsing_visible_items(&self.expanded, &self.selection)
+        } else {
+            let results = self.search_files(&self.query);
+            self.get_search_visible_items(&results, &self.selection)
         }
     }
 
@@ -394,22 +233,23 @@ impl NavigatorState {
             return results;
         }
 
-        let matcher = SkimMatcherV2::default();
-
-        // Filter and sort by fuzzy match score
-        let mut scored_results: Vec<(PathBuf, i64)> = results
+        // Filter by substring match in filename (case-insensitive)
+        let query_lower = query.to_lowercase();
+        let mut filtered_results: Vec<PathBuf> = results
             .into_iter()
-            .filter_map(|path| {
-                let file_name = path.file_name()?.to_string_lossy();
-                matcher.fuzzy_match(&file_name, query)
-                    .map(|score| (path, score))
+            .filter(|path| {
+                if let Some(file_name) = path.file_name() {
+                    let file_name_str = file_name.to_string_lossy().to_lowercase();
+                    file_name_str.contains(&query_lower)
+                } else {
+                    false
+                }
             })
             .collect();
 
-        // Sort by score (higher is better)
-        scored_results.sort_by(|a, b| b.1.cmp(&a.1));
-
-        scored_results.into_iter().map(|(path, _)| path).collect()
+        // Sort alphabetically for consistent results
+        filtered_results.sort();
+        filtered_results
     }
 
     /// Recursively collect all file paths from tree nodes
@@ -465,7 +305,7 @@ impl NavigatorState {
     }
 
     /// Get visible items for search mode
-    fn get_search_visible_items(&self, results: &[PathBuf], selected_index: &Option<usize>) -> Vec<VisibleItem> {
+    fn get_search_visible_items(&self, results: &[PathBuf], selection: &Option<PathBuf>) -> Vec<VisibleItem> {
         // For search mode, we need to display results as a tree structure
         // with directories containing matches automatically expanded
         
@@ -483,21 +323,31 @@ impl NavigatorState {
         // Process directories first, then files
         let mut items = Vec::new();
         
-        // First pass: directories
+        // Process all nodes but only show directories if they contain matches
+        // and only show files if they are in the results
         for node in &self.tree.root {
-            if node.is_dir && results.contains(&node.path) {
-                self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selected_index);
-            }
-        }
-        
-        // Second pass: files
-        for node in &self.tree.root {
-            if !node.is_dir && results.contains(&node.path) {
-                self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selected_index);
+            if node.is_dir {
+                // Show directory if it contains any matching files
+                let contains_matches = self.directory_contains_matches(node, results);
+                if contains_matches {
+                    self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selection);
+                }
+            } else if results.contains(&node.path) {
+                // Show file if it's in the search results
+                self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selection);
             }
         }
         
         items
+    }
+    
+    /// Check if a directory contains any files that match the search results
+    fn directory_contains_matches(&self, dir_node: &TreeNode, results: &[PathBuf]) -> bool {
+        // Check if any result path starts with this directory path
+        let dir_path_str = dir_node.path.to_string_lossy();
+        results.iter().any(|result_path| {
+            result_path.to_string_lossy().starts_with(&format!("{}/", dir_path_str))
+        })
     }
     
     /// Recursively collect visible items for search mode with tree structure
@@ -508,15 +358,22 @@ impl NavigatorState {
         depth: usize,
         expanded: &HashSet<PathBuf>,
         search_results: &[PathBuf],
-        selected_index: &Option<usize>,
+        selection: &Option<PathBuf>,
     ) {
-        // Only include this node if it's in the search results
-        if !search_results.contains(&node.path) {
+        // Include this node if:
+        // 1. It's a file that's in the search results, OR
+        // 2. It's a directory that contains files in the search results
+        let should_include = if node.is_dir {
+            self.directory_contains_matches(node, search_results)
+        } else {
+            search_results.contains(&node.path)
+        };
+        
+        if !should_include {
             return;
         }
         
-        let current_index = items.len();
-        let is_selected = selected_index == &Some(current_index);
+        let is_selected = selection.as_ref() == Some(&node.path);
         let is_expanded = expanded.contains(&node.path);
 
         items.push(VisibleItem {
@@ -532,7 +389,7 @@ impl NavigatorState {
         // If directory is expanded, show children that are in search results
         if node.is_dir && is_expanded {
             for child in &node.children {
-                self.collect_search_visible_items(child, items, depth + 1, expanded, search_results, selected_index);
+                self.collect_search_visible_items(child, items, depth + 1, expanded, search_results, selection);
             }
         }
     }
@@ -595,6 +452,30 @@ impl NavigatorState {
         // The UI layer will handle viewport management
         0
     }
+    
+    /// Ensure we have a valid selection if there are visible items
+    fn ensure_valid_selection(&mut self) {
+        let visible_items = self.get_current_visible_items();
+        
+        if visible_items.is_empty() {
+            // No visible items, clear selection
+            self.selection = None;
+            return;
+        }
+        
+        // Check if current selection is still visible
+        if let Some(ref selection) = self.selection {
+            let is_visible = visible_items.iter().any(|item| &item.path == selection);
+            if is_visible {
+                // Current selection is still valid, keep it
+                return;
+            }
+        }
+        
+        // Either no selection or current selection is not visible
+        // Select first visible item
+        self.selection = Some(visible_items[0].path.clone());
+    }
 
     /// Build directory structure containing search results
     fn build_search_tree_structure(&self, query: &str) -> Vec<PathBuf> {
@@ -648,28 +529,6 @@ impl NavigatorState {
     }
 }
 
-// Implement Clone for NavigatorMode manually since Box doesn't auto-derive Clone
-impl Clone for NavigatorMode {
-    fn clone(&self) -> Self {
-        match self {
-            NavigatorMode::Browsing { selection, expanded, scroll_offset } => {
-                NavigatorMode::Browsing {
-                    selection: selection.clone(),
-                    expanded: expanded.clone(),
-                    scroll_offset: *scroll_offset,
-                }
-            }
-            NavigatorMode::Searching { query, results, selected_index, saved_browsing } => {
-                NavigatorMode::Searching {
-                    query: query.clone(),
-                    results: results.clone(),
-                    selected_index: *selected_index,
-                    saved_browsing: saved_browsing.clone(),
-                }
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -800,18 +659,20 @@ mod tests {
         navigator.handle_event(NavigatorEvent::SelectFile(PathBuf::from("README.md"))).unwrap();
         navigator.handle_event(NavigatorEvent::ToggleExpanded(PathBuf::from("src"))).unwrap();
         
-        let original_selection = navigator.get_selection();
         let original_view = navigator.build_view_model();
         
         // Enter search mode
         navigator.handle_event(NavigatorEvent::StartSearch).unwrap();
         navigator.handle_event(NavigatorEvent::UpdateSearchQuery("cargo".to_string())).unwrap();
         
+        // Selection should now be Cargo.toml (first search result)
+        assert_eq!(navigator.get_selection(), Some(PathBuf::from("Cargo.toml")));
+        
         // Exit search mode
         navigator.handle_event(NavigatorEvent::EndSearch).unwrap();
         
-        // Verify context is restored
-        assert_eq!(navigator.get_selection(), original_selection);
+        // Selection should remain Cargo.toml (still valid in full tree)
+        assert_eq!(navigator.get_selection(), Some(PathBuf::from("Cargo.toml")));
         assert!(!navigator.is_searching());
         
         let restored_view = navigator.build_view_model();

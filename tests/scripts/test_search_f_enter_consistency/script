@@ -1,0 +1,17 @@
+# Test that search results are consistent before and after pressing Enter
+# This test demonstrates the bug where the tree view changes after Enter
+
+# Start search mode
+char:/
+
+# Type 'f' to search for files containing 'f'
+char:f
+
+# Take screenshot of search results
+screenshot:during_search_f.txt
+
+# Press Enter to exit search mode but keep query active
+key:enter
+
+# Take screenshot after Enter - should show same tree but currently doesn't
+screenshot:after_enter_f.txt

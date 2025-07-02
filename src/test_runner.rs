@@ -398,6 +398,20 @@ impl TestRunner {
                     Err("New navigator not available".into())
                 }
             }
+            "selected_file" => {
+                if let Some(new_navigator) = &app.new_navigator {
+                    let selection = new_navigator.get_selection();
+                    match selection {
+                        Some(path) => {
+                            let path_str = path.to_string_lossy();
+                            Ok(path_str == expected)
+                        }
+                        None => Ok(expected == "none" || expected.is_empty())
+                    }
+                } else {
+                    Err("New navigator not available".into())
+                }
+            }
             _ => Err(format!("Unknown assertion property: {}", property).into())
         }
     }

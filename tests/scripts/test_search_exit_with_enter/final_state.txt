@@ -1,7 +1,7 @@
 ┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│▶ dir                                   ││Select a file to view its content                                           │
-│  README.md                             ││                                                                            │
-│  file-in-root                          ││                                                                            │
+│No files found                          ││Select a file to view its content                                           │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │

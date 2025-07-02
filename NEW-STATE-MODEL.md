@@ -1,363 +1,264 @@
-# New State Model Architecture
+# New Navigator State Model
 
-## 🎯 Problem Statement
+## Overview
 
-The current search functionality has a fundamental bug where selection state gets corrupted when transitioning between search and normal modes. This document outlines a complete architectural solution.
+The navigator has been simplified from a complex state machine with multiple modes to a single, unified state structure. This eliminates the dual-tree anti-pattern and ensures consistent filtering behavior.
 
-## 🔍 Root Cause Analysis
-
-### Current Architecture Problems
-
-1. **Dual Tree Anti-Pattern**
-   ```rust
-   pub struct FileTreeState {
-       original_tree: FileTree,  // Complete tree
-       display_tree: FileTree,   // Filtered copy - DATA DUPLICATION!
-   }
-   ```
-
-2. **Mixed Concerns** - `FileTreeState` manages:
-   - Tree structure
-   - Selection state  
-   - View state
-   - Search state
-   - Navigation state
-
-3. **Imperative State Management** - State changes scattered across files
-4. **Index-Based Navigation** - Selection becomes meaningless when tree structure changes
-
-### The Bug in Detail
-
-```rust
-// User has src/api/client.rs selected
-current_selection = "src/api/client.rs"
-
-// User starts search for "main"
-display_tree = rebuild_filtered_tree("main")  // Now only contains src/main.rs
-current_selection = "src/main.rs"             // Selection jumps!
-
-// User exits search
-display_tree = original_tree.clone()          // Back to full tree
-current_selection = "src/main.rs"             // But user expects src/api/client.rs!
-```
-
-## 🏗️ New Architecture: State Machine + Single Tree
-
-### Core Principles
-
-1. **Single Source of Truth** - One immutable tree, multiple views
-2. **State Machine** - Clear mode transitions with preserved context
-3. **View Generation** - Filter on-demand, no data duplication
-4. **Event-Driven** - Predictable state transitions
-
-### Data Structure
+## Core Structure
 
 ```rust
 pub struct NavigatorState {
-    tree: FileTree,              // Single immutable tree - never changes
-    mode: NavigatorMode,         // Current state with complete context
-}
-
-#[derive(Debug, Clone)]
-pub enum NavigatorMode {
-    Browsing {
-        selection: Option<PathBuf>,      // Absolute path reference
-        expanded: HashSet<PathBuf>,      // Which directories are open
-        scroll_offset: usize,            // View scroll position
-    },
-    Searching {
-        query: String,                   // Current search query
-        results: Vec<PathBuf>,          // Filtered results
-        selected_index: Option<usize>,   // Index in results
-        saved_browsing: Box<NavigatorMode>, // COMPLETE preserved context
-    },
+    tree: FileTree,
+    selection: Option<PathBuf>,
+    expanded: HashSet<PathBuf>,
+    scroll_offset: usize,
+    query: String,  // Empty string means show all files, non-empty means filter
+    editing_search: bool,  // UI state for showing search cursor
 }
 ```
 
-### Key Insight: Views, Not Copies
+## Key Principles
 
-Instead of maintaining two tree copies:
+1. **Single Source of Truth**: One state struct, one way to filter, one way to render
+2. **Consistent Filtering**: The same filtering logic applies whether typing or not
+3. **Simple UI State**: `editing_search` only controls cursor display, not behavior
+4. **No State Machine**: No complex transitions or saved states
 
+## Behavior Logic
+
+### Search Activation
+- **Input**: `/` key press
+- **Action**: `editing_search = true`
+- **Result**: Search cursor appears, current query remains active
+
+### Character Input
+- **Condition**: `editing_search == true`
+- **Input**: Any character
+- **Action**: Update `query` string
+- **Result**: Tree immediately filters to match query
+
+### Search Completion (Enter)
+- **Input**: Enter key while `editing_search == true`
+- **Action**: `editing_search = false`
+- **Result**: 
+  - Search cursor disappears
+  - Query remains active (tree stays filtered)
+  - User can navigate filtered results
+
+### Search Cancellation (Escape)
+- **Input**: Escape key while `editing_search == true`
+- **Action**: 
+  - `editing_search = false`
+  - `query = ""`
+- **Result**:
+  - Search cursor disappears
+  - Filter is cleared (tree shows all files)
+
+## Rendering Logic
+
+### Tree Display
 ```rust
-// ❌ Current approach - dual trees
-struct FileTreeState {
-    original_tree: FileTree,     // Data stored here
-    display_tree: FileTree,      // Same data duplicated here
+fn build_view_model(&self) -> NavigatorViewModel {
+    let items = if self.query.is_empty() {
+        // Show full tree
+        self.get_browsing_visible_items(&self.expanded, &self.selection)
+    } else {
+        // Show filtered tree (same logic always)
+        let results = self.search_files(&self.query);
+        self.get_search_visible_items(&results, &None)
+    };
+    
+    NavigatorViewModel {
+        items,
+        scroll_offset: self.scroll_offset,
+        cursor_position: self.calculate_cursor_position(),
+        search_query: self.query.clone(),
+        is_searching: self.editing_search,  // Only for UI cursor
+    }
 }
+```
 
-// ✅ New approach - single tree + dynamic views  
-struct NavigatorState {
-    tree: FileTree,                    // Data stored once
-    cached_view: Option<Vec<PathBuf>>, // Generated view
+### UI Elements
+- **Title Bar**: 
+  - If `editing_search`: "File Navigator (Search: {query}█"
+  - Else: "File Navigator"
+- **Status Bar**:
+  - If `editing_search`: "Search mode activated"
+  - Else if `!query.is_empty()`: "Filtered results - {query}"
+  - Else: Normal status
+
+## Event Handling
+
+### Simplified Event Processing
+```rust
+pub fn handle_event(&mut self, event: NavigatorEvent) {
+    match event {
+        NavigatorEvent::StartSearch => {
+            self.editing_search = true;
+        }
+        
+        NavigatorEvent::UpdateSearchQuery(new_query) => {
+            if self.editing_search {
+                self.query = new_query;
+            }
+        }
+        
+        NavigatorEvent::EndSearch => {
+            self.editing_search = false;
+            self.query.clear();
+        }
+        
+        NavigatorEvent::EndSearchKeepQuery => {
+            self.editing_search = false;
+            // query stays as-is
+        }
+        
+        // Navigation events work the same regardless of search state
+        NavigatorEvent::NavigateUp => {
+            let visible_items = self.get_current_visible_items();
+            self.selection = self.find_previous_item(&visible_items, &self.selection);
+        }
+        
+        // ... other navigation events
+    }
+}
+```
+
+## Benefits
+
+### 1. Eliminates Inconsistency
+- **Before**: Search mode and browsing-with-query used different filtering logic
+- **After**: One filtering function, always consistent results
+
+### 2. Simplifies State Management
+- **Before**: Complex state machine with transitions and saved states
+- **After**: Simple boolean flag for UI state
+
+### 3. Removes Anti-Patterns
+- **Before**: Dual trees, separate result vectors, complex transitions
+- **After**: Single tree, single filtering path
+
+### 4. Improves Maintainability
+- **Before**: Multiple code paths to maintain and test
+- **After**: One clear, linear code path
+
+### 5. Fixes User Experience
+- **Before**: Tree changes unexpectedly after Enter
+- **After**: Tree stays consistent, only cursor disappears
+
+## Migration Strategy
+
+1. **Replace NavigatorMode enum** with simple struct fields
+2. **Consolidate filtering logic** into single function
+3. **Update event handlers** to modify fields directly
+4. **Simplify view model building** to one path
+5. **Update tests** to verify consistent behavior
+
+## Key Insight
+
+The fundamental insight is that **search is not a mode, it's a filter**. The "mode" is just whether the user is currently editing that filter. This mental model maps perfectly to the simplified state structure and eliminates all the complexity that caused the original bug.
+
+## Implementation Details
+
+### Core State Structure
+```rust
+pub struct NavigatorState {
+    tree: FileTree,
+    selection: Option<PathBuf>,
+    expanded: HashSet<PathBuf>,
+    scroll_offset: usize,
+    query: String,
+    editing_search: bool,
 }
 
 impl NavigatorState {
-    pub fn get_visible_items(&self) -> Vec<VisibleItem> {
-        match &self.mode {
-            NavigatorMode::Browsing { expanded, selection, .. } => {
-                self.tree.flatten()
-                    .filter(|node| self.is_visible_in_browsing(node, expanded))
-                    .map(|node| VisibleItem {
-                        path: node.path.clone(),
-                        name: node.name.clone(),
-                        depth: node.depth,
-                        is_selected: Some(&node.path) == selection.as_ref(),
-                    })
-                    .collect()
-            }
-            NavigatorMode::Searching { query, results, selected_index, .. } => {
-                results.iter().enumerate()
-                    .map(|(i, path)| VisibleItem {
-                        path: path.clone(),
-                        name: path.file_name().unwrap().to_string(),
-                        depth: 0, // Flat search results
-                        is_selected: Some(i) == *selected_index,
-                    })
-                    .collect()
-            }
+    pub fn new(tree: FileTree) -> Self {
+        let expanded = Self::extract_expanded_paths(&tree);
+        Self {
+            tree,
+            selection: None,
+            expanded,
+            scroll_offset: 0,
+            query: String::new(),
+            editing_search: false,
         }
     }
 }
 ```
 
-## 🔄 State Transitions
-
-### Event-Driven Architecture
-
+### Event Handling
 ```rust
-#[derive(Debug)]
-pub enum NavigatorEvent {
-    SelectFile(PathBuf),
-    StartSearch,
-    UpdateSearchQuery(String),
-    EndSearch,
-    NavigateUp,
-    NavigateDown,
-    ToggleExpanded(PathBuf),
-}
-
-impl NavigatorState {
-    pub fn handle_event(&mut self, event: NavigatorEvent) -> Result<()> {
-        self.mode = match (&self.mode, event) {
-            // Enter search mode - preserve complete context
-            (NavigatorMode::Browsing(state), NavigatorEvent::StartSearch) => {
-                NavigatorMode::Searching {
-                    query: String::new(),
-                    results: Vec::new(),
-                    selected_index: None,
-                    saved_browsing: Box::new(NavigatorMode::Browsing(state.clone())),
-                }
+pub fn handle_event(&mut self, event: NavigatorEvent) {
+    match event {
+        NavigatorEvent::StartSearch => {
+            self.editing_search = true;
+        }
+        
+        NavigatorEvent::UpdateSearchQuery(new_query) => {
+            if self.editing_search {
+                self.query = new_query;
             }
-            
-            // Exit search mode - restore complete context
-            (NavigatorMode::Searching(state), NavigatorEvent::EndSearch) => {
-                *state.saved_browsing.clone() // Perfect restoration!
+        }
+        
+        NavigatorEvent::EndSearch => {
+            self.editing_search = false;
+            self.query.clear();
+        }
+        
+        NavigatorEvent::EndSearchKeepQuery => {
+            self.editing_search = false;
+        }
+        
+        NavigatorEvent::NavigateUp => {
+            let visible_items = self.get_current_visible_items();
+            self.selection = self.find_previous_item(&visible_items, &self.selection);
+        }
+        
+        NavigatorEvent::NavigateDown => {
+            let visible_items = self.get_current_visible_items();
+            self.selection = self.find_next_item(&visible_items, &self.selection);
+        }
+        
+        NavigatorEvent::ToggleExpanded(path) => {
+            if self.expanded.contains(&path) {
+                self.expanded.remove(&path);
+            } else {
+                self.expanded.insert(path);
             }
-            
-            // Update search query
-            (NavigatorMode::Searching(state), NavigatorEvent::UpdateSearchQuery(query)) => {
-                let results = self.tree.search(&query);
-                NavigatorMode::Searching {
-                    query,
-                    results,
-                    selected_index: if results.is_empty() { None } else { Some(0) },
-                    saved_browsing: state.saved_browsing.clone(),
-                }
-            }
-            
-            // Navigation in browsing mode
-            (NavigatorMode::Browsing(state), NavigatorEvent::NavigateDown) => {
-                let visible_items = self.get_visible_items();
-                let new_selection = self.find_next_item(&visible_items, &state.selection);
-                NavigatorMode::Browsing {
-                    selection: new_selection,
-                    expanded: state.expanded.clone(),
-                    scroll_offset: self.calculate_scroll_offset(&new_selection),
-                }
-            }
-            
-            // Navigation in search mode
-            (NavigatorMode::Searching(state), NavigatorEvent::NavigateDown) => {
-                let new_index = state.selected_index
-                    .map(|i| (i + 1).min(state.results.len().saturating_sub(1)))
-                    .or_else(|| if !state.results.is_empty() { Some(0) } else { None });
-                
-                NavigatorMode::Searching {
-                    selected_index: new_index,
-                    ..state.clone()
-                }
-            }
-            
-            // ... other transitions
-        };
-        Ok(())
+        }
+        
+        NavigatorEvent::SelectFile(path) => {
+            self.selection = Some(path);
+        }
+        
+        // ... other events
     }
 }
 ```
-
-## 🎨 UI Integration
 
 ### View Model Generation
-
 ```rust
-#[derive(Debug)]
-pub struct VisibleItem {
-    pub path: PathBuf,
-    pub name: String,
-    pub depth: usize,
-    pub is_selected: bool,
-    pub is_expanded: bool,
-}
-
-impl NavigatorState {
-    pub fn build_view_model(&self) -> NavigatorViewModel {
-        let items = self.get_visible_items();
-        let scroll_offset = self.get_scroll_offset();
-        let cursor_position = self.get_cursor_position();
-        
-        NavigatorViewModel {
-            items,
-            scroll_offset,
-            cursor_position,
-            search_query: self.get_search_query(),
-            is_searching: matches!(self.mode, NavigatorMode::Searching { .. }),
-        }
+pub fn build_view_model(&self) -> NavigatorViewModel {
+    let items = if self.query.is_empty() {
+        self.get_browsing_visible_items(&self.expanded, &self.selection)
+    } else {
+        let results = self.search_files(&self.query);
+        self.get_search_visible_items(&results, &self.selection)
+    };
+    
+    let cursor_position = self.selection
+        .as_ref()
+        .and_then(|sel| items.iter().position(|item| &item.path == sel))
+        .unwrap_or(0);
+    
+    NavigatorViewModel {
+        items,
+        scroll_offset: self.scroll_offset,
+        cursor_position,
+        search_query: self.query.clone(),
+        is_searching: self.editing_search,
     }
 }
 ```
 
-### Rendering
-
-```rust
-// ui.rs
-pub fn draw_file_navigator(f: &mut Frame, app: &App, area: Rect) {
-    let view_model = app.navigator.build_view_model();
-    
-    let items: Vec<ListItem> = view_model.items
-        .iter()
-        .map(|item| {
-            let style = if item.is_selected {
-                Style::default().bg(Color::Blue)
-            } else {
-                Style::default()
-            };
-            
-            let content = format!("{}{}", "  ".repeat(item.depth), item.name);
-            ListItem::new(content).style(style)
-        })
-        .collect();
-    
-    let list = List::new(items)
-        .block(Block::default()
-            .borders(Borders::ALL)
-            .title(if view_model.is_searching {
-                format!("Search: {}", view_model.search_query)
-            } else {
-                "Files".to_string()
-            }));
-    
-    f.render_stateful_widget(list, area, &mut view_model.list_state);
-}
-```
-
-## 🔧 Implementation Strategy
-
-### Phase 1: Extract Current Logic
-1. Create new `NavigatorState` with current logic
-2. Implement basic state transitions
-3. Replace `FileTreeState` usage gradually
-
-### Phase 2: Event System
-1. Define `NavigatorEvent` enum
-2. Implement `handle_event` method
-3. Update event handlers in `event.rs`
-
-### Phase 3: View Generation
-1. Implement `get_visible_items` method
-2. Build view model for UI
-3. Update rendering logic
-
-### Phase 4: Testing & Migration
-1. Add comprehensive state transition tests
-2. Test search functionality end-to-end
-3. Remove old dual-tree code
-
-## 🚀 Benefits
-
-### Bug Elimination
-- **No more selection jumps** - Context preservation is automatic
-- **No state corruption** - Atomic state transitions
-- **Predictable behavior** - Clear state machine rules
-
-### Performance Improvements
-- **No tree duplication** - 50% less memory usage
-- **Efficient filtering** - Generate views on-demand
-- **Faster searches** - No tree rebuilding overhead
-
-### Developer Experience
-- **Easy testing** - Mock events, verify state transitions
-- **Clear mental model** - Always know what mode you're in
-- **Future-proof** - Adding diff/blame modes becomes trivial
-
-### Code Quality
-- **Single responsibility** - Each mode owns its logic
-- **Immutable data** - No accidental mutations
-- **Event-driven** - Predictable and debuggable
-
-## 🧪 Testing Strategy
-
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_search_preserves_browsing_context() {
-        let mut navigator = NavigatorState::new(create_test_tree());
-        
-        // Set up browsing state
-        navigator.handle_event(NavigatorEvent::SelectFile("src/api/client.rs".into())).unwrap();
-        navigator.handle_event(NavigatorEvent::ToggleExpanded("src".into())).unwrap();
-        navigator.handle_event(NavigatorEvent::ToggleExpanded("src/api".into())).unwrap();
-        
-        let original_state = navigator.mode.clone();
-        
-        // Enter search mode
-        navigator.handle_event(NavigatorEvent::StartSearch).unwrap();
-        navigator.handle_event(NavigatorEvent::UpdateSearchQuery("main".into())).unwrap();
-        
-        // Exit search mode
-        navigator.handle_event(NavigatorEvent::EndSearch).unwrap();
-        
-        // Verify context is perfectly restored
-        assert_eq!(navigator.mode, original_state);
-    }
-    
-    #[test]
-    fn test_search_results_navigation() {
-        let mut navigator = NavigatorState::new(create_test_tree());
-        
-        navigator.handle_event(NavigatorEvent::StartSearch).unwrap();
-        navigator.handle_event(NavigatorEvent::UpdateSearchQuery("test".into())).unwrap();
-        
-        if let NavigatorMode::Searching { selected_index, results, .. } = &navigator.mode {
-            assert_eq!(*selected_index, Some(0));
-            assert!(!results.is_empty());
-        }
-        
-        navigator.handle_event(NavigatorEvent::NavigateDown).unwrap();
-        
-        if let NavigatorMode::Searching { selected_index, .. } = &navigator.mode {
-            assert_eq!(*selected_index, Some(1));
-        }
-    }
-}
-```
-
-## 🎉 Conclusion
-
-This new state machine architecture eliminates the root causes of the search bug while providing a robust foundation for future features. The key insight is that we don't need two trees - we need one tree and different ways of viewing it.
-
-The transition preserves complete context, making the user experience seamless and predictable. Performance improves due to eliminated data duplication, and the code becomes much easier to reason about and test.
-
-**Next Steps**: Implement Phase 1 to extract current logic into the new structure, then gradually migrate the rest of the system.
+This architecture eliminates the state machine complexity while ensuring consistent behavior across all interaction patterns.

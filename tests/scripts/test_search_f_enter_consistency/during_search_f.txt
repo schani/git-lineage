@@ -1,7 +1,7 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│No files found                          ││Select a file to view its content                                           │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
+┌ File Navigator (Search: f█ ────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+│▼ dir                                   ││Select a file to view its content                                           │
+│    file-in-dir                         ││                                                                            │
+│  file-in-root                          ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -27,4 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-Exited search mode - query preserved | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Sea
+Search mode activated | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navig

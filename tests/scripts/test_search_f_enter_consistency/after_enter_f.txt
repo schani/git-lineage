@@ -1,7 +1,7 @@
 ┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│No files found                          ││Select a file to view its content                                           │
-│                                        ││                                                                            │
-│                                        ││                                                                            │
+│▼ dir                                   ││Select a file to view its content                                           │
+│    file-in-dir                         ││                                                                            │
+│  file-in-root                          ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
