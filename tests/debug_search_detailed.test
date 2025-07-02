@@ -1,0 +1,16 @@
+# Debug test with more details
+
+# Check initial state
+assert:active_panel:Navigator
+assert:visible_files_count:19
+
+# Enter search mode
+char:/
+
+# Check state after entering search mode
+assert:is_searching:true
+assert:search_query:
+
+# Exit
+key:esc
+key:q

@@ -54,6 +54,9 @@ Test files use a simple text format where each line represents a command:
 - `cursor_line` - Current cursor line number (0-based)
 - `content_lines` - Number of lines in inspector content
 - `has_file_selected` - Whether a file is selected (`true`/`false`)
+- `visible_files_count` - Number of files visible in navigator
+- `is_searching` - Whether navigator is in search mode (`true`/`false`)
+- `search_query` - Current search query string
 
 ## Example Tests
 

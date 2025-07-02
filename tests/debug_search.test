@@ -1,0 +1,17 @@
+# Debug test to see exactly when the search bug happens
+
+# Check initial state
+assert:active_panel:Navigator
+assert:visible_files_count:19
+
+# Enter search mode
+char:/
+
+# Check immediately after entering search mode  
+assert:is_searching:true
+assert:search_query:
+assert:visible_files_count:19
+
+# Exit early to isolate the first problem
+key:esc
+key:q

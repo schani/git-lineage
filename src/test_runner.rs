@@ -353,6 +353,34 @@ impl TestRunner {
                     .map_err(|_| "has_file_selected expects boolean value")?;
                 Ok(app.get_selected_file_path().is_some() == expected_bool)
             }
+            "visible_files_count" => {
+                let expected_count = expected.parse::<usize>()
+                    .map_err(|_| "visible_files_count expects numeric value")?;
+                if let Some(new_navigator) = &app.new_navigator {
+                    let view_model = new_navigator.build_view_model();
+                    Ok(view_model.items.len() == expected_count)
+                } else {
+                    Err("New navigator not available".into())
+                }
+            }
+            "is_searching" => {
+                let expected_bool = expected.parse::<bool>()
+                    .map_err(|_| "is_searching expects boolean value")?;
+                if let Some(new_navigator) = &app.new_navigator {
+                    let view_model = new_navigator.build_view_model();
+                    Ok(view_model.is_searching == expected_bool)
+                } else {
+                    Err("New navigator not available".into())
+                }
+            }
+            "search_query" => {
+                if let Some(new_navigator) = &app.new_navigator {
+                    let view_model = new_navigator.build_view_model();
+                    Ok(view_model.search_query == expected)
+                } else {
+                    Err("New navigator not available".into())
+                }
+            }
             _ => Err(format!("Unknown assertion property: {}", property).into())
         }
     }

@@ -1,0 +1,19 @@
+# Debug test to compare browsing vs search display
+
+# Check browsing mode first
+assert:active_panel:Navigator
+assert:is_searching:false
+assert:visible_files_count:19
+
+# Enter search mode
+char:/
+
+# Search mode with empty query should show SAME as browsing mode
+assert:is_searching:true
+assert:search_query:
+# This should be 19 (same as browsing), not 55 (all files)
+assert:visible_files_count:19
+
+# Exit
+key:esc
+key:q

@@ -1,0 +1,45 @@
+# Test to reproduce search bug: empty search should show all files, not "no files found"
+
+# Start in navigator panel
+assert:active_panel:Navigator
+
+# Check how many files are visible initially (top-level items only)
+assert:visible_files_count:19
+
+# Enter search mode with '/'
+char:/
+
+# Now we're in search mode with empty query - this should show ALL files in the repo
+assert:is_searching:true
+assert:search_query:
+
+# BUG WAS FIXED: Empty search query now shows same as browsing mode
+# This should be 19 items (same as browsing), not 0 or all files in repo
+assert:visible_files_count:19
+
+# Type a character to see if search works at all
+char:s
+
+# Should now only show files matching 's'
+assert:search_query:s
+# Don't check exact count as it varies, but should be > 0 for files containing 's'
+
+# Backspace to remove the 's' - should go back to showing all files
+key:backspace
+
+# Back to empty search query
+assert:search_query:
+
+# BUG WAS FIXED: This should show same as browsing again (19 items)
+assert:visible_files_count:19
+
+# Exit search mode
+key:esc
+
+# Back to normal browsing (top-level items only)
+assert:is_searching:false
+assert:visible_files_count:19
+
+# Exit
+key:q
+assert:should_quit:true

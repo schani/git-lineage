@@ -1,0 +1,19 @@
+# Debug test to see the actual search results display
+
+# Start in navigator panel
+assert:active_panel:Navigator
+
+# Enter search mode
+char:/
+
+# Check that we're in search mode with empty query
+assert:is_searching:true
+assert:search_query:
+assert:visible_files_count:19
+
+# Wait a bit to see the display
+wait:1000
+
+# Exit
+key:esc
+key:q

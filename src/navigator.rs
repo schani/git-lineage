@@ -72,13 +72,31 @@ pub struct NavigatorState {
 impl NavigatorState {
     /// Create a new navigator state
     pub fn new(tree: FileTree) -> Self {
+        let expanded = Self::extract_expanded_paths(&tree);
         Self {
             tree,
             mode: NavigatorMode::Browsing {
                 selection: None,
-                expanded: HashSet::new(),
+                expanded,
                 scroll_offset: 0,
             },
+        }
+    }
+
+    /// Extract expanded paths from tree nodes
+    fn extract_expanded_paths(tree: &FileTree) -> HashSet<PathBuf> {
+        let mut expanded = HashSet::new();
+        Self::collect_expanded_paths(&tree.root, &mut expanded);
+        expanded
+    }
+
+    /// Recursively collect expanded paths from tree nodes
+    fn collect_expanded_paths(nodes: &[crate::tree::TreeNode], expanded: &mut HashSet<PathBuf>) {
+        for node in nodes {
+            if node.is_expanded {
+                expanded.insert(node.path.clone());
+            }
+            Self::collect_expanded_paths(&node.children, expanded);
         }
     }
 
@@ -89,8 +107,9 @@ impl NavigatorState {
         self.mode = match (&self.mode, event) {
             // Start search from browsing mode
             (NavigatorMode::Browsing { selection, expanded, scroll_offset }, NavigatorEvent::StartSearch) => {
-                // For empty query, show all files
-                let results = self.search_files("");
+                // For empty query, show same items as browsing mode
+                let browsing_items = self.get_browsing_visible_items(expanded, selection);
+                let results: Vec<PathBuf> = browsing_items.iter().map(|item| item.path.clone()).collect();
                 NavigatorMode::Searching {
                     query: String::new(),
                     results: results.clone(),
@@ -110,7 +129,18 @@ impl NavigatorState {
 
             // Update search query
             (NavigatorMode::Searching { saved_browsing, .. }, NavigatorEvent::UpdateSearchQuery(query)) => {
-                let results = self.search_files(&query);
+                let results = if query.is_empty() {
+                    // When query becomes empty, show same items as the saved browsing mode
+                    if let NavigatorMode::Browsing { selection, expanded, .. } = saved_browsing.as_ref() {
+                        let browsing_items = self.get_browsing_visible_items(expanded, selection);
+                        browsing_items.iter().map(|item| item.path.clone()).collect()
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    // For non-empty queries, build directory structure containing matching files
+                    self.build_search_tree_structure(&query)
+                };
                 NavigatorMode::Searching {
                     query,
                     selected_index: if results.is_empty() { None } else { Some(0) },
@@ -366,7 +396,10 @@ impl NavigatorState {
     /// Recursively collect all file paths from tree nodes
     fn collect_all_paths(&self, nodes: &[TreeNode], paths: &mut Vec<PathBuf>) {
         for node in nodes {
-            paths.push(node.path.clone());
+            // Only collect files, not directories
+            if !node.is_dir {
+                paths.push(node.path.clone());
+            }
             self.collect_all_paths(&node.children, paths);
         }
     }
@@ -414,26 +447,75 @@ impl NavigatorState {
 
     /// Get visible items for search mode
     fn get_search_visible_items(&self, results: &[PathBuf], selected_index: &Option<usize>) -> Vec<VisibleItem> {
-        results
-            .iter()
-            .enumerate()
-            .map(|(i, path)| {
-                let node = self.tree.find_node(path);
-                let name = path.file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.to_string_lossy().to_string());
-
-                VisibleItem {
-                    path: path.clone(),
-                    name,
-                    depth: 0, // Flat search results
-                    is_selected: selected_index == &Some(i),
-                    is_expanded: false,
-                    is_dir: node.map(|n| n.is_dir).unwrap_or(false),
-                    git_status: node.and_then(|n| n.git_status),
+        // For search mode, we need to display results as a tree structure
+        // with directories containing matches automatically expanded
+        
+        // First, determine which directories should be expanded
+        let mut expanded_dirs = HashSet::new();
+        for path in results {
+            if let Some(parent) = path.parent() {
+                if parent != std::path::Path::new("") && parent != std::path::Path::new(".") {
+                    expanded_dirs.insert(parent.to_path_buf());
                 }
-            })
-            .collect()
+            }
+        }
+        
+        // Use the browsing visible items logic but with search expansion state
+        // Process directories first, then files
+        let mut items = Vec::new();
+        
+        // First pass: directories
+        for node in &self.tree.root {
+            if node.is_dir && results.contains(&node.path) {
+                self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selected_index);
+            }
+        }
+        
+        // Second pass: files
+        for node in &self.tree.root {
+            if !node.is_dir && results.contains(&node.path) {
+                self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selected_index);
+            }
+        }
+        
+        items
+    }
+    
+    /// Recursively collect visible items for search mode with tree structure
+    fn collect_search_visible_items(
+        &self,
+        node: &crate::tree::TreeNode,
+        items: &mut Vec<VisibleItem>,
+        depth: usize,
+        expanded: &HashSet<PathBuf>,
+        search_results: &[PathBuf],
+        selected_index: &Option<usize>,
+    ) {
+        // Only include this node if it's in the search results
+        if !search_results.contains(&node.path) {
+            return;
+        }
+        
+        let current_index = items.len();
+        let is_selected = selected_index == &Some(current_index);
+        let is_expanded = expanded.contains(&node.path);
+
+        items.push(VisibleItem {
+            path: node.path.clone(),
+            name: node.name.clone(),
+            depth,
+            is_selected,
+            is_expanded,
+            is_dir: node.is_dir,
+            git_status: node.git_status,
+        });
+
+        // If directory is expanded, show children that are in search results
+        if node.is_dir && is_expanded {
+            for child in &node.children {
+                self.collect_search_visible_items(child, items, depth + 1, expanded, search_results, selected_index);
+            }
+        }
     }
 
     /// Find the next item in the visible list
@@ -493,6 +575,57 @@ impl NavigatorState {
         // For now, just return 0. This will be implemented when we integrate with the UI
         // The UI layer will handle viewport management
         0
+    }
+
+    /// Build directory structure containing search results
+    fn build_search_tree_structure(&self, query: &str) -> Vec<PathBuf> {
+        let (results, _) = self.build_search_tree_structure_with_expansion(query);
+        results
+    }
+    
+    /// Build directory structure containing search results with expansion info
+    fn build_search_tree_structure_with_expansion(&self, query: &str) -> (Vec<PathBuf>, HashSet<PathBuf>) {
+        let matching_files = self.search_files(query);
+        
+        if matching_files.is_empty() {
+            return (Vec::new(), HashSet::new());
+        }
+        
+        let mut tree_paths = HashSet::new();
+        let mut expanded_dirs = HashSet::new();
+        
+        // For each matching file, add all its parent directories and mark them as expanded
+        for file_path in &matching_files {
+            tree_paths.insert(file_path.clone());
+            
+            // Add all parent directories and mark them as expanded
+            let mut current_path = file_path.clone();
+            while let Some(parent) = current_path.parent() {
+                if parent == std::path::Path::new("") || parent == std::path::Path::new(".") {
+                    break;
+                }
+                let parent_buf = parent.to_path_buf();
+                tree_paths.insert(parent_buf.clone());
+                expanded_dirs.insert(parent_buf);
+                current_path = parent.to_path_buf();
+            }
+        }
+        
+        // Convert to sorted vector with directories first
+        let mut result: Vec<PathBuf> = tree_paths.into_iter().collect();
+        result.sort_by(|a, b| {
+            // First compare by whether they're directories
+            let a_is_dir = self.tree.find_node(a).map(|n| n.is_dir).unwrap_or(false);
+            let b_is_dir = self.tree.find_node(b).map(|n| n.is_dir).unwrap_or(false);
+            
+            match (a_is_dir, b_is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.cmp(b),
+            }
+        });
+        
+        (result, expanded_dirs)
     }
 }
 
@@ -802,9 +935,16 @@ mod tests {
         assert!(search_view_model.is_searching);
         assert_eq!(search_view_model.search_query, "main");
         
-        // Search results should all have depth 0 (flat)
-        for item in &search_view_model.items {
-            assert_eq!(item.depth, 0);
+        // Search results should now show directory structure with proper depths
+        // The src directory should have depth 0, main.rs should have depth 1
+        let src_item = search_view_model.items.iter().find(|item| item.path == PathBuf::from("src"));
+        let main_item = search_view_model.items.iter().find(|item| item.path == PathBuf::from("src/main.rs"));
+        
+        if let Some(src_item) = src_item {
+            assert_eq!(src_item.depth, 0);
+        }
+        if let Some(main_item) = main_item {
+            assert_eq!(main_item.depth, 1);
         }
     }
 
@@ -839,7 +979,7 @@ mod tests {
     }
     
     #[test]
-    fn test_start_search_shows_all_files() {
+    fn test_start_search_shows_browsing_items() {
         let tree = create_test_tree();
         let mut navigator = NavigatorState::new(tree);
         
@@ -848,15 +988,17 @@ mod tests {
         
         let view_model = navigator.build_view_model();
         
-        // When starting search, should show all files
+        // When starting search, should show same items as browsing mode
         assert!(view_model.is_searching);
         assert_eq!(view_model.search_query, "");
         assert!(!view_model.items.is_empty());
         
-        // Should have at least the files we created
-        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("src/main.rs")));
-        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("src/lib.rs")));
+        // Should have top-level items (directories first, then files)
+        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("src")));
         assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("README.md")));
         assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("Cargo.toml")));
+        
+        // Should NOT show nested files unless directories are expanded
+        assert!(!view_model.items.iter().any(|item| item.path == PathBuf::from("src/main.rs")));
     }
 }

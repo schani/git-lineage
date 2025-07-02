@@ -1,0 +1,30 @@
+# Test search behavior with typing and backspace
+
+# Start in browsing mode
+assert:active_panel:Navigator
+assert:is_searching:false
+assert:visible_files_count:19
+
+# Enter search mode - should show same as browsing
+char:/
+assert:is_searching:true
+assert:search_query:
+assert:visible_files_count:19
+
+# Type a character - should search in all files, not just visible
+char:s
+assert:search_query:s
+# Should find files containing 's' from the entire repository
+
+# Backspace to empty - should return to browsing view
+key:backspace
+assert:search_query:
+assert:visible_files_count:19
+
+# Exit search
+key:esc
+assert:is_searching:false
+assert:visible_files_count:19
+
+# Exit
+key:q

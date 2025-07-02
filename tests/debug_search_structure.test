@@ -1,0 +1,21 @@
+# Test to reproduce the missing directory structure bug
+
+# Start in browsing mode
+assert:active_panel:Navigator
+assert:is_searching:false
+assert:visible_files_count:19
+
+# Enter search mode - should show same as browsing
+char:/
+assert:is_searching:true
+assert:search_query:
+assert:visible_files_count:19
+
+# Search for 'r' - should show directory structure with matching files
+char:r
+assert:search_query:r
+# This should show directories AND files, not just flat files
+
+# Exit
+key:esc
+key:q

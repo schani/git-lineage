@@ -617,9 +617,24 @@ impl App {
                 show_diff_view: config.show_diff_view,
             },
             new_navigator: {
-                // Initialize new navigator for tests
-                let mock_tree = Self::create_mock_tree();
-                Some(NewNavigatorState::new(mock_tree))
+                // Initialize new navigator for tests using the tree from test config
+                let test_tree = config.file_tree_state.original_tree().clone();
+                let mut navigator = NewNavigatorState::new(test_tree);
+                
+                // Set initial selection from test config
+                if let Some(selection) = &config.file_tree_state.current_selection {
+                    let _ = navigator.handle_event(crate::navigator::NavigatorEvent::SelectFile(selection.clone()));
+                }
+                
+                // Set search mode if specified in test config
+                if config.in_search_mode {
+                    let _ = navigator.handle_event(crate::navigator::NavigatorEvent::StartSearch);
+                    if !config.search_query.is_empty() {
+                        let _ = navigator.handle_event(crate::navigator::NavigatorEvent::UpdateSearchQuery(config.search_query.clone()));
+                    }
+                }
+                
+                Some(navigator)
             },
             ui: UIState {
                 active_panel: config.active_panel,

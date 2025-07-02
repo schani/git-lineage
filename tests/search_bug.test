@@ -1,0 +1,36 @@
+# Test for search bug: empty search should show all files, not "no files found"
+
+# Start in navigator panel
+assert:active_panel:Navigator
+
+# Enter search mode
+char:/
+
+# At this point, search string is empty and should show all files
+# Let's check if we're in search mode and what's displayed
+wait:100
+
+# The bug: empty search shows "no files found" instead of all files
+# We should see files listed, not an error message
+
+# Try typing a character to see if search works
+char:s
+
+# Wait for search results
+wait:100
+
+# Clear the search character (backspace)
+key:backspace
+
+# Now we're back to empty search - this should show all files again
+wait:100
+
+# Exit search mode
+key:esc
+
+# Verify we're back to normal navigation
+assert:active_panel:Navigator
+
+# Exit
+key:q
+assert:should_quit:true
