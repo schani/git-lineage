@@ -403,9 +403,9 @@ impl NavigatorState {
         log::info!("🔍 Search display: processing {} results for display", results.len());
         
         // Log all search results for debugging
-        for (i, path) in results.iter().enumerate() {
-            log::debug!("  📄 Search result {}: {}", i + 1, path.display());
-        }
+        // for (i, path) in results.iter().enumerate() {
+        //     log::debug!("  📄 Search result {}: {}", i + 1, path.display());
+        // }
         
         // Convert results to HashSet for O(1) lookups instead of O(n) linear searches
         let results_set: HashSet<&PathBuf> = results.iter().collect();
@@ -457,15 +457,15 @@ impl NavigatorState {
         log::info!("📋 Search display: generated {} visible items in {:?}", items.len(), elapsed);
         
         // Log all computed display items for debugging
-        for (i, item) in items.iter().enumerate() {
-            log::debug!("  📁 Display item {}: {} {} (depth: {}, dir: {}, selected: {})", 
-                       i + 1, 
-                       item.path.display(),
-                       if item.is_dir { "(dir)" } else { "(file)" },
-                       item.depth,
-                       item.is_dir,
-                       item.is_selected);
-        }
+        // for (i, item) in items.iter().enumerate() {
+        //     log::debug!("  📁 Display item {}: {} {} (depth: {}, dir: {}, selected: {})", 
+        //                i + 1, 
+        //                item.path.display(),
+        //                if item.is_dir { "(dir)" } else { "(file)" },
+        //                item.depth,
+        //                item.is_dir,
+        //                item.is_selected);
+        // }
         
         items
     }
