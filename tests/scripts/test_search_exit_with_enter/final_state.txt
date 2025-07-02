@@ -1,4 +1,4 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+┌ File Navigator (Search: dir) ──────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
 │▼ dir                                   ││Select a file to view its content                                           │
 │    file-in-dir                         ││                                                                            │
 │                                        ││                                                                            │

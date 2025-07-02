@@ -53,7 +53,7 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, navigator: &crate::navi
     // Get view model from new navigator
     let view_model = navigator.build_view_model();
     
-    let title = if view_model.is_searching {
+    let title = if view_model.is_searching || !view_model.search_query.is_empty() {
         format!(" File Navigator (Search: {}) ", view_model.search_query)
     } else {
         " File Navigator ".to_string()

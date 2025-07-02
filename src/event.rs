@@ -300,11 +300,22 @@ fn handle_new_navigator_event(
                 return Ok(());
             }
             KeyCode::Enter => {
-                // Exit search mode but keep the query active
-                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::EndSearchKeepQuery) {
-                    log::warn!("Failed to end search with keep query: {}", e);
+                // Exit search mode - keep query if it's not empty, clear if empty
+                let event = if view_model.search_query.is_empty() {
+                    NavigatorEvent::EndSearch
+                } else {
+                    NavigatorEvent::EndSearchKeepQuery
+                };
+                
+                if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(event) {
+                    log::warn!("Failed to end search: {}", e);
                 }
-                app.ui.status_message = "Exited search mode - query preserved".to_string();
+                
+                app.ui.status_message = if view_model.search_query.is_empty() {
+                    "Exited search mode".to_string()
+                } else {
+                    "Exited search mode - query preserved".to_string()
+                };
                 return Ok(());
             }
             KeyCode::Esc => {
@@ -1254,6 +1265,122 @@ mod tests {
             assert!(result.is_ok());
             assert!(!app.navigator.file_tree_state.in_search_mode);
             assert_eq!(app.navigator.file_tree_state.search_query, "test query"); // Should preserve query on Enter
+        }
+
+        #[tokio::test]
+        async fn test_new_navigator_search_enter_behavior() {
+            let mut app = create_test_app();
+            app.ui.active_panel = PanelFocus::Navigator;
+            
+            // Initialize new navigator with test tree
+            let tree = crate::tree::FileTree::new();
+            app.initialize_new_navigator(tree);
+            
+            let (tx, _rx) = create_test_channel().await;
+            
+            // Test 1: Enter with non-empty query should preserve query but exit editing
+            // Start search and add query
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::StartSearch
+            ) {
+                panic!("Failed to start search: {}", e);
+            }
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::UpdateSearchQuery("test".to_string())
+            ) {
+                panic!("Failed to update search query: {}", e);
+            }
+            
+            // Verify we're in search mode with query
+            assert!(app.new_navigator.as_ref().unwrap().is_searching());
+            assert_eq!(app.new_navigator.as_ref().unwrap().get_search_query(), "test");
+            
+            // Press Enter
+            let event = create_key_event(KeyCode::Enter);
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert!(!app.new_navigator.as_ref().unwrap().is_searching()); // Should exit editing
+            assert_eq!(app.new_navigator.as_ref().unwrap().get_search_query(), "test"); // Should preserve query
+            assert!(app.ui.status_message.contains("query preserved"));
+            
+            // Test 2: Enter with empty query should clear query completely
+            // Start search again (query should still be "test")
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::StartSearch
+            ) {
+                panic!("Failed to start search: {}", e);
+            }
+            
+            // Clear the query
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::UpdateSearchQuery("".to_string())
+            ) {
+                panic!("Failed to clear search query: {}", e);
+            }
+            
+            // Verify we're in search mode with empty query
+            assert!(app.new_navigator.as_ref().unwrap().is_searching());
+            assert_eq!(app.new_navigator.as_ref().unwrap().get_search_query(), "");
+            
+            // Press Enter
+            let event = create_key_event(KeyCode::Enter);
+            let result = handle_event(event, &mut app, &tx);
+            
+            assert!(result.is_ok());
+            assert!(!app.new_navigator.as_ref().unwrap().is_searching()); // Should exit editing
+            assert_eq!(app.new_navigator.as_ref().unwrap().get_search_query(), ""); // Should keep query empty
+            assert!(!app.ui.status_message.contains("query preserved")); // Different message for empty query
+        }
+        
+        #[tokio::test]
+        async fn test_new_navigator_search_display_logic() {
+            let mut app = create_test_app();
+            app.ui.active_panel = PanelFocus::Navigator;
+            
+            // Initialize new navigator with test tree
+            let tree = crate::tree::FileTree::new();
+            app.initialize_new_navigator(tree);
+            
+            // Test 1: When not searching and no query, should not show search
+            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            assert!(!view_model.is_searching);
+            assert_eq!(view_model.search_query, "");
+            
+            // Test 2: When searching with empty query, should show "Search:" 
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::StartSearch
+            ) {
+                panic!("Failed to start search: {}", e);
+            }
+            
+            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            assert!(view_model.is_searching);
+            assert_eq!(view_model.search_query, "");
+            // UI should show "Search:" for cursor positioning
+            
+            // Test 3: When searching with query, should show "Search: foo"
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::UpdateSearchQuery("foo".to_string())
+            ) {
+                panic!("Failed to update search query: {}", e);
+            }
+            
+            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            assert!(view_model.is_searching);
+            assert_eq!(view_model.search_query, "foo");
+            
+            // Test 4: When not searching but has query, should show "Search: foo" (no cursor)
+            if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(
+                crate::navigator::NavigatorEvent::EndSearchKeepQuery
+            ) {
+                panic!("Failed to end search keeping query: {}", e);
+            }
+            
+            let view_model = app.new_navigator.as_ref().unwrap().build_view_model();
+            assert!(!view_model.is_searching);
+            assert_eq!(view_model.search_query, "foo");
+            // UI should still show "Search: foo" but no cursor
         }
 
         #[tokio::test]
