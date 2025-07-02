@@ -430,9 +430,9 @@ impl NavigatorState {
         }
         
         log::debug!("🌳 Expanded directories for search: {} directories", expanded_dirs.len());
-        for dir in &expanded_dirs {
-            log::debug!("  📂 Expanded: {}", dir.display());
-        }
+        // for dir in &expanded_dirs {
+        //     log::debug!("  📂 Expanded: {}", dir.display());
+        // }
         
         // Use the browsing visible items logic but with search expansion state
         // Process directories first, then files
