@@ -68,5 +68,8 @@ pub enum Commands {
         /// Verbose logging
         #[arg(short, long)]
         verbose: bool,
+        /// Overwrite existing screenshots instead of verifying them
+        #[arg(long)]
+        overwrite: bool,
     },
 }

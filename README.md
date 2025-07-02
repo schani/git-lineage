@@ -145,6 +145,106 @@ The project includes a comprehensive visual testing system that allows you to:
 - `test_configs/search_mode.json` - File navigator in search mode
 - `test_configs/loading_state.json` - Loading state during async operations
 
+## Scripted UI Testing
+
+The project includes a scripted testing system that allows you to write test scripts for complex user interactions and automatically verify UI behavior.
+
+### Test Script Format
+
+Test scripts use a simple command language:
+
+```
+# Comments start with #
+# Commands are executed sequentially
+
+# Send key events
+key:/                   # Press the '/' key
+key:s                   # Press the 's' key  
+key:Escape              # Press the Escape key
+key:Enter               # Press Enter
+key:Tab                 # Press Tab
+
+# Take screenshots for verification
+screenshot:before.txt   # Capture current UI state
+screenshot:after.txt    # Capture UI state after interactions
+
+# Wait for operations to complete
+wait                    # Wait for async operations to settle
+wait:500ms             # Wait for specific duration
+
+# Assert application state
+assert:active_panel:Navigator  # Verify current panel focus
+```
+
+### Running Scripted Tests
+
+**Verify Mode (Default)** - Compares screenshots against existing files:
+```bash
+# Default behavior: verify screenshots match existing files
+cargo run -- test --script tests/search_behavior.test
+
+# Explicit verify mode (same as default)
+cargo run -- test --script tests/search_behavior.test --verbose
+```
+
+**Overwrite Mode** - Creates/updates screenshot files:
+```bash
+# Generate new screenshots (use when creating new tests)
+cargo run -- test --script tests/search_behavior.test --overwrite
+
+# Update screenshots after UI changes
+cargo run -- test --script tests/search_behavior.test --overwrite --verbose
+```
+
+### Test Modes Explained
+
+1. **Verify Mode (Default)**
+   - Compares current UI output with existing screenshot files
+   - ✅ Passes if screenshots match exactly
+   - ❌ Fails if content differs or files don't exist
+   - Use for continuous integration and regression testing
+
+2. **Overwrite Mode** (`--overwrite` flag)
+   - Always writes new screenshot files
+   - Use when creating new tests or updating after intentional UI changes
+   - ⚠️ Only use when you've verified the UI changes are correct
+
+### Example Test Script
+
+```
+# Test search functionality
+# File: tests/search_label_immediate.test
+
+# Start with normal view
+screenshot:before_search.txt
+
+# Press '/' to enter search mode - should immediately show "Search:" label
+key:/
+screenshot:after_slash.txt
+
+# Type a character - should still show "Search:" label with content
+key:s
+screenshot:after_typing.txt
+
+# Exit search mode
+key:Escape
+screenshot:after_escape.txt
+```
+
+### Integration with Continuous Integration
+
+The scripted tests are designed to run automatically in CI environments:
+
+```bash
+# Run all scripted tests in verify mode (for CI)
+find tests -name "*.test" -exec cargo run -- test --script {} \;
+
+# Generate new screenshots during development
+find tests -name "*.test" -exec cargo run -- test --script {} --overwrite \;
+```
+
+Since verify mode is the default, scripted tests can be easily integrated into your test suite and will fail if the UI behavior changes unexpectedly.
+
 ## Architecture
 
 The project follows clean architecture principles with clear separation of concerns:

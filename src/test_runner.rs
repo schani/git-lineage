@@ -61,6 +61,7 @@ pub struct TestRunner {
     pub current_command: usize,
     pub immediate_mode: bool,
     pub max_settle_time: Duration,
+    pub overwrite_mode: bool,
 }
 
 impl TestRunner {
@@ -148,6 +149,7 @@ impl TestRunner {
             current_command: 0,
             immediate_mode: false,
             max_settle_time: Duration::from_secs(5),
+            overwrite_mode: false,
         })
     }
 
@@ -415,9 +417,31 @@ impl TestRunner {
         // Get the rendered content
         let content = terminal.backend().get_content();
         
-        // Write to file
-        std::fs::write(filename, content)?;
-        println!("📸 Screenshot saved to: {}", filename);
+        if self.overwrite_mode {
+            // Overwrite mode: always write the file
+            std::fs::write(filename, content)?;
+            println!("📸 Screenshot saved to: {}", filename);
+        } else {
+            // Verify mode: compare with existing file
+            match std::fs::read_to_string(filename) {
+                Ok(existing_content) => {
+                    if content == existing_content {
+                        println!("✅ Screenshot verification passed: {}", filename);
+                    } else {
+                        return Err(format!(
+                            "❌ Screenshot verification failed: {}. Content differs from expected. Use --overwrite to update.",
+                            filename
+                        ).into());
+                    }
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "❌ Screenshot verification failed: {} does not exist. Use --overwrite to create.",
+                        filename
+                    ).into());
+                }
+            }
+        }
         
         Ok(())
     }
@@ -552,6 +576,7 @@ impl TestRunner {
             current_command: 0,
             immediate_mode: false,
             max_settle_time: Duration::from_secs(5),
+            overwrite_mode: false,
         }
     }
 }

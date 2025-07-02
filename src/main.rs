@@ -94,8 +94,9 @@ async fn main() -> Result<()> {
             config,
             settle_timeout,
             verbose,
+            overwrite,
         } => {
-            run_headless_test(&script, config.as_deref(), settle_timeout, verbose).await
+            run_headless_test(&script, config.as_deref(), settle_timeout, verbose, overwrite).await
         }
     }
 }
@@ -105,6 +106,7 @@ async fn run_headless_test(
     config_path: Option<&str>,
     settle_timeout: u64,
     verbose: bool,
+    overwrite: bool,
 ) -> Result<()> {
     // Set up logging if verbose or if environment variable is set
     if verbose && std::env::var("GIT_LINEAGE_LOG").is_err() {
@@ -165,6 +167,7 @@ async fn run_headless_test(
     // Load and run test script
     let mut test_runner = TestRunner::from_file(script_path)?;
     test_runner.max_settle_time = Duration::from_secs(settle_timeout);
+    test_runner.overwrite_mode = overwrite;
 
     log::info!("🧪 Running test script with {} commands", test_runner.script.commands.len());
 
