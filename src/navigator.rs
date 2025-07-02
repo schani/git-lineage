@@ -402,26 +402,23 @@ impl NavigatorState {
         let start = std::time::Instant::now();
         log::info!("🔍 Search display: processing {} results for display", results.len());
         
-        // Log all search results for debugging
-        // for (i, path) in results.iter().enumerate() {
-        //     log::debug!("  📄 Search result {}: {}", i + 1, path.display());
-        // }
-        
-        // Convert results to HashSet for O(1) lookups instead of O(n) linear searches
+        // Convert results to HashSet for O(1) lookups
         let results_set: HashSet<&PathBuf> = results.iter().collect();
-        log::debug!("Search display: built lookup set in {:?}", start.elapsed());
         
-        // For search mode, we need to display results as a tree structure
-        // with directories containing matches automatically expanded
-        
-        // First, determine which directories should be expanded
-        // We need to expand ALL ancestor directories, not just immediate parents
+        // OPTIMIZATION: Pre-build directory indices for O(1) lookups
+        // Previously, we checked if each directory contained results by iterating through
+        // all search results for each directory (O(dirs × results) = potentially millions of comparisons).
+        // Now we build the index once in O(results) time.
         let mut expanded_dirs = HashSet::new();
+        let mut dirs_with_results = HashSet::new();
+        
         for path in results {
+            // Mark all ancestors as containing results AND needing expansion
             let mut current_parent = path.parent();
             while let Some(parent) = current_parent {
                 if parent != std::path::Path::new("") && parent != std::path::Path::new(".") {
                     expanded_dirs.insert(parent.to_path_buf());
+                    dirs_with_results.insert(parent.to_path_buf());
                     current_parent = parent.parent();
                 } else {
                     break;
@@ -429,27 +426,28 @@ impl NavigatorState {
             }
         }
         
-        log::debug!("🌳 Expanded directories for search: {} directories", expanded_dirs.len());
+        log::debug!("Search indices built: {} expanded dirs, {} dirs with results", 
+                   expanded_dirs.len(), dirs_with_results.len());
         // for dir in &expanded_dirs {
         //     log::debug!("  📂 Expanded: {}", dir.display());
         // }
         
-        // Use the browsing visible items logic but with search expansion state
-        // Process directories first, then files
+        // Process the tree and collect visible items
         let mut items = Vec::new();
         
-        // Process all nodes but only show directories if they contain matches
-        // and only show files if they are in the results
         for node in &self.tree.root {
             if node.is_dir {
-                // Show directory if it contains any matching files
-                let contains_matches = self.directory_contains_matches_fast(node, &results_set);
-                if contains_matches {
-                    self.collect_search_visible_items_fast(node, &mut items, 0, &expanded_dirs, &results_set, selection);
+                // Check if directory contains matches using O(1) lookup
+                if dirs_with_results.contains(&node.path) {
+                    self.collect_search_visible_items_optimized(
+                        node, &mut items, 0, &expanded_dirs, &results_set, &dirs_with_results, selection
+                    );
                 }
             } else if results_set.contains(&node.path) {
                 // Show file if it's in the search results
-                self.collect_search_visible_items_fast(node, &mut items, 0, &expanded_dirs, &results_set, selection);
+                self.collect_search_visible_items_optimized(
+                    node, &mut items, 0, &expanded_dirs, &results_set, &dirs_with_results, selection
+                );
             }
         }
         
@@ -470,39 +468,24 @@ impl NavigatorState {
         items
     }
     
-    /// Check if a directory contains any files that match the search results (FAST O(1) version)
-    fn directory_contains_matches_fast(&self, dir_node: &TreeNode, results_set: &HashSet<&PathBuf>) -> bool {
-        // Check if any result path starts with this directory path
-        let dir_path_str = dir_node.path.to_string_lossy();
-        results_set.iter().any(|result_path| {
-            result_path.to_string_lossy().starts_with(&format!("{}/", dir_path_str))
-        })
-    }
     
-    /// Check if a directory contains any files that match the search results (SLOW O(n) version - DEPRECATED)
-    fn directory_contains_matches(&self, dir_node: &TreeNode, results: &[PathBuf]) -> bool {
-        // Check if any result path starts with this directory path
-        let dir_path_str = dir_node.path.to_string_lossy();
-        results.iter().any(|result_path| {
-            result_path.to_string_lossy().starts_with(&format!("{}/", dir_path_str))
-        })
-    }
-    
-    /// Recursively collect visible items for search mode with tree structure (FAST version)
-    fn collect_search_visible_items_fast(
+    /// Recursively collect visible items for search mode - OPTIMIZED with O(1) directory checks
+    fn collect_search_visible_items_optimized(
         &self,
         node: &crate::tree::TreeNode,
         items: &mut Vec<VisibleItem>,
         depth: usize,
         expanded: &HashSet<PathBuf>,
         search_results: &HashSet<&PathBuf>,
+        dirs_with_results: &HashSet<PathBuf>,
         selection: &Option<PathBuf>,
     ) {
         // Include this node if:
         // 1. It's a file that's in the search results, OR
         // 2. It's a directory that contains files in the search results
         let should_include = if node.is_dir {
-            self.directory_contains_matches_fast(node, search_results)
+            // O(1) lookup instead of O(n) string comparisons!
+            dirs_with_results.contains(&node.path)
         } else {
             search_results.contains(&node.path)
         };
@@ -527,54 +510,14 @@ impl NavigatorState {
         // If directory is expanded, show children
         if node.is_dir && is_expanded {
             for child in &node.children {
-                self.collect_search_visible_items_fast(child, items, depth + 1, expanded, search_results, selection);
+                self.collect_search_visible_items_optimized(
+                    child, items, depth + 1, expanded, search_results, dirs_with_results, selection
+                );
             }
         }
     }
+    
 
-    /// Recursively collect visible items for search mode with tree structure (SLOW version - DEPRECATED)
-    fn collect_search_visible_items(
-        &self,
-        node: &crate::tree::TreeNode,
-        items: &mut Vec<VisibleItem>,
-        depth: usize,
-        expanded: &HashSet<PathBuf>,
-        search_results: &[PathBuf],
-        selection: &Option<PathBuf>,
-    ) {
-        // Include this node if:
-        // 1. It's a file that's in the search results, OR
-        // 2. It's a directory that contains files in the search results
-        let should_include = if node.is_dir {
-            self.directory_contains_matches(node, search_results)
-        } else {
-            search_results.contains(&node.path)
-        };
-        
-        if !should_include {
-            return;
-        }
-        
-        let is_selected = selection.as_ref() == Some(&node.path);
-        let is_expanded = expanded.contains(&node.path);
-
-        items.push(VisibleItem {
-            path: node.path.clone(),
-            name: node.name.clone(),
-            depth,
-            is_selected,
-            is_expanded,
-            is_dir: node.is_dir,
-            git_status: node.git_status,
-        });
-
-        // If directory is expanded, show children that are in search results
-        if node.is_dir && is_expanded {
-            for child in &node.children {
-                self.collect_search_visible_items(child, items, depth + 1, expanded, search_results, selection);
-            }
-        }
-    }
 
     /// Find the next item in the visible list
     fn find_next_item(&self, visible_items: &[VisibleItem], current_selection: &Option<PathBuf>) -> Option<PathBuf> {
@@ -659,56 +602,6 @@ impl NavigatorState {
         self.selection = Some(visible_items[0].path.clone());
     }
 
-    /// Build directory structure containing search results
-    fn build_search_tree_structure(&self, query: &str) -> Vec<PathBuf> {
-        let (results, _) = self.build_search_tree_structure_with_expansion(query);
-        results
-    }
-    
-    /// Build directory structure containing search results with expansion info
-    fn build_search_tree_structure_with_expansion(&self, query: &str) -> (Vec<PathBuf>, HashSet<PathBuf>) {
-        let matching_files = self.search_files(query);
-        
-        if matching_files.is_empty() {
-            return (Vec::new(), HashSet::new());
-        }
-        
-        let mut tree_paths = HashSet::new();
-        let mut expanded_dirs = HashSet::new();
-        
-        // For each matching file, add all its parent directories and mark them as expanded
-        for file_path in &matching_files {
-            tree_paths.insert(file_path.clone());
-            
-            // Add all parent directories and mark them as expanded
-            let mut current_path = file_path.clone();
-            while let Some(parent) = current_path.parent() {
-                if parent == std::path::Path::new("") || parent == std::path::Path::new(".") {
-                    break;
-                }
-                let parent_buf = parent.to_path_buf();
-                tree_paths.insert(parent_buf.clone());
-                expanded_dirs.insert(parent_buf);
-                current_path = parent.to_path_buf();
-            }
-        }
-        
-        // Convert to sorted vector with directories first
-        let mut result: Vec<PathBuf> = tree_paths.into_iter().collect();
-        result.sort_by(|a, b| {
-            // First compare by whether they're directories
-            let a_is_dir = self.tree.find_node(a).map(|n| n.is_dir).unwrap_or(false);
-            let b_is_dir = self.tree.find_node(b).map(|n| n.is_dir).unwrap_or(false);
-            
-            match (a_is_dir, b_is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.cmp(b),
-            }
-        });
-        
-        (result, expanded_dirs)
-    }
 }
 
 
