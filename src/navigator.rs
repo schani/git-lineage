@@ -89,10 +89,12 @@ impl NavigatorState {
         self.mode = match (&self.mode, event) {
             // Start search from browsing mode
             (NavigatorMode::Browsing { selection, expanded, scroll_offset }, NavigatorEvent::StartSearch) => {
+                // For empty query, show all files
+                let results = self.search_files("");
                 NavigatorMode::Searching {
                     query: String::new(),
-                    results: Vec::new(),
-                    selected_index: None,
+                    results: results.clone(),
+                    selected_index: if results.is_empty() { None } else { Some(0) },
                     saved_browsing: Box::new(NavigatorMode::Browsing {
                         selection: selection.clone(),
                         expanded: expanded.clone(),
@@ -834,5 +836,27 @@ mod tests {
         let utils_item = view_model.items.iter()
             .find(|item| item.path == PathBuf::from("src/utils"));
         assert_eq!(utils_item.unwrap().depth, 1);
+    }
+    
+    #[test]
+    fn test_start_search_shows_all_files() {
+        let tree = create_test_tree();
+        let mut navigator = NavigatorState::new(tree);
+        
+        // Start search
+        navigator.handle_event(NavigatorEvent::StartSearch).unwrap();
+        
+        let view_model = navigator.build_view_model();
+        
+        // When starting search, should show all files
+        assert!(view_model.is_searching);
+        assert_eq!(view_model.search_query, "");
+        assert!(!view_model.items.is_empty());
+        
+        // Should have at least the files we created
+        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("src/main.rs")));
+        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("src/lib.rs")));
+        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("README.md")));
+        assert!(view_model.items.iter().any(|item| item.path == PathBuf::from("Cargo.toml")));
     }
 }

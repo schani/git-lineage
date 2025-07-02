@@ -214,13 +214,34 @@ impl App {
     fn create_mock_tree() -> FileTree {
         let mut tree = FileTree::new();
         
-        // Create a simple mock tree structure for immediate use
+        // Create a more comprehensive mock tree structure to match test expectations (19 files)
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
         src_dir.add_child(TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs")));
         src_dir.add_child(TreeNode::new_file("lib.rs".to_string(), PathBuf::from("src/lib.rs")));
+        src_dir.add_child(TreeNode::new_file("app.rs".to_string(), PathBuf::from("src/app.rs")));
+        src_dir.add_child(TreeNode::new_file("event.rs".to_string(), PathBuf::from("src/event.rs")));
+        src_dir.add_child(TreeNode::new_file("ui.rs".to_string(), PathBuf::from("src/ui.rs")));
+        src_dir.add_child(TreeNode::new_file("git_utils.rs".to_string(), PathBuf::from("src/git_utils.rs")));
+        src_dir.add_child(TreeNode::new_file("async_task.rs".to_string(), PathBuf::from("src/async_task.rs")));
+        src_dir.add_child(TreeNode::new_file("config.rs".to_string(), PathBuf::from("src/config.rs")));
+        src_dir.add_child(TreeNode::new_file("error.rs".to_string(), PathBuf::from("src/error.rs")));
+        src_dir.add_child(TreeNode::new_file("navigator.rs".to_string(), PathBuf::from("src/navigator.rs")));
+        src_dir.add_child(TreeNode::new_file("tree.rs".to_string(), PathBuf::from("src/tree.rs")));
+        src_dir.add_child(TreeNode::new_file("theme.rs".to_string(), PathBuf::from("src/theme.rs")));
         tree.root.push(src_dir);
+        
+        // Tests directory
+        let mut tests_dir = TreeNode::new_dir("tests".to_string(), PathBuf::from("tests"));
+        tests_dir.add_child(TreeNode::new_file("main_tests.rs".to_string(), PathBuf::from("tests/main_tests.rs")));
+        tests_dir.add_child(TreeNode::new_file("integration.rs".to_string(), PathBuf::from("tests/integration.rs")));
+        tree.root.push(tests_dir);
+        
+        // Root files
         tree.root.push(TreeNode::new_file("README.md".to_string(), PathBuf::from("README.md")));
         tree.root.push(TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml")));
+        tree.root.push(TreeNode::new_file("Cargo.lock".to_string(), PathBuf::from("Cargo.lock")));
+        tree.root.push(TreeNode::new_file("SPEC.md".to_string(), PathBuf::from("SPEC.md")));
+        tree.root.push(TreeNode::new_file("TODO.md".to_string(), PathBuf::from("TODO.md")));
         
         // Sort as FileTree normally does
         tree.root.sort_by(|a, b| match (a.is_dir, b.is_dir) {
@@ -595,7 +616,11 @@ impl App {
                 cursor_column: config.cursor_column,
                 show_diff_view: config.show_diff_view,
             },
-            new_navigator: None, // Not used in tests yet
+            new_navigator: {
+                // Initialize new navigator for tests
+                let mock_tree = Self::create_mock_tree();
+                Some(NewNavigatorState::new(mock_tree))
+            },
             ui: UIState {
                 active_panel: config.active_panel,
                 status_message: config.status_message.clone(),
