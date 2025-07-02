@@ -1,3 +1,6 @@
 [submodule "tests/test-repo"]
 	path = tests/test-repo
 	url = git@github.com:schani/git-lineage-test.git
+[submodule "tests/mono-repo"]
+	path = tests/mono-repo
+	url = git@github.com:mono/mono.git

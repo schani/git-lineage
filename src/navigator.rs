@@ -400,7 +400,12 @@ impl NavigatorState {
     /// Get visible items for search mode
     fn get_search_visible_items(&self, results: &[PathBuf], selection: &Option<PathBuf>) -> Vec<VisibleItem> {
         let start = std::time::Instant::now();
-        log::debug!("Search display: processing {} results for display", results.len());
+        log::info!("🔍 Search display: processing {} results for display", results.len());
+        
+        // Log all search results for debugging
+        for (i, path) in results.iter().enumerate() {
+            log::debug!("  📄 Search result {}: {}", i + 1, path.display());
+        }
         
         // Convert results to HashSet for O(1) lookups instead of O(n) linear searches
         let results_set: HashSet<&PathBuf> = results.iter().collect();
@@ -410,13 +415,23 @@ impl NavigatorState {
         // with directories containing matches automatically expanded
         
         // First, determine which directories should be expanded
+        // We need to expand ALL ancestor directories, not just immediate parents
         let mut expanded_dirs = HashSet::new();
         for path in results {
-            if let Some(parent) = path.parent() {
+            let mut current_parent = path.parent();
+            while let Some(parent) = current_parent {
                 if parent != std::path::Path::new("") && parent != std::path::Path::new(".") {
                     expanded_dirs.insert(parent.to_path_buf());
+                    current_parent = parent.parent();
+                } else {
+                    break;
                 }
             }
+        }
+        
+        log::debug!("🌳 Expanded directories for search: {} directories", expanded_dirs.len());
+        for dir in &expanded_dirs {
+            log::debug!("  📂 Expanded: {}", dir.display());
         }
         
         // Use the browsing visible items logic but with search expansion state
@@ -439,7 +454,19 @@ impl NavigatorState {
         }
         
         let elapsed = start.elapsed();
-        log::debug!("Search display: generated {} visible items in {:?}", items.len(), elapsed);
+        log::info!("📋 Search display: generated {} visible items in {:?}", items.len(), elapsed);
+        
+        // Log all computed display items for debugging
+        for (i, item) in items.iter().enumerate() {
+            log::debug!("  📁 Display item {}: {} {} (depth: {}, dir: {}, selected: {})", 
+                       i + 1, 
+                       item.path.display(),
+                       if item.is_dir { "(dir)" } else { "(file)" },
+                       item.depth,
+                       item.is_dir,
+                       item.is_selected);
+        }
+        
         items
     }
     

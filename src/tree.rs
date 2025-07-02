@@ -616,6 +616,16 @@ impl FileTreeState {
             self.find_matching_nodes_recursive(root_node, &matcher, &self.search_query, &mut matching_paths);
         }
         
+        log::info!("🔍 Search filter for query '{}': found {} matching paths", 
+                  self.search_query, matching_paths.len());
+        
+        // Log all matching paths for debugging
+        let mut sorted_paths: Vec<_> = matching_paths.iter().collect();
+        sorted_paths.sort();
+        for path in &sorted_paths {
+            log::debug!("  📁 Found path: {}", path.display());
+        }
+        
         // Create new tree with only matching nodes and their parents
         let mut filtered_tree = FileTree::new();
         filtered_tree.repo_root = self.original_tree.repo_root.clone();
