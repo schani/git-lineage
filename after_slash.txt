@@ -1,0 +1,24 @@
+┌ File Navigator (Search: )┐┌ Code Inspector ──────────────────────────────────┐
+│▶ .github                 ││Select a file to view its content                 │
+│▶ src                     ││                                                  │
+│▶ tests                   ││                                                  │
+│  .codecov.yml            ││                                                  │
+│  .gitignore              ││                                                  │
+│  ASSESSMENT.md           ││                                                  │
+│  CLAUDE.md               ││                                                  │
+│  Cargo.lock              ││                                                  │
+│  Cargo.toml              ││                                                  │
+│  FILE-TREE.md            ││                                                  │
+└──────────────────────────┘│                                                  │
+┌ Commit History ──────────┐│                                                  │
+│Select a file to view its ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+Search mode activated | Tab: Switch panel | 1/2/3: Direct panel focus | []: Olde

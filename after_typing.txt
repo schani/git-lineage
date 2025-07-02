@@ -1,0 +1,24 @@
+┌ File Navigator (Search: s┐┌ Code Inspector ──────────────────────────────────┐
+│▼ src                     ││Select a file to view its content                 │
+│    app.rs                ││                                                  │
+│    async_task.rs         ││                                                  │
+│    cli.rs                ││                                                  │
+│    command.rs            ││                                                  │
+│    config.rs             ││                                                  │
+│    error.rs              ││                                                  │
+│    event.rs              ││                                                  │
+│    executor.rs           ││                                                  │
+│    git_utils.rs          ││                                                  │
+└──────────────────────────┘│                                                  │
+┌ Commit History ──────────┐│                                                  │
+│Select a file to view its ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+│                          ││                                                  │
+Search mode activated | Tab: Switch panel | 1/2/3: Direct panel focus | []: Olde

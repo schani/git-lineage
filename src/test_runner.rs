@@ -46,6 +46,7 @@ pub enum CommandType {
     Assert,
     SetImmediate,
     SetSettle,
+    Screenshot,
 }
 
 #[derive(Debug, Clone)]
@@ -124,6 +125,12 @@ impl TestRunner {
                 TestCommand {
                     command_type: CommandType::Assert,
                     value: line[7..].to_string(),
+                    immediate: immediate_mode,
+                }
+            } else if line.starts_with("screenshot:") {
+                TestCommand {
+                    command_type: CommandType::Screenshot,
+                    value: line[11..].to_string(),
                     immediate: immediate_mode,
                 }
             } else {
@@ -217,6 +224,12 @@ impl TestRunner {
                             assertions_failed += 1;
                             errors.push(format!("Assertion error: {}", e));
                         }
+                    }
+                }
+                CommandType::Screenshot => {
+                    // Take a screenshot and save to file
+                    if let Err(e) = self.take_screenshot(app, &command.value) {
+                        errors.push(format!("Screenshot failed: {}", e));
                     }
                 }
                 CommandType::SetImmediate => {
@@ -383,6 +396,30 @@ impl TestRunner {
             }
             _ => Err(format!("Unknown assertion property: {}", property).into())
         }
+    }
+
+    fn take_screenshot(&self, app: &mut App, filename: &str) -> Result<(), Box<dyn std::error::Error>> {
+        use crate::ui;
+        use crate::headless_backend::HeadlessBackend;
+        use ratatui::Terminal;
+        
+        // Create a headless backend to capture the UI
+        let backend = HeadlessBackend::new(80, 24);
+        let mut terminal = Terminal::new(backend)?;
+        
+        // Render the app to capture the current state
+        terminal.draw(|f| {
+            ui::draw(f, app);
+        })?;
+        
+        // Get the rendered content
+        let content = terminal.backend().get_content();
+        
+        // Write to file
+        std::fs::write(filename, content)?;
+        println!("📸 Screenshot saved to: {}", filename);
+        
+        Ok(())
     }
 }
 
