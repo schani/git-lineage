@@ -814,6 +814,7 @@ dependencies = [
  "fuzzy-matcher",
  "gix",
  "ignore",
+ "lazy_static",
  "log",
  "maplit",
  "mockall",

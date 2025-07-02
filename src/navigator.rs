@@ -188,14 +188,18 @@ impl NavigatorState {
 
     /// Build view model for rendering
     pub fn build_view_model(&self) -> NavigatorViewModel {
+        let start = std::time::Instant::now();
         let items = if self.query.is_empty() {
             // Show full tree
             self.get_browsing_visible_items(&self.expanded, &self.selection)
         } else {
-            // Show filtered tree (same logic always)
+            // Show filtered tree (same logic always)  
             let results = self.search_files(&self.query);
             self.get_search_visible_items(&results, &self.selection)
         };
+        let items_time = start.elapsed();
+        
+        log::debug!("View model: computed {} items in {:?}", items.len(), items_time);
         
         let cursor_position = self.selection
             .as_ref()
@@ -221,20 +225,43 @@ impl NavigatorState {
         }
     }
 
-    /// Search for files matching the query
+    /// Search for files matching the query (with global cache to prevent repeated work)
     fn search_files(&self, query: &str) -> Vec<PathBuf> {
+        use std::sync::Mutex;
+        use std::collections::HashMap;
+        
+        lazy_static::lazy_static! {
+            static ref SEARCH_CACHE: Mutex<HashMap<String, Vec<PathBuf>>> = Mutex::new(HashMap::new());
+        }
+        
+        // Check global cache first
+        if let Ok(cache) = SEARCH_CACHE.lock() {
+            if let Some(cached_results) = cache.get(query) {
+                log::debug!("Search: using global cache for query '{}'", query);
+                return cached_results.clone();
+            }
+        }
+        
         let mut results = Vec::new();
         
         // Collect all file paths from the tree
+        let start = std::time::Instant::now();
         self.collect_all_paths(&self.tree.root, &mut results);
+        let collect_time = start.elapsed();
+        
+        log::debug!("Search: collected {} paths in {:?}", results.len(), collect_time);
         
         if query.is_empty() {
             // When search query is empty, show all files
+            if let Ok(mut cache) = SEARCH_CACHE.lock() {
+                cache.insert(query.to_string(), results.clone());
+            }
             return results;
         }
 
         // Filter by substring match in filename (case-insensitive)
         let query_lower = query.to_lowercase();
+        let filter_start = std::time::Instant::now();
         let mut filtered_results: Vec<PathBuf> = results
             .into_iter()
             .filter(|path| {
@@ -249,6 +276,15 @@ impl NavigatorState {
 
         // Sort alphabetically for consistent results
         filtered_results.sort();
+        let filter_time = filter_start.elapsed();
+        
+        log::debug!("Search: computed {} results in {:?}", filtered_results.len(), filter_time);
+        
+        // Cache the results globally
+        if let Ok(mut cache) = SEARCH_CACHE.lock() {
+            cache.insert(query.to_string(), filtered_results.clone());
+        }
+        
         filtered_results
     }
 
@@ -306,6 +342,13 @@ impl NavigatorState {
 
     /// Get visible items for search mode
     fn get_search_visible_items(&self, results: &[PathBuf], selection: &Option<PathBuf>) -> Vec<VisibleItem> {
+        let start = std::time::Instant::now();
+        log::debug!("Search display: processing {} results for display", results.len());
+        
+        // Convert results to HashSet for O(1) lookups instead of O(n) linear searches
+        let results_set: HashSet<&PathBuf> = results.iter().collect();
+        log::debug!("Search display: built lookup set in {:?}", start.elapsed());
+        
         // For search mode, we need to display results as a tree structure
         // with directories containing matches automatically expanded
         
@@ -328,20 +371,31 @@ impl NavigatorState {
         for node in &self.tree.root {
             if node.is_dir {
                 // Show directory if it contains any matching files
-                let contains_matches = self.directory_contains_matches(node, results);
+                let contains_matches = self.directory_contains_matches_fast(node, &results_set);
                 if contains_matches {
-                    self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selection);
+                    self.collect_search_visible_items_fast(node, &mut items, 0, &expanded_dirs, &results_set, selection);
                 }
-            } else if results.contains(&node.path) {
+            } else if results_set.contains(&node.path) {
                 // Show file if it's in the search results
-                self.collect_search_visible_items(node, &mut items, 0, &expanded_dirs, results, selection);
+                self.collect_search_visible_items_fast(node, &mut items, 0, &expanded_dirs, &results_set, selection);
             }
         }
         
+        let elapsed = start.elapsed();
+        log::debug!("Search display: generated {} visible items in {:?}", items.len(), elapsed);
         items
     }
     
-    /// Check if a directory contains any files that match the search results
+    /// Check if a directory contains any files that match the search results (FAST O(1) version)
+    fn directory_contains_matches_fast(&self, dir_node: &TreeNode, results_set: &HashSet<&PathBuf>) -> bool {
+        // Check if any result path starts with this directory path
+        let dir_path_str = dir_node.path.to_string_lossy();
+        results_set.iter().any(|result_path| {
+            result_path.to_string_lossy().starts_with(&format!("{}/", dir_path_str))
+        })
+    }
+    
+    /// Check if a directory contains any files that match the search results (SLOW O(n) version - DEPRECATED)
     fn directory_contains_matches(&self, dir_node: &TreeNode, results: &[PathBuf]) -> bool {
         // Check if any result path starts with this directory path
         let dir_path_str = dir_node.path.to_string_lossy();
@@ -350,7 +404,51 @@ impl NavigatorState {
         })
     }
     
-    /// Recursively collect visible items for search mode with tree structure
+    /// Recursively collect visible items for search mode with tree structure (FAST version)
+    fn collect_search_visible_items_fast(
+        &self,
+        node: &crate::tree::TreeNode,
+        items: &mut Vec<VisibleItem>,
+        depth: usize,
+        expanded: &HashSet<PathBuf>,
+        search_results: &HashSet<&PathBuf>,
+        selection: &Option<PathBuf>,
+    ) {
+        // Include this node if:
+        // 1. It's a file that's in the search results, OR
+        // 2. It's a directory that contains files in the search results
+        let should_include = if node.is_dir {
+            self.directory_contains_matches_fast(node, search_results)
+        } else {
+            search_results.contains(&node.path)
+        };
+        
+        if !should_include {
+            return;
+        }
+        
+        let is_selected = selection.as_ref() == Some(&node.path);
+        let is_expanded = expanded.contains(&node.path);
+
+        items.push(VisibleItem {
+            path: node.path.clone(),
+            name: node.name.clone(),
+            depth,
+            is_selected,
+            is_expanded,
+            is_dir: node.is_dir,
+            git_status: node.git_status,
+        });
+
+        // If directory is expanded, show children
+        if node.is_dir && is_expanded {
+            for child in &node.children {
+                self.collect_search_visible_items_fast(child, items, depth + 1, expanded, search_results, selection);
+            }
+        }
+    }
+
+    /// Recursively collect visible items for search mode with tree structure (SLOW version - DEPRECATED)
     fn collect_search_visible_items(
         &self,
         node: &crate::tree::TreeNode,

@@ -18,7 +18,7 @@ pub fn handle_event(
                 KeyCode::Char('q') => {
                     // Don't quit if in search mode - let panel handlers deal with it
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -31,7 +31,7 @@ pub fn handle_event(
                 KeyCode::Esc => {
                     // Don't quit if in search mode - let panel handlers deal with it
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -44,7 +44,7 @@ pub fn handle_event(
                 KeyCode::Tab => {
                     // Don't switch panels if in search mode
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -61,7 +61,7 @@ pub fn handle_event(
                 KeyCode::Char('1') => {
                     // Don't switch panels if in search mode
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -74,7 +74,7 @@ pub fn handle_event(
                 KeyCode::Char('2') => {
                     // Don't switch panels if in search mode
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -87,7 +87,7 @@ pub fn handle_event(
                 KeyCode::Char('3') => {
                     // Don't switch panels if in search mode
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -100,7 +100,7 @@ pub fn handle_event(
                 KeyCode::Char('[') => {
                     // Don't navigate commits if in search mode
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
@@ -114,7 +114,7 @@ pub fn handle_event(
                 KeyCode::Char(']') => {
                     // Don't navigate commits if in search mode
                     let in_search_mode = if let Some(ref navigator) = app.new_navigator {
-                        navigator.build_view_model().is_searching
+                        navigator.is_searching()
                     } else {
                         app.navigator.file_tree_state.in_search_mode
                     };
