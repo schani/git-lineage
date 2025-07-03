@@ -6,10 +6,10 @@ immediate
 key:enter
 
 # Take screenshot after expanding
-screenshot:after_expand.txt
+screenshot:00_after_expand.txt
 
 # Press Enter again to collapse the directory
 key:enter
 
 # Take final screenshot
-screenshot:after_collapse.txt
+screenshot:01_after_collapse.txt

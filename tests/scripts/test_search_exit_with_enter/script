@@ -4,19 +4,19 @@ immediate
 # Start in search mode
 char:/
 wait:50
-screenshot:before_search.txt
+screenshot:00_before_search.txt
 
 # Type a search term
 char:d
 char:i
 char:r
-screenshot:during_search.txt
+screenshot:01_during_search.txt
 
 # Press Enter - this should exit search mode but keep the search string
 key:enter
-screenshot:after_enter.txt
+screenshot:02_after_enter.txt
 
 # Verify we're out of search mode by checking the UI shows the search is still active
 # but we're no longer in input mode (cursor should not be in search bar)
 wait:100
-screenshot:final_state.txt
+screenshot:03_final_state.txt

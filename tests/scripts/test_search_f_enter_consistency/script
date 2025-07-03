@@ -8,10 +8,10 @@ char:/
 char:f
 
 # Take screenshot of search results
-screenshot:during_search_f.txt
+screenshot:00_during_search_f.txt
 
 # Press Enter to exit search mode but keep query active
 key:enter
 
 # Take screenshot after Enter - should show same tree but currently doesn't
-screenshot:after_enter_f.txt
+screenshot:01_after_enter_f.txt

@@ -2,17 +2,17 @@
 # This verifies the new behavior where file selection directly triggers content loading
 
 # Start with initial state - navigator focused, no file selected
-screenshot:initial_state.txt
+screenshot:00_initial_state.txt
 
 # Navigate down to select README.md
 key:down
 wait:100
-screenshot:selected_readme.txt
+screenshot:01_selected_readme.txt
 
 # Navigate down to select file-in-root
 key:down
 wait:100
-screenshot:selected_file_in_root.txt
+screenshot:02_selected_file_in_root.txt
 
 # Verify that commit history and content are loaded for the selected file
 # The history panel should show commits and the inspector should show content
@@ -20,26 +20,26 @@ screenshot:selected_file_in_root.txt
 # Now navigate to a different file to verify content updates immediately
 key:down
 wait:100
-screenshot:different_file.txt
+screenshot:03_different_file.txt
 
 # Navigate back up to select the directory to verify empty panes
 key:up
 key:up
 wait:100
-screenshot:directory_selected.txt
+screenshot:04_directory_selected.txt
 
 # Test that Enter just switches focus (doesn't change content)
 # Select a file again
 key:down
 wait:100
-screenshot:before_enter.txt
+screenshot:05_before_enter.txt
 
 # Should just switch to History panel
 key:enter
 wait:100
-screenshot:after_enter.txt
+screenshot:06_after_enter.txt
 
 # Verify we're in History panel by navigating commits
 key:down
 wait:100
-screenshot:second_commit_selected.txt
+screenshot:07_second_commit_selected.txt

@@ -13,4 +13,4 @@ char:a
 assert:selected_file:README.md
 
 # Take a screenshot to verify the visual state
-screenshot:after_typing_rea.txt
+screenshot:00_after_typing_rea.txt

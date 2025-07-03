@@ -2,16 +2,16 @@
 # This test verifies that pressing '/' shows "Search:" label even before typing
 
 # Start with normal view
-screenshot:before_search.txt
+screenshot:00_before_search.txt
 
 # Press '/' to enter search mode - should immediately show "Search:" label
 key:/
-screenshot:after_slash.txt
+screenshot:01_after_slash.txt
 
 # Type a character - should still show "Search:" label with content
 key:s
-screenshot:after_typing.txt
+screenshot:02_after_typing.txt
 
 # Exit search mode
 key:Escape
-screenshot:after_escape.txt
+screenshot:03_after_escape.txt
