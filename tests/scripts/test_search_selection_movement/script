@@ -1,0 +1,29 @@
+# Test that selection bar moves correctly during search navigation
+# This verifies the fix for the selection bar not moving in search mode
+
+# Start search mode
+char:/
+
+# Search for "r" to get multiple results (README.md and others)
+char:r
+
+# Take initial screenshot
+screenshot:after_search_s.txt
+
+# Navigate down - selection bar should move
+key:down
+
+# Take screenshot to verify selection moved
+screenshot:after_navigate_down.txt
+
+# Navigate down again
+key:down
+
+# Take screenshot to verify selection moved again
+screenshot:after_second_down.txt
+
+# Navigate up - selection should move back
+key:up
+
+# Final screenshot
+screenshot:after_navigate_up.txt

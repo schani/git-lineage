@@ -181,6 +181,7 @@ script_test!(test_search_exit_with_enter, "test_search_exit_with_enter");
 script_test!(test_search_f_enter_consistency, "test_search_f_enter_consistency");
 script_test!(test_search_rea_selection, "test_search_rea_selection");
 script_test!(test_enter_toggle_directory, "test_enter_toggle_directory");
+script_test!(test_search_selection_movement, "test_search_selection_movement");
 
 // Additional script tests can be added here as they are created
 // script_test!(test_basic_navigation, "basic_navigation");

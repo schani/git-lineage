@@ -44,6 +44,16 @@ fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::navigator::NavigatorViewModel, area: Rect) {
     let theme = get_theme();
     let is_active = app.ui.active_panel == PanelFocus::Navigator;
+    
+    // Debug logging for rendering
+    let selected_count = view_model.items.iter().filter(|item| item.is_selected).count();
+    if selected_count != 1 {
+        log::warn!(
+            "UI rendering: Unexpected selected count: {}, cursor_position={}, search_active={}",
+            selected_count, view_model.cursor_position, !view_model.search_query.is_empty()
+        );
+    }
+    
     let border_style = if is_active {
         Style::default().fg(theme.active_border)
     } else {
@@ -125,6 +135,7 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::nav
 
             let line = if item.is_selected {
                 // Highlight selected item
+                log::trace!("Rendering selected item: {:?}", item.path);
                 let content_width = (area.width as usize).saturating_sub(2);
                 let display_len = display_name.chars().count();
                 let padding_needed = content_width.saturating_sub(display_len);

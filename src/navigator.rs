@@ -135,9 +135,10 @@ impl NavigatorState {
                     }
                     
                     // After updating query, ensure selection is still valid
-                    log::debug!("🔍 UpdateSearchQuery: Ensuring valid selection");
+                    let old_selection = self.selection.clone();
+                    log::debug!("🔍 UpdateSearchQuery: Ensuring valid selection, current={:?}", old_selection);
                     self.ensure_valid_selection();
-                    log::debug!("🔍 UpdateSearchQuery: Complete");
+                    log::debug!("🔍 UpdateSearchQuery: Complete, selection now={:?}", self.selection);
                 }
             }
             
@@ -157,13 +158,23 @@ impl NavigatorState {
             
             NavigatorEvent::NavigateUp => {
                 let visible_items = self.get_current_visible_items();
+                let old_selection = self.selection.clone();
                 self.selection = self.find_previous_item(&visible_items, &self.selection);
+                log::debug!(
+                    "NavigateUp: old_selection={:?}, new_selection={:?}, visible_count={}, search_active={}",
+                    old_selection, self.selection, visible_items.len(), !self.query.is_empty()
+                );
                 self.scroll_offset = self.calculate_scroll_offset(&self.selection, &visible_items);
             }
             
             NavigatorEvent::NavigateDown => {
                 let visible_items = self.get_current_visible_items();
+                let old_selection = self.selection.clone();
                 self.selection = self.find_next_item(&visible_items, &self.selection);
+                log::debug!(
+                    "NavigateDown: old_selection={:?}, new_selection={:?}, visible_count={}, search_active={}",
+                    old_selection, self.selection, visible_items.len(), !self.query.is_empty()
+                );
                 self.scroll_offset = self.calculate_scroll_offset(&self.selection, &visible_items);
             }
             
@@ -268,8 +279,13 @@ impl NavigatorState {
         } else {
             // Use cached search results if available
             if let Some(ref cached_items) = self.cached_search_visible_items {
-                log::debug!("View model: using cached search visible items");
-                cached_items.clone()
+                log::debug!("View model: using cached search visible items, updating selection state");
+                // Update is_selected based on current selection
+                cached_items.iter().map(|item| {
+                    let mut updated_item = item.clone();
+                    updated_item.is_selected = self.selection.as_ref() == Some(&item.path);
+                    updated_item
+                }).collect()
             } else {
                 // Fallback: compute if not cached (shouldn't happen)
                 log::warn!("View model: search cache miss, computing fresh");
@@ -280,10 +296,31 @@ impl NavigatorState {
         
         log::debug!("View model: computed {} items", items.len());
         
+        // Count how many items are marked as selected
+        let selected_count = items.iter().filter(|item| item.is_selected).count();
+        if selected_count != 1 {
+            log::warn!(
+                "rebuild_view_model: Unexpected selected count: {}, selection={:?}, search_query='{}'",
+                selected_count, self.selection, self.query
+            );
+            // Log first few items to debug
+            for (i, item) in items.iter().take(5).enumerate() {
+                log::debug!(
+                    "  Item {}: path={:?}, is_selected={}",
+                    i, item.path, item.is_selected
+                );
+            }
+        }
+        
         let cursor_position = self.selection
             .as_ref()
             .and_then(|sel| items.iter().position(|item| &item.path == sel))
             .unwrap_or(0);
+        
+        log::debug!(
+            "View model built: cursor_position={}, selection={:?}, items_count={}, search_active={}",
+            cursor_position, self.selection, items.len(), !self.query.is_empty()
+        );
         
         NavigatorViewModel {
             items,
@@ -626,6 +663,8 @@ impl NavigatorState {
     
     /// Ensure we have a valid selection if there are visible items
     fn ensure_valid_selection(&mut self) {
+        let old_selection = self.selection.clone();
+        
         // Use cached visible items if available (during search)
         let visible_items = if !self.query.is_empty() && self.cached_search_visible_items.is_some() {
             log::debug!("ensure_valid_selection: Using cached search visible items");
@@ -638,6 +677,7 @@ impl NavigatorState {
         if visible_items.is_empty() {
             // No visible items, clear selection
             self.selection = None;
+            log::debug!("ensure_valid_selection: No visible items, cleared selection (was {:?})", old_selection);
             return;
         }
         
@@ -653,6 +693,8 @@ impl NavigatorState {
         // Either no selection or current selection is not visible
         // Select first visible item
         self.selection = Some(visible_items[0].path.clone());
+        log::debug!("ensure_valid_selection: Changed selection from {:?} to {:?}", 
+            old_selection, self.selection);
     }
 
 }

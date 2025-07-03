@@ -284,6 +284,14 @@ pub fn handle_new_navigator_file_selection_change(app: &mut App, task_sender: &m
     let selected_path = app.new_navigator.as_mut().unwrap().get_selection();
     debug!("🔄 handle_new_navigator_file_selection_change: selected_file_path = {:?}", selected_path);
     
+    // Debug: Check the view model state before sync
+    if let Some(ref mut navigator) = app.new_navigator {
+        let view_model = navigator.build_view_model();
+        let selected_count = view_model.items.iter().filter(|item| item.is_selected).count();
+        debug!("🔄 View model state: selected_count={}, cursor_position={}, items_count={}", 
+            selected_count, view_model.cursor_position, view_model.items.len());
+    }
+    
     // Update the old navigator's selection to keep things in sync
     if let Some(ref selected_path) = selected_path {
         app.navigator.file_tree_state.current_selection = Some(selected_path.clone());

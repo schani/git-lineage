@@ -1,0 +1,30 @@
+┌ File Navigator (Search: r█ ────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+│▼ dir                                   ││   1 bla                                                                    │
+│    file-in-dir                         ││                                                                            │
+│  README.md                             ││                                                                            │
+│  file-in-root                          ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+└────────────────────────────────────────┘│                                                                            │
+┌ Commit History (file-in-dir) - Loading.┐│                                                                            │
+│Select a file to view its history       ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+file-in-dir loaded (loading history...) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: 
