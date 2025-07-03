@@ -9,7 +9,7 @@ pub fn load_commit_history_for_selected_file(
     app: &mut App,
     task_sender: &mpsc::Sender<Task>,
 ) -> EventResult {
-    if let Some(path) = app.navigator.get_selection() {
+    if let Some(path) = app.get_active_file() {
         let file_path = path.to_string_lossy().to_string();
 
         // Reset history state for the new file
@@ -36,11 +36,16 @@ pub fn load_commit_history_for_selected_file(
         app.ui.is_loading = true;
         app.ui.status_message = format!("Loading history for {}...", file_path);
     } else {
+        // Directory is selected or no selection
         app.history.commit_list.clear();
         app.history.selected_commit_index = None;
         app.history.selected_commit_hash = None;
         app.inspector.current_content.clear();
-        app.ui.status_message = "No file selected for history".to_string();
+        app.ui.status_message = if app.navigator.get_selection().is_some() {
+            "Directory selected - select a file to view history".to_string()
+        } else {
+            "No file selected for history".to_string()
+        };
     }
 
     Ok(true)

@@ -1,0 +1,30 @@
+┌ File Navigator ────────────────────────┐┌ Code Inspector - README.md @ 9a4a274d ─────────────────────────────────────┐
+│▶ dir                                   ││   1 # git-lineage-test                                                     │
+│  README.md                             ││   2                                                                        │
+│  file-in-root                          ││   3 This repo is test data for [git-lineage](https://github.com/schani/git-│
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+└────────────────────────────────────────┘│                                                                            │
+┌ Commit History (README.md) - 1 commits ┐│                                                                            │
+│>> 9a4a274d 2025-07-02 06:33 Mark Probst││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+│                                        ││                                                                            │
+README.md loaded (1 commits) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓
