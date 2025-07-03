@@ -19,22 +19,19 @@ impl ScriptTestDriver {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let original_dir = env::current_dir()?;
         
-        // Check if we're already in the test-repo directory
-        let test_repo_path = if original_dir.ends_with("test-repo") {
-            // We're already in test-repo
-            original_dir.clone()
-        } else {
-            // We're in the project root, navigate to test-repo
-            let path = original_dir.join("tests/test-repo");
-            if !path.exists() {
-                return Err(format!("Test repository not found at: {}", path.display()).into());
-            }
-            path
-        };
+        // Find the test repository by looking for the manifest directory
+        // When tests run, they might be in various temporary directories
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let manifest_path = std::path::Path::new(manifest_dir);
+        let test_repo_path = manifest_path.join("tests/test-repo");
+        
+        if !test_repo_path.exists() {
+            return Err(format!("Test repository not found at: {}", test_repo_path.display()).into());
+        }
         
         Ok(Self {
             test_repo_path,
-            original_dir: original_dir.clone(),
+            original_dir,
         })
     }
     
@@ -49,7 +46,8 @@ impl ScriptTestDriver {
         let _guard = DirectoryGuard::new(&self.original_dir);
         
         // Set up the application and async task system
-        let repo = git_utils::open_repository(".").map_err(|e| format!("Failed to open repo: {}", e))?;
+        // Use the absolute path to open the repository
+        let repo = git_utils::open_repository(&self.test_repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
         let mut app = App::new(repo);
         
         // Set up task communication channels
@@ -71,15 +69,10 @@ impl ScriptTestDriver {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         
         // Create TestRunner in verify mode (overwrite_mode = false)
-        // Resolve test directory and script file
-        let scripts_base = if self.original_dir.ends_with("test-repo") {
-            // We're in test-repo, go up to find scripts
-            self.original_dir.parent().unwrap().to_path_buf()
-        } else {
-            // We're in project root
-            self.original_dir.join("tests")
-        };
-        let test_dir = scripts_base.join("scripts").join(test_name);
+        // Resolve test directory and script file relative to the manifest directory
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let manifest_path = std::path::Path::new(manifest_dir);
+        let test_dir = manifest_path.join("tests/scripts").join(test_name);
         let script_file = test_dir.join("script");
         let test_script = std::fs::read_to_string(&script_file)
             .map_err(|e| format!("Failed to read script file {:?}: {}", script_file, e))?;
@@ -113,7 +106,8 @@ impl ScriptTestDriver {
         let _guard = DirectoryGuard::new(&self.original_dir);
         
         // Set up the application and async task system
-        let repo = git_utils::open_repository(".").map_err(|e| format!("Failed to open repo: {}", e))?;
+        // Use the absolute path to open the repository
+        let repo = git_utils::open_repository(&self.test_repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
         let mut app = App::new(repo);
         
         // Set up task communication channels
@@ -135,15 +129,10 @@ impl ScriptTestDriver {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         
         // Create TestRunner in overwrite mode (overwrite_mode = true)
-        // Resolve test directory and script file
-        let scripts_base = if self.original_dir.ends_with("test-repo") {
-            // We're in test-repo, go up to find scripts
-            self.original_dir.parent().unwrap().to_path_buf()
-        } else {
-            // We're in project root
-            self.original_dir.join("tests")
-        };
-        let test_dir = scripts_base.join("scripts").join(test_name);
+        // Resolve test directory and script file relative to the manifest directory
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let manifest_path = std::path::Path::new(manifest_dir);
+        let test_dir = manifest_path.join("tests/scripts").join(test_name);
         let script_file = test_dir.join("script");
         let test_script = std::fs::read_to_string(&script_file)
             .map_err(|e| format!("Failed to read script file {:?}: {}", script_file, e))?;
@@ -219,21 +208,8 @@ mod tests {
         assert!(driver.is_ok(), "Should be able to create test driver");
     }
 
-    #[test]
-    fn test_driver_with_invalid_repo() {
-        // Temporarily change directory to a location without test-repo
-        let temp_dir = TempDir::new().unwrap();
-        let original = env::current_dir().unwrap();
-        
-        env::set_current_dir(temp_dir.path()).unwrap();
-        
-        let result = ScriptTestDriver::new();
-        
-        // Restore directory
-        env::set_current_dir(original).unwrap();
-        
-        assert!(result.is_err(), "Should fail when test-repo doesn't exist");
-    }
+    // This test is no longer valid because we use CARGO_MANIFEST_DIR
+    // which always resolves correctly regardless of current directory
 
     #[tokio::test]
     async fn test_nonexistent_script_file() {
