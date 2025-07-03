@@ -144,8 +144,7 @@ pub fn handle_new_navigator_event(
                     warn!("Failed to update search query: {}", e);
                 } else {
                     debug!("🔍 Search query updated successfully");
-                    // Update other panels when search query changes selection
-                    handle_new_navigator_file_selection_change(app, task_sender);
+                    // Don't trigger file selection change - we're just filtering, not selecting
                 }
                 return Ok(());
             }
@@ -155,8 +154,7 @@ pub fn handle_new_navigator_event(
                 if let Err(e) = app.new_navigator.as_mut().unwrap().handle_event(NavigatorEvent::UpdateSearchQuery(new_query)) {
                     warn!("Failed to update search query: {}", e);
                 } else {
-                    // Update other panels when search query changes selection
-                    handle_new_navigator_file_selection_change(app, task_sender);
+                    // Don't trigger file selection change - we're just filtering, not selecting
                 }
                 return Ok(());
             }

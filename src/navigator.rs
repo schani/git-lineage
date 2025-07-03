@@ -59,6 +59,10 @@ pub struct NavigatorState {
     cached_view_model: Option<NavigatorViewModel>,
     view_model_dirty: bool,
     last_state_hash: u64,
+    
+    // Search results caching - compute once when query changes
+    cached_search_results: Option<Vec<PathBuf>>,
+    cached_search_visible_items: Option<Vec<VisibleItem>>,
 }
 
 impl NavigatorState {
@@ -75,6 +79,8 @@ impl NavigatorState {
             cached_view_model: None,
             view_model_dirty: true,
             last_state_hash: 0,
+            cached_search_results: None,
+            cached_search_visible_items: None,
         }
     }
 
@@ -110,15 +116,36 @@ impl NavigatorState {
             
             NavigatorEvent::UpdateSearchQuery(new_query) => {
                 if self.editing_search {
-                    self.query = new_query;
+                    log::debug!("🔍 UpdateSearchQuery: Starting query update to '{}'", new_query);
+                    self.query = new_query.clone();
+                    
+                    // Compute search results immediately and cache them
+                    if !new_query.is_empty() {
+                        log::debug!("🔍 UpdateSearchQuery: Computing search results");
+                        let results = self.search_files(&new_query);
+                        log::debug!("🔍 UpdateSearchQuery: Computing visible items");
+                        let visible_items = self.get_search_visible_items(&results, &self.selection);
+                        log::debug!("🔍 UpdateSearchQuery: Caching {} results and {} visible items", results.len(), visible_items.len());
+                        self.cached_search_results = Some(results);
+                        self.cached_search_visible_items = Some(visible_items);
+                    } else {
+                        log::debug!("🔍 UpdateSearchQuery: Clearing cache for empty query");
+                        self.cached_search_results = None;
+                        self.cached_search_visible_items = None;
+                    }
+                    
                     // After updating query, ensure selection is still valid
+                    log::debug!("🔍 UpdateSearchQuery: Ensuring valid selection");
                     self.ensure_valid_selection();
+                    log::debug!("🔍 UpdateSearchQuery: Complete");
                 }
             }
             
             NavigatorEvent::EndSearch => {
                 self.editing_search = false;
                 self.query.clear();
+                self.cached_search_results = None;
+                self.cached_search_visible_items = None;
                 // When returning to full tree, keep current selection if it exists
                 // No need to call ensure_valid_selection - let user navigate if needed
             }
@@ -239,9 +266,16 @@ impl NavigatorState {
             // Show full tree
             self.get_browsing_visible_items(&self.expanded, &self.selection)
         } else {
-            // Show filtered tree (same logic always)  
-            let results = self.search_files(&self.query);
-            self.get_search_visible_items(&results, &self.selection)
+            // Use cached search results if available
+            if let Some(ref cached_items) = self.cached_search_visible_items {
+                log::debug!("View model: using cached search visible items");
+                cached_items.clone()
+            } else {
+                // Fallback: compute if not cached (shouldn't happen)
+                log::warn!("View model: search cache miss, computing fresh");
+                let results = self.search_files(&self.query);
+                self.get_search_visible_items(&results, &self.selection)
+            }
         };
         
         log::debug!("View model: computed {} items", items.len());
@@ -587,7 +621,14 @@ impl NavigatorState {
     
     /// Ensure we have a valid selection if there are visible items
     fn ensure_valid_selection(&mut self) {
-        let visible_items = self.get_current_visible_items();
+        // Use cached visible items if available (during search)
+        let visible_items = if !self.query.is_empty() && self.cached_search_visible_items.is_some() {
+            log::debug!("ensure_valid_selection: Using cached search visible items");
+            self.cached_search_visible_items.as_ref().unwrap().clone()
+        } else {
+            log::debug!("ensure_valid_selection: Computing visible items");
+            self.get_current_visible_items()
+        };
         
         if visible_items.is_empty() {
             // No visible items, clear selection
