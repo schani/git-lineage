@@ -55,7 +55,7 @@ pub fn load_more_commit_history(
         return Ok(false);
     }
 
-    if let Some(path) = app.active_file_context.clone() {
+    if let Some(path) = app.get_active_file() {
         let file_path = path.to_string_lossy().to_string();
         let chunk_size = 50; // Load 50 commits at a time
         let start_offset = app.history.next_chunk_offset;

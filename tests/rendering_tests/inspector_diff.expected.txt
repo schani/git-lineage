@@ -11,7 +11,7 @@
 │                          ││                                                  │
 │                          ││                                                  │
 └──────────────────────────┘│                                                  │
-┌ Commit History (example.p┐│                                                  │
+┌ Commit History ──────────┐│                                                  │
 │>> xyz123a 10 mins ago Dev││                                                  │
 │   More commits available ││                                                  │
 │                          ││                                                  │

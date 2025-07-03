@@ -59,10 +59,6 @@ pub struct App {
     pub repo: Repository,
     pub should_quit: bool,
 
-    // Content Context - tracks what file's content is being displayed
-    // This is separate from navigator selection to handle directories properly
-    pub active_file_context: Option<PathBuf>,
-
     // Position Tracking for Same-Line Feature
     pub per_commit_cursor_positions: HashMap<(String, PathBuf), usize>,
     pub last_commit_for_mapping: Option<String>,
@@ -83,7 +79,6 @@ impl App {
         let app = Self {
             repo,
             should_quit: false,
-            active_file_context: None,
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
             active_background_tasks: 0,
@@ -141,6 +136,19 @@ impl App {
         self.navigator.get_selection()
     }
 
+    /// Get the currently selected file path (returns None if selection is a directory)
+    pub fn get_active_file(&self) -> Option<PathBuf> {
+        if let Some(path) = self.navigator.get_selection() {
+            if !self.navigator.is_path_directory(&path) {
+                Some(path)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
 
 
     /// Get navigator search query
@@ -161,11 +169,15 @@ impl App {
     /// Load file content for the Inspector panel based on current selections
     pub fn load_inspector_content(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Check if we have both a selected file and commit
-        let file_path = match self.navigator.get_selection() {
+        let file_path = match self.get_active_file() {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
                 self.inspector.current_content.clear();
-                self.ui.status_message = "No file selected".to_string();
+                self.ui.status_message = if self.navigator.get_selection().is_some() {
+                    "Directory selected - select a file to view content".to_string()
+                } else {
+                    "No file selected".to_string()
+                };
                 return Ok(());
             }
         };
@@ -215,7 +227,7 @@ impl App {
         self.history.selected_commit_hash = Some(commit_hash);
 
         // Auto-load content if we have a file selected
-        if self.navigator.get_selection().is_some() {
+        if self.get_active_file().is_some() {
             self.load_inspector_content()?;
         }
 
@@ -252,13 +264,18 @@ impl App {
     pub fn load_commit_history_for_selected_file(
         &mut self,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let file_path = match self.navigator.get_selection() {
+        let file_path = match self.get_active_file() {
             Some(path) => path.to_string_lossy().to_string(),
             None => {
                 self.history.commit_list.clear();
                 self.history.selected_commit_index = None;
                 self.history.selected_commit_hash = None;
-                self.ui.status_message = "No file selected for history".to_string();
+                self.inspector.current_content.clear();
+                self.ui.status_message = if self.navigator.get_selection().is_some() {
+                    "Directory selected - select a file to view history".to_string()
+                } else {
+                    "No file selected for history".to_string()
+                };
                 return Ok(());
             }
         };
@@ -306,7 +323,6 @@ impl App {
         let mut app = Self {
             repo,
             should_quit: false,
-            active_file_context: config.active_file_context.clone(),
             per_commit_cursor_positions: HashMap::new(),
             last_commit_for_mapping: None,
             active_background_tasks: 0,
@@ -367,15 +383,6 @@ impl App {
             }
         }
 
-
-        // Set active_file_context based on current selection (only if it's a file, not directory)
-        if let Some(selected_path) = app.navigator.get_selection() {
-            let is_dir = app.navigator.is_path_directory(&selected_path);
-
-            if !is_dir {
-                app.active_file_context = Some(selected_path);
-            }
-        }
 
         app
     }

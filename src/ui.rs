@@ -5,6 +5,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
+use std::path::PathBuf;
 
 use crate::app::{App, PanelFocus};
 use crate::theme::get_theme;
@@ -167,7 +168,7 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(theme.inactive_border)
     };
 
-    let title = if let Some(ref path) = app.active_file_context {
+    let title = if let Some(path) = app.get_active_file() {
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
         if app.history.is_loading_more && !app.history.history_complete {
             format!(" Commit History ({}) - Loading... ", filename)
@@ -271,7 +272,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
     let title = if app.inspector.show_diff_view {
         " Code Inspector (Diff View) ".to_string()
     } else if let (Some(file_path), Some(commit_hash)) =
-        (&app.active_file_context, &app.history.selected_commit_hash)
+        (app.get_active_file().as_ref(), &app.history.selected_commit_hash)
     {
         format!(
             " Code Inspector - {} @ {} ",
@@ -288,7 +289,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
         .border_style(border_style);
 
     if app.inspector.current_content.is_empty() {
-        let message = if app.active_file_context.is_none() {
+        let message = if app.get_active_file().is_none() {
             "Select a file to view its content"
         } else if app.history.selected_commit_hash.is_none() {
             "Select a commit to view file content at that point"
@@ -317,7 +318,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
             let line_number = format!("{:4} ", line_num + 1);
 
             // Basic syntax highlighting for common file types
-            let line_style = get_line_style(line, &app.active_file_context);
+            let line_style = get_line_style(line, &app.get_active_file());
 
             if line_num == app.inspector.cursor_line {
                 // Calculate content width and add padding for full-width highlighting
@@ -362,7 +363,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 /// Basic syntax highlighting based on file content and extension
-fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
+fn get_line_style(line: &str, file_path: &Option<PathBuf>) -> Style {
     let theme = get_theme();
     let trimmed = line.trim();
 

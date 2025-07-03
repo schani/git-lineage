@@ -26,7 +26,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         TaskResult::CommitHistoryLoaded { file_path, commits } => {
             // Race condition protection: Only apply commits if they're for the currently active file
             let is_still_relevant = app
-                .active_file_context
+                .get_active_file()
                 .as_ref()
                 .map(|active_path| active_path.to_string_lossy() == file_path)
                 .unwrap_or(false);
@@ -59,7 +59,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         } => {
             // Race condition protection: Only apply commits if they're for the currently active file
             let is_still_relevant = app
-                .active_file_context
+                .get_active_file()
                 .as_ref()
                 .map(|active_path| active_path.to_string_lossy() == file_path)
                 .unwrap_or(false);
@@ -107,7 +107,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         } => {
             // Race condition protection: Only apply commits if they're for the currently active file
             let is_still_relevant = app
-                .active_file_context
+                .get_active_file()
                 .as_ref()
                 .map(|active_path| active_path.to_string_lossy() == file_path)
                 .unwrap_or(false);
@@ -124,10 +124,8 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
 
                 // Update status message with current progress
                 let filename = app
-                    .active_file_context
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .map(|n| n.to_string_lossy())
+                    .get_active_file()
+                    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
                     .unwrap_or_default();
                 app.ui.status_message =
                     format!("{} loaded ({} commits found...)", filename, total_commits_so_far);
@@ -139,7 +137,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         } => {
             // Race condition protection: Only apply if still relevant
             let is_still_relevant = app
-                .active_file_context
+                .get_active_file()
                 .as_ref()
                 .map(|active_path| active_path.to_string_lossy() == file_path)
                 .unwrap_or(false);
@@ -149,10 +147,8 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 app.history.is_loading_more = false;
 
                 let filename = app
-                    .active_file_context
-                    .as_ref()
-                    .and_then(|p| p.file_name())
-                    .map(|n| n.to_string_lossy())
+                    .get_active_file()
+                    .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
                     .unwrap_or_default();
 
                 app.ui.status_message = if total_commits == 0 {

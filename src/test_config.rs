@@ -20,8 +20,6 @@ pub struct TestConfig {
     pub show_diff_view: bool,
     pub status_message: String,
     pub is_loading: bool,
-    // Missing fields needed for UI rendering
-    pub active_file_context: Option<PathBuf>,
     pub selected_commit_hash: Option<String>,
 }
 
@@ -96,7 +94,6 @@ impl Default for TestConfig {
             show_diff_view: false,
             status_message: "Ready".to_string(),
             is_loading: false,
-            active_file_context: Some(PathBuf::from("src/main.rs")),
             selected_commit_hash: Some("a1b2c3d4e5f6789012345678901234567890abcd".to_string()),
         }
     }
@@ -133,7 +130,6 @@ impl TestConfig {
             show_diff_view: app.inspector.show_diff_view,
             status_message: app.ui.status_message.clone(),
             is_loading: app.ui.is_loading,
-            active_file_context: app.active_file_context.clone(),
             selected_commit_hash: app.history.selected_commit_hash.clone(),
         }
     }

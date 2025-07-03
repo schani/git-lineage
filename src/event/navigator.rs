@@ -53,12 +53,22 @@ pub fn handle_navigator_event(
     // Handle normal mode navigation
     match key.code {
         KeyCode::Up => {
+            let previous_selection = app.get_active_file();
             app.navigator
                 .handle_event(crate::navigator::NavigatorEvent::NavigateUp)?;
+            // Check if the active file changed
+            if previous_selection != app.get_active_file() {
+                file_loader::load_commit_history_for_selected_file(app, task_sender)?;
+            }
         }
         KeyCode::Down => {
+            let previous_selection = app.get_active_file();
             app.navigator
                 .handle_event(crate::navigator::NavigatorEvent::NavigateDown)?;
+            // Check if the active file changed
+            if previous_selection != app.get_active_file() {
+                file_loader::load_commit_history_for_selected_file(app, task_sender)?;
+            }
         }
         KeyCode::Left => {
             app.navigator
@@ -76,9 +86,7 @@ pub fn handle_navigator_event(
                         crate::navigator::NavigatorEvent::ToggleExpanded(selection),
                     )?;
                 } else {
-                    // Select file and load history
-                    app.active_file_context = Some(selection);
-                    file_loader::load_commit_history_for_selected_file(app, task_sender)?;
+                    // Enter on a file simply moves focus to History panel
                     app.ui.active_panel = PanelFocus::History;
                 }
             }

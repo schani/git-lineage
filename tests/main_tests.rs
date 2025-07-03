@@ -260,10 +260,10 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_with_commits() {
         let mut app = create_test_app();
         app.ui.is_loading = true;
-        // Set active file context to enable content loading
-        app.active_file_context = Some(std::path::PathBuf::from("test_file.rs"));
-        // Set active file context to match the result
-        app.active_file_context = Some(std::path::PathBuf::from("test_file.rs"));
+        // Set active file through navigator to enable content loading
+        app.navigator.handle_event(git_lineage::navigator::NavigatorEvent::SelectFile(
+            std::path::PathBuf::from("test_file.rs")
+        ));
 
         let commits = vec![
             CommitInfo {
@@ -305,7 +305,9 @@ mod task_result_handling {
         let mut app = create_test_app();
         app.ui.is_loading = true;
         // Set active file context to match the result
-        app.active_file_context = Some(std::path::PathBuf::from("empty_file.rs"));
+        app.navigator.handle_event(git_lineage::navigator::NavigatorEvent::SelectFile(
+            std::path::PathBuf::from("empty_file.rs")
+        ));
 
         let result = TaskResult::CommitHistoryLoaded {
             file_path: "empty_file.rs".to_string(),
@@ -330,9 +332,8 @@ mod task_result_handling {
         app.history.selected_commit_index = None;
 
         // Simulate race condition: User was viewing file A, but has now moved to directory B
-        // The active_file_context is None (directory selected), but we receive stale
-        // async result for file A
-        app.active_file_context = None; // Directory or no selection
+        // No file selected (directory selected or no selection)
+        // Navigator state already has no selection by default
 
         let commits = vec![CommitInfo {
             hash: "stale123".to_string(),
@@ -357,7 +358,9 @@ mod task_result_handling {
         assert!(app.ui.status_message.contains("ignored")); // Should indicate result was ignored
 
         // Now test that valid results are still processed when context matches
-        app.active_file_context = Some(std::path::PathBuf::from("current_file.rs"));
+        app.navigator.handle_event(git_lineage::navigator::NavigatorEvent::SelectFile(
+            std::path::PathBuf::from("current_file.rs")
+        ));
         app.ui.is_loading = true; // Reset loading state for second test
 
         let valid_result = TaskResult::CommitHistoryLoaded {

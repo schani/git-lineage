@@ -17,7 +17,7 @@ pub fn handle_inspector_event(
         KeyCode::Char('p') => {
             // Find previous change for the current line
             if let (Some(file_path), Some(commit_hash)) =
-                (&app.active_file_context, &app.history.selected_commit_hash)
+                (app.get_active_file().as_ref(), &app.history.selected_commit_hash)
             {
                 let task = Task::FindNextChange {
                     file_path: file_path.to_string_lossy().to_string(),
@@ -40,7 +40,7 @@ pub fn handle_inspector_event(
         KeyCode::Char('n') => {
             // Find next change for the current line
             if let (Some(file_path), Some(commit_hash)) =
-                (&app.active_file_context, &app.history.selected_commit_hash)
+                (app.get_active_file().as_ref(), &app.history.selected_commit_hash)
             {
                 let task = Task::FindNextChange {
                     file_path: file_path.to_string_lossy().to_string(),

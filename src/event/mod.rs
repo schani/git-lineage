@@ -73,7 +73,7 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
             let commit_hash = commit.hash.clone();
             app.history.selected_commit_hash = Some(commit_hash.clone());
 
-            if let Some(file_path) = app.active_file_context.clone() {
+            if let Some(file_path) = app.get_active_file() {
                 // Save current cursor position before switching
                 if let Some(last_commit) = app.last_commit_for_mapping.clone() {
                     app.save_cursor_position(&last_commit, &file_path);
