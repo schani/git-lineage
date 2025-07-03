@@ -1,10 +1,12 @@
 # Test that pressing Enter on a file focuses the Inspector panel
-immediate
+# Use settle mode to ensure async operations complete
+settle_mode
 screenshot:01_initial.txt
-# Navigate down to select a file
-key:down
+# Navigate down to select README.md which has commits
 key:down
 screenshot:02_file_selected.txt
+# Switch to immediate mode for precise control
+immediate
 # Press Enter - should focus Inspector panel, not History panel
 key:enter
 screenshot:03_inspector_focused.txt

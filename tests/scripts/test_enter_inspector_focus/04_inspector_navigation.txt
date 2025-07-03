@@ -1,7 +1,7 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
-│▶ dir                                   ││Select a commit to view file content at that point                          │
-│  README.md                             ││                                                                            │
-│  file-in-root                          ││                                                                            │
+┌ File Navigator ────────────────────────┐┌ Code Inspector - README.md @ 9a4a274d ─────────────────────────────────────┐
+│▶ dir                                   ││   1 # git-lineage-test                                                     │
+│  README.md                             ││   2                                                                        │
+│  file-in-root                          ││   3 This repo is test data for [git-lineage](https://github.com/schani/git-│
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -13,8 +13,8 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘│                                                                            │
-┌ Commit History (file-in-root) - 0 commi┐│                                                                            │
-│Select a file to view its history       ││                                                                            │
+┌ Commit History (README.md) - 1 commits ┐│                                                                            │
+│>> 9a4a274d 2025-07-02 06:33 Mark Probst││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -27,4 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-Loading... | Loading history for file-in-root... | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger com
+README.md loaded (1 commits) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate |
