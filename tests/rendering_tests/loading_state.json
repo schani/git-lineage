@@ -30,40 +30,20 @@
   "show_diff_view": false,
   "status_message": "Searching for next change...",
   "is_loading": true,
-  "file_tree_state": {
-    "original_tree": {
-      "root": [
-        {
-          "name": "large_file.js",
-          "path": "./large_file.js",
-          "is_dir": false,
-          "git_status": "M",
-          "is_expanded": false,
-          "children": [],
-          "parent_path": null
-        }
-      ],
-      "repo_root": "",
-      "git_status_map": {}
-    },
-    "display_tree": {
-      "root": [
-        {
-          "name": "large_file.js",
-          "path": "./large_file.js",
-          "is_dir": false,
-          "git_status": "M",
-          "is_expanded": false,
-          "children": [],
-          "parent_path": null
-        }
-      ],
-      "repo_root": "",
-      "git_status_map": {}
-    },
-    "current_selection": "./large_file.js",
-    "search_query": "",
-    "in_search_mode": false
+  "file_tree": {
+    "root": [
+      {
+        "name": "large_file.js",
+        "path": "./large_file.js",
+        "is_dir": false,
+        "git_status": "M",
+        "is_expanded": false,
+        "children": [],
+        "parent_path": null
+      }
+    ],
+    "repo_root": "",
+    "git_status_map": {}
   },
   "active_file_context": "./large_file.js",
   "selected_commit_hash": "def456ghi789def456ghi789def456ghi789def4"

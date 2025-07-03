@@ -18,15 +18,23 @@ impl ScriptTestDriver {
     /// Create a new test driver that runs tests in the test-repo submodule
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let original_dir = env::current_dir()?;
-        let test_repo_path = original_dir.join("tests/test-repo");
         
-        if !test_repo_path.exists() {
-            return Err(format!("Test repository not found at: {}", test_repo_path.display()).into());
-        }
+        // Check if we're already in the test-repo directory
+        let test_repo_path = if original_dir.ends_with("test-repo") {
+            // We're already in test-repo
+            original_dir.clone()
+        } else {
+            // We're in the project root, navigate to test-repo
+            let path = original_dir.join("tests/test-repo");
+            if !path.exists() {
+                return Err(format!("Test repository not found at: {}", path.display()).into());
+            }
+            path
+        };
         
         Ok(Self {
             test_repo_path,
-            original_dir,
+            original_dir: original_dir.clone(),
         })
     }
     
@@ -64,7 +72,14 @@ impl ScriptTestDriver {
         
         // Create TestRunner in verify mode (overwrite_mode = false)
         // Resolve test directory and script file
-        let test_dir = self.original_dir.join("tests").join("scripts").join(test_name);
+        let scripts_base = if self.original_dir.ends_with("test-repo") {
+            // We're in test-repo, go up to find scripts
+            self.original_dir.parent().unwrap().to_path_buf()
+        } else {
+            // We're in project root
+            self.original_dir.join("tests")
+        };
+        let test_dir = scripts_base.join("scripts").join(test_name);
         let script_file = test_dir.join("script");
         let test_script = std::fs::read_to_string(&script_file)
             .map_err(|e| format!("Failed to read script file {:?}: {}", script_file, e))?;
@@ -121,7 +136,14 @@ impl ScriptTestDriver {
         
         // Create TestRunner in overwrite mode (overwrite_mode = true)
         // Resolve test directory and script file
-        let test_dir = self.original_dir.join("tests").join("scripts").join(test_name);
+        let scripts_base = if self.original_dir.ends_with("test-repo") {
+            // We're in test-repo, go up to find scripts
+            self.original_dir.parent().unwrap().to_path_buf()
+        } else {
+            // We're in project root
+            self.original_dir.join("tests")
+        };
+        let test_dir = scripts_base.join("scripts").join(test_name);
         let script_file = test_dir.join("script");
         let test_script = std::fs::read_to_string(&script_file)
             .map_err(|e| format!("Failed to read script file {:?}: {}", script_file, e))?;

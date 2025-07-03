@@ -30,40 +30,20 @@
   "show_diff_view": true,
   "status_message": "Diff view enabled",
   "is_loading": false,
-  "file_tree_state": {
-    "original_tree": {
-      "root": [
-        {
-          "name": "example.py",
-          "path": "./example.py",
-          "is_dir": false,
-          "git_status": "M",
-          "is_expanded": false,
-          "children": [],
-          "parent_path": null
-        }
-      ],
-      "repo_root": "",
-      "git_status_map": {}
-    },
-    "display_tree": {
-      "root": [
-        {
-          "name": "example.py",
-          "path": "./example.py",
-          "is_dir": false,
-          "git_status": "M",
-          "is_expanded": false,
-          "children": [],
-          "parent_path": null
-        }
-      ],
-      "repo_root": "",
-      "git_status_map": {}
-    },
-    "current_selection": "./example.py",
-    "search_query": "",
-    "in_search_mode": false
+  "file_tree": {
+    "root": [
+      {
+        "name": "example.py",
+        "path": "./example.py",
+        "is_dir": false,
+        "git_status": "M",
+        "is_expanded": false,
+        "children": [],
+        "parent_path": null
+      }
+    ],
+    "repo_root": "",
+    "git_status_map": {}
   },
   "active_file_context": "./example.py",
   "selected_commit_hash": "xyz123abc456xyz123abc456xyz123abc456xyz1"

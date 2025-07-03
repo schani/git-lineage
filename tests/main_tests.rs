@@ -3,7 +3,7 @@ use git_lineage::async_task::TaskResult;
 use git_lineage::cli::{Cli, Commands};
 use git_lineage::test_config::TestConfig;
 use git_lineage::tree::{FileTree, TreeNode};
-use git_lineage::*;
+use git_lineage::navigator::NavigatorState;
 use serial_test::serial;
 use std::fs;
 use std::path::PathBuf;
@@ -99,7 +99,8 @@ fn create_test_app() -> App {
     let mut tree = FileTree::new();
     let src_node = TreeNode::new_file("main.rs".to_string(), PathBuf::from("src/main.rs"));
     tree.root.push(src_node);
-    app.navigator.file_tree_state.set_tree_data(tree, String::new(), false);
+    // Create a new NavigatorState with the tree
+    app.navigator = NavigatorState::new(tree);
 
     app.history.commit_list = vec![CommitInfo {
         hash: "abc123".to_string(),
@@ -247,9 +248,11 @@ mod task_result_handling {
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
         assert!(!app.ui.is_loading);
-        assert_eq!(app.navigator.file_tree_state.original_tree().root.len(), 1);
-        assert_eq!(app.navigator.scroll_offset, 0);
-        assert_eq!(app.navigator.cursor_position, 0);
+        // Check that navigator has the expected tree structure
+        let view_model = app.navigator.build_view_model();
+        assert_eq!(view_model.items.len(), 1); // Only src directory visible at root
+        assert_eq!(view_model.scroll_offset, 0);
+        assert_eq!(view_model.cursor_position, 0);
         assert!(app.ui.status_message.contains("File tree loaded"));
     }
 
@@ -257,6 +260,8 @@ mod task_result_handling {
     fn test_handle_commit_history_loaded_with_commits() {
         let mut app = create_test_app();
         app.ui.is_loading = true;
+        // Set active file context to enable content loading
+        app.active_file_context = Some(std::path::PathBuf::from("test_file.rs"));
         // Set active file context to match the result
         app.active_file_context = Some(std::path::PathBuf::from("test_file.rs"));
 
@@ -286,13 +291,12 @@ mod task_result_handling {
 
         assert!(!app.ui.is_loading);
         assert_eq!(app.history.commit_list.len(), 2);
-        assert_eq!(app.history.list_state.selected(), Some(0));
-        // When auto-loading commits, the status message is updated by the content loading
-        // Since the test uses invalid commit hashes, it will fail to load content
+        assert_eq!(app.history.selected_commit_index, Some(0));
+        // The new behavior is that after loading commits, it tries to load content
+        // Since the test uses invalid commit hashes, it will fail and show an error
         assert!(
-            app.ui.status_message.contains("Loaded 2 commits")
-                || app.ui.status_message.contains("Failed to load content")
-                || app.ui.status_message.contains("Error loading file content")
+            app.ui.status_message.contains("Error loading file")
+                || app.ui.status_message.contains("Loaded 2 commits")
         );
     }
 
@@ -312,7 +316,7 @@ mod task_result_handling {
 
         assert!(!app.ui.is_loading);
         assert_eq!(app.history.commit_list.len(), 0);
-        assert_eq!(app.history.list_state.selected(), None);
+        assert_eq!(app.history.selected_commit_index, None);
         assert!(app.ui.status_message.contains("No commits found"));
     }
 
@@ -323,7 +327,7 @@ mod task_result_handling {
 
         // Start with empty commit list to test race condition properly
         app.history.commit_list.clear();
-        app.history.list_state.select(None);
+        app.history.selected_commit_index = None;
 
         // Simulate race condition: User was viewing file A, but has now moved to directory B
         // The active_file_context is None (directory selected), but we receive stale
@@ -349,7 +353,7 @@ mod task_result_handling {
         // The stale result should be IGNORED:
         assert!(!app.ui.is_loading);
         assert_eq!(app.history.commit_list.len(), 0); // Should remain empty
-        assert_eq!(app.history.list_state.selected(), None); // Should remain None
+        assert_eq!(app.history.selected_commit_index, None); // Should remain None
         assert!(app.ui.status_message.contains("ignored")); // Should indicate result was ignored
 
         // Now test that valid results are still processed when context matches
@@ -365,13 +369,12 @@ mod task_result_handling {
 
         // Valid result should be applied:
         assert_eq!(app.history.commit_list.len(), 1); // Should contain the commit
-        assert_eq!(app.history.list_state.selected(), Some(0)); // Should select first commit
-                                                                // When auto-loading commits, the status message is updated by the content loading
-                                                                // Since the test uses invalid commit hashes, it will fail to load content
+        assert_eq!(app.history.selected_commit_index, Some(0)); // Should select first commit
+        // When auto-loading commits, the status message is updated by the content loading
+        // Since the test uses invalid commit hashes, it will fail to load content
         assert!(
-            app.ui.status_message.contains("Loaded 1 commits")
-                || app.ui.status_message.contains("Failed to load content")
-                || app.ui.status_message.contains("Error loading file content")
+            app.ui.status_message.contains("Error loading file")
+                || app.ui.status_message.contains("Loaded 1 commits")
         ); // Should show success
     }
 
@@ -389,7 +392,7 @@ mod task_result_handling {
         git_lineage::main_lib::handle_task_result(&mut app, result);
 
         assert!(!app.ui.is_loading);
-        assert_eq!(app.history.list_state.selected(), Some(0));
+        assert_eq!(app.history.selected_commit_index, Some(0));
         assert_eq!(app.ui.active_panel, PanelFocus::History);
         assert!(app.ui.status_message.contains("Found next change"));
     }
