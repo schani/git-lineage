@@ -86,8 +86,8 @@ pub fn handle_navigator_event(
                         crate::navigator::NavigatorEvent::ToggleExpanded(selection),
                     )?;
                 } else {
-                    // Enter on a file simply moves focus to History panel
-                    app.ui.active_panel = PanelFocus::History;
+                    // Enter on a file moves focus to Inspector panel
+                    app.ui.active_panel = PanelFocus::Inspector;
                 }
             }
         }
