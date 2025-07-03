@@ -1,0 +1,15 @@
+# Test Enter key toggling directory expansion
+# Start in immediate mode for fast execution
+immediate
+
+# Press Enter to expand the first directory
+key:enter
+
+# Take screenshot after expanding
+screenshot:after_expand.txt
+
+# Press Enter again to collapse the directory
+key:enter
+
+# Take final screenshot
+screenshot:after_collapse.txt

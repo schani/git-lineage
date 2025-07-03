@@ -313,6 +313,11 @@ impl NavigatorState {
         self.view_model_dirty = true;
     }
     
+    /// Check if view model needs rebuild
+    pub fn is_view_model_dirty(&self) -> bool {
+        self.view_model_dirty
+    }
+    
     /// Get the currently visible items based on current state
     fn get_current_visible_items(&self) -> Vec<VisibleItem> {
         if self.query.is_empty() {

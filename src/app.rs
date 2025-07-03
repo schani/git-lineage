@@ -122,6 +122,8 @@ impl App {
             if let Some(selection) = navigator.get_selection() {
                 selection.hash(&mut hasher);
             }
+            // Include view model dirty state to force redraw when needed
+            navigator.is_view_model_dirty().hash(&mut hasher);
         } else {
             self.navigator.file_tree_state.search_query.hash(&mut hasher);
             self.navigator.file_tree_state.in_search_mode.hash(&mut hasher);
