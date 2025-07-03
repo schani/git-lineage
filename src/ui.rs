@@ -32,34 +32,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_status_bar(frame, app, status_chunks[1]);
 }
 
-fn draw_file_navigator(frame: &mut Frame, app: &App, area: Rect) {
-    // Use new navigator if available, otherwise fall back to old one
-    if let Some(ref view_model) = app.cached_navigator_view_model {
-        draw_file_navigator_new(frame, app, view_model, area);
-    } else {
-        draw_file_navigator_old(frame, app, area);
-    }
-}
-
-fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::navigator::NavigatorViewModel, area: Rect) {
+fn draw_file_navigator(frame: &mut Frame, app: &mut App, area: Rect) {
+    let view_model = app.navigator.build_view_model();
     let theme = get_theme();
     let is_active = app.ui.active_panel == PanelFocus::Navigator;
-    
-    // Debug logging for rendering
-    let selected_count = view_model.items.iter().filter(|item| item.is_selected).count();
-    if selected_count != 1 {
-        log::warn!(
-            "UI rendering: Unexpected selected count: {}, cursor_position={}, search_active={}",
-            selected_count, view_model.cursor_position, !view_model.search_query.is_empty()
-        );
-    }
-    
+
     let border_style = if is_active {
         Style::default().fg(theme.active_border)
     } else {
         Style::default().fg(theme.inactive_border)
     };
-    
+
     let title = if view_model.is_searching || !view_model.search_query.is_empty() {
         format!(" File Navigator (Search: {}) ", view_model.search_query)
     } else {
@@ -75,7 +58,8 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::nav
     // Position cursor when in search mode and navigator is focused
     if view_model.is_searching && is_active {
         let search_prefix = " File Navigator (Search: ";
-        let cursor_x = area.x + search_prefix.len() as u16 + view_model.search_query.len() as u16 + 1;
+        let cursor_x =
+            area.x + search_prefix.len() as u16 + view_model.search_query.len() as u16 + 1;
         let cursor_y = area.y;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
@@ -89,7 +73,8 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::nav
     }
 
     // Convert visible items to list items
-    let items: Vec<ListItem> = view_model.items
+    let items: Vec<ListItem> = view_model
+        .items
         .iter()
         .map(|item| {
             let status_char = match item.git_status {
@@ -135,7 +120,6 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::nav
 
             let line = if item.is_selected {
                 // Highlight selected item
-                log::trace!("Rendering selected item: {:?}", item.path);
                 let content_width = (area.width as usize).saturating_sub(2);
                 let display_len = display_name.chars().count();
                 let padding_needed = content_width.saturating_sub(display_len);
@@ -170,144 +154,7 @@ fn draw_file_navigator_new(frame: &mut Frame, app: &App, view_model: &crate::nav
 
     let list = List::new(items).block(block);
     let mut list_state = ListState::default();
-    list_state.select(None);
-    frame.render_stateful_widget(list, area, &mut list_state);
-}
-
-fn draw_file_navigator_old(frame: &mut Frame, app: &App, area: Rect) {
-    let theme = get_theme();
-    let is_active = app.ui.active_panel == PanelFocus::Navigator;
-    let border_style = if is_active {
-        Style::default().fg(theme.active_border)
-    } else {
-        Style::default().fg(theme.inactive_border)
-    };
-
-    let title = if app.navigator.file_tree_state.in_search_mode {
-        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
-    } else if !app.navigator.file_tree_state.search_query.is_empty() {
-        format!(" File Navigator (Search: {}) ", app.navigator.file_tree_state.search_query)
-    } else {
-        " File Navigator ".to_string()
-    };
-
-    let block = Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(border_style)
-        .padding(ratatui::widgets::Padding::new(0, 0, 0, 0));
-
-    if app.navigator.file_tree_state.in_search_mode && is_active {
-        let search_prefix = " File Navigator (Search: ";
-        let cursor_x = area.x + search_prefix.len() as u16 + app.navigator.file_tree_state.search_query.len() as u16 + 1;
-        let cursor_y = area.y;
-        frame.set_cursor_position((cursor_x, cursor_y));
-    }
-
-    if app.navigator.file_tree_state.display_tree().root.is_empty() {
-        let paragraph = Paragraph::new("No files found")
-            .block(block)
-            .style(Style::default().fg(theme.panel_title));
-        frame.render_widget(paragraph, area);
-        return;
-    }
-
-    let all_visible_nodes = app.navigator.file_tree_state.get_visible_nodes_with_depth();
-    let viewport_height = (area.height as usize).saturating_sub(2);
-    let scroll_offset = app.navigator.scroll_offset;
-    
-    let visible_nodes_with_depth: Vec<_> = all_visible_nodes
-        .iter()
-        .skip(scroll_offset)
-        .take(viewport_height)
-        .collect();
-
-    let actual_rendered_height = visible_nodes_with_depth.len();
-    let safe_cursor_position = app.navigator.cursor_position.min(actual_rendered_height.saturating_sub(1));
-
-    let items: Vec<ListItem> = visible_nodes_with_depth
-        .iter()
-        .enumerate()
-        .map(|(viewport_index, (node, display_depth))| {
-            let status_char = match node.git_status {
-                Some('M') => 'M',
-                Some('A') => 'A',
-                Some('D') => 'D',
-                Some('?') => '?',
-                _ => ' ',
-            };
-
-            let display_name = if node.is_dir {
-                let expand_char = if node.is_expanded { "▼" } else { "▶" };
-                if *display_depth == 0 {
-                    format!("{} {}", expand_char, node.name)
-                } else {
-                    format!(
-                        "{}{} {}",
-                        " ".repeat(display_depth * 2),
-                        expand_char,
-                        node.name
-                    )
-                }
-            } else {
-                if *display_depth == 0 {
-                    if status_char == ' ' {
-                        format!("  {}", node.name)
-                    } else {
-                        format!("{} {}", status_char, node.name)
-                    }
-                } else {
-                    if status_char == ' ' {
-                        format!("{}  {}", " ".repeat(display_depth * 2), node.name)
-                    } else {
-                        format!(
-                            "{}{} {}",
-                            " ".repeat(display_depth * 2),
-                            status_char,
-                            node.name
-                        )
-                    }
-                }
-            };
-
-            let is_selected = viewport_index == safe_cursor_position;
-
-            let line = if is_selected {
-                let content_width = (area.width as usize).saturating_sub(2);
-                let display_len = display_name.chars().count();
-                let padding_needed = content_width.saturating_sub(display_len);
-                let padded_name = format!("{}{}", display_name, " ".repeat(padding_needed));
-                Line::from(vec![Span::styled(
-                    padded_name,
-                    Style::default()
-                        .fg(theme.file_selected_fg)
-                        .bg(theme.file_selected_bg)
-                        .add_modifier(ratatui::style::Modifier::BOLD),
-                )])
-            } else {
-                let style = if node.is_dir {
-                    Style::default()
-                        .fg(theme.file_directory)
-                        .add_modifier(ratatui::style::Modifier::BOLD)
-                } else {
-                    match node.git_status {
-                        Some('M') => Style::default().fg(theme.file_git_modified),
-                        Some('A') => Style::default().fg(theme.file_git_added),
-                        Some('D') => Style::default().fg(theme.file_git_deleted),
-                        Some('?') => Style::default().fg(theme.file_git_untracked),
-                        _ => Style::default().fg(theme.file_default),
-                    }
-                };
-                Line::from(vec![Span::styled(display_name, style)])
-            };
-
-            ListItem::new(line)
-        })
-        .collect();
-
-    let list = List::new(items).block(block);
-    let mut list_state = ListState::default();
-    list_state.select(None);
+    list_state.select(Some(view_model.cursor_position));
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
@@ -325,9 +172,17 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         if app.history.is_loading_more && !app.history.history_complete {
             format!(" Commit History ({}) - Loading... ", filename)
         } else if !app.history.history_complete {
-            format!(" Commit History ({}) - {} commits (loading more...) ", filename, app.history.commit_list.len())
+            format!(
+                " Commit History ({}) - {} commits (loading more...) ",
+                filename,
+                app.history.commit_list.len()
+            )
         } else {
-            format!(" Commit History ({}) - {} commits ", filename, app.history.commit_list.len())
+            format!(
+                " Commit History ({}) - {} commits ",
+                filename,
+                app.history.commit_list.len()
+            )
         }
     } else {
         " Commit History ".to_string()
@@ -352,11 +207,17 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         .iter()
         .map(|commit| {
             let line = Line::from(vec![
-                Span::styled(&commit.short_hash, Style::default().fg(theme.commit_hash)),
+                Span::styled(
+                    &commit.short_hash,
+                    Style::default().fg(theme.commit_hash),
+                ),
                 Span::raw(" "),
                 Span::styled(&commit.date, Style::default().fg(theme.commit_date)),
                 Span::raw(" "),
-                Span::styled(&commit.author, Style::default().fg(theme.commit_author)),
+                Span::styled(
+                    &commit.author,
+                    Style::default().fg(theme.commit_author),
+                ),
                 Span::raw(" "),
                 Span::raw(&commit.subject),
             ]);
@@ -367,9 +228,15 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
     // Add a loading indicator at the bottom if more commits are being loaded
     if !app.history.history_complete {
         let loading_line = if app.history.is_loading_more {
-            Line::from(Span::styled("Loading more commits...", Style::default().fg(theme.panel_title)))
+            Line::from(Span::styled(
+                "Loading more commits...",
+                Style::default().fg(theme.panel_title),
+            ))
         } else {
-            Line::from(Span::styled("More commits available (scroll to load)", Style::default().fg(theme.panel_title)))
+            Line::from(Span::styled(
+                "More commits available (scroll to load)",
+                Style::default().fg(theme.panel_title),
+            ))
         };
         items.push(ListItem::new(loading_line));
     }
@@ -383,7 +250,8 @@ fn draw_commit_history(frame: &mut Frame, app: &App, area: Rect) {
         )
         .highlight_symbol(">> ");
 
-    let mut list_state = app.history.list_state.clone();
+    let mut list_state = ListState::default();
+    list_state.select(app.history.selected_commit_index);
     frame.render_stateful_widget(list, area, &mut list_state);
 }
 
@@ -476,7 +344,10 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
                 ])
             } else {
                 Line::from(vec![
-                    Span::styled(line_number, Style::default().fg(theme.line_numbers)),
+                    Span::styled(
+                        line_number,
+                        Style::default().fg(theme.line_numbers),
+                    ),
                     Span::styled(line, line_style),
                 ])
             }
@@ -496,7 +367,7 @@ fn get_line_style(line: &str, file_path: &Option<std::path::PathBuf>) -> Style {
     let trimmed = line.trim();
 
     // Comments (works for most languages)
-    if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
+    if trimmed.starts_with("//") || trimmed.starts_with('#') || trimmed.starts_with("/*") {
         return Style::default().fg(theme.syntax_comment);
     }
 
@@ -572,10 +443,14 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let status_line = Line::from(vec![
         Span::styled(status_text, Style::default().fg(theme.status_bar_fg)),
         Span::raw(" | "),
-        Span::styled(help_text, Style::default().fg(theme.status_help_text)),
+        Span::styled(
+            help_text,
+            Style::default().fg(theme.status_help_text),
+        ),
     ]);
 
-    let paragraph = Paragraph::new(status_line).style(Style::default().bg(theme.status_bar_bg));
+    let paragraph =
+        Paragraph::new(status_line).style(Style::default().bg(theme.status_bar_bg));
 
     frame.render_widget(paragraph, area);
 }

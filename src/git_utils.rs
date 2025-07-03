@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use chrono::{Local, TimeZone};
 
-use crate::app::{CommitInfo, FileTreeNode};
+use crate::app::CommitInfo;
 
 /// Represents a file or directory entry from a Git tree
 #[derive(Debug, Clone)]
@@ -19,18 +19,6 @@ pub fn open_repository<P: AsRef<Path>>(
     Ok(gix::discover(path)?)
 }
 
-pub fn get_file_tree_with_status(
-    _repo: &Repository,
-) -> Result<Vec<FileTreeNode>, Box<dyn std::error::Error>> {
-    // TODO: Implement using gix::Repository::worktree() and status()
-    // This should:
-    // 1. Get all tracked files from the worktree
-    // 2. Get status information for each file
-    // 3. Build a tree structure respecting .gitignore
-
-    // For now, return empty vec as placeholder
-    Ok(vec![])
-}
 
 pub fn get_commit_history_for_file(
     repo: &Repository,

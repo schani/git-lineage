@@ -2,7 +2,6 @@ pub mod app;
 pub mod async_task;
 pub mod cli;
 pub mod command;
-pub mod config;
 pub mod error;
 pub mod event;
 pub mod executor;

@@ -13,7 +13,6 @@ mod app;
 mod async_task;
 mod cli;
 mod command;
-mod config;
 mod error;
 mod event;
 mod executor;
@@ -96,7 +95,14 @@ async fn main() -> Result<()> {
             verbose,
             overwrite,
         } => {
-            run_headless_test(&script, config.as_deref(), settle_timeout, verbose, overwrite).await
+            run_headless_test(
+                &script,
+                config.as_deref(),
+                settle_timeout,
+                verbose,
+                overwrite,
+            )
+            .await
         }
     }
 }
@@ -110,9 +116,7 @@ async fn run_headless_test(
 ) -> Result<()> {
     // Set up logging if verbose or if environment variable is set
     if verbose && std::env::var("GIT_LINEAGE_LOG").is_err() {
-        env_logger::Builder::new()
-            .filter_level(log::LevelFilter::Debug)
-            .init();
+        env_logger::Builder::new().filter_level(log::LevelFilter::Debug).init();
     }
 
     log::info!("🧪 Starting headless test run");
@@ -122,7 +126,8 @@ async fn run_headless_test(
     }
 
     // Initialize Git repository
-    let repo = git_utils::open_repository(".").map_err(|e| GitLineageError::from(e.to_string()))?;
+    let repo =
+        git_utils::open_repository(".").map_err(|e| GitLineageError::from(e.to_string()))?;
 
     // Initialize application state
     let mut app = if let Some(config_path) = config_path {
@@ -146,11 +151,8 @@ async fn run_headless_test(
 
     // Start background worker
     let repo_path = std::env::current_dir()?.to_string_lossy().to_string();
-    let worker_handle = tokio::spawn(async_task::run_worker(
-        task_receiver,
-        result_sender,
-        repo_path,
-    ));
+    let worker_handle =
+        tokio::spawn(async_task::run_worker(task_receiver, result_sender, repo_path));
 
     // Load initial data (same as interactive mode)
     log::info!("📤 headless: Sending LoadFileTree task");
@@ -169,7 +171,10 @@ async fn run_headless_test(
     test_runner.max_settle_time = Duration::from_secs(settle_timeout);
     test_runner.overwrite_mode = overwrite;
 
-    log::info!("🧪 Running test script with {} commands", test_runner.script.commands.len());
+    log::info!(
+        "🧪 Running test script with {} commands",
+        test_runner.script.commands.len()
+    );
 
     let test_result = test_runner.run(&mut app, &task_sender, result_receiver).await?;
 
@@ -190,7 +195,8 @@ async fn run_headless_test(
 
 async fn run_interactive() -> Result<()> {
     // Initialize Git repository
-    let repo = git_utils::open_repository(".").map_err(|e| GitLineageError::from(e.to_string()))?;
+    let repo =
+        git_utils::open_repository(".").map_err(|e| GitLineageError::from(e.to_string()))?;
 
     // Initialize application state
     let mut app = App::new(repo);
@@ -208,11 +214,8 @@ async fn run_interactive() -> Result<()> {
 
     // Start background worker
     let repo_path = std::env::current_dir()?.to_string_lossy().to_string();
-    let worker_handle = tokio::spawn(async_task::run_worker(
-        task_receiver,
-        result_sender,
-        repo_path,
-    ));
+    let worker_handle =
+        tokio::spawn(async_task::run_worker(task_receiver, result_sender, repo_path));
 
     // Load initial data
     log::info!("📤 main: Sending LoadFileTree task");
@@ -227,24 +230,24 @@ async fn run_interactive() -> Result<()> {
     // Event-driven main application loop
     #[derive(Debug)]
     enum AppState {
-        Idle,                           // No background tasks - true idle state
-        Processing(usize),              // N active background tasks
+        Idle,              // No background tasks - true idle state
+        Processing(usize), // N active background tasks
     }
-    
+
     // Start in Processing state since we immediately have the LoadFileTree background task
     let mut app_state = AppState::Processing(1);
-    
+
     // Initial draw to show the UI when app starts
-    app.refresh_navigator_view_model();
+    app.navigator.build_view_model();
     terminal.draw(|f| ui::draw(f, &mut app))?;
-    
+
     loop {
         // Handle forced screen redraw
         if app.ui.force_redraw {
             terminal.clear()?;
             app.ui.force_redraw = false;
         }
-        
+
         match app_state {
             AppState::Idle => {
                 // TRUE IDLE STATE - Block indefinitely waiting for events
@@ -252,54 +255,55 @@ async fn run_interactive() -> Result<()> {
                 match event::handle_event(event, &mut app, &task_sender) {
                     Ok(needs_render) => {
                         if needs_render {
-                            app.refresh_navigator_view_model();
+                            app.navigator.build_view_model();
                             terminal.draw(|f| ui::draw(f, &mut app))?;
                         }
                     }
                     Err(e) => {
                         app.ui.status_message = format!("Error handling event: {}", e);
-                        app.refresh_navigator_view_model();
+                        app.navigator.build_view_model();
                         terminal.draw(|f| ui::draw(f, &mut app))?;
                     }
                 }
-                
+
                 // Check if background tasks were started
                 if app.has_active_background_tasks() {
                     app_state = AppState::Processing(app.active_background_tasks);
                 }
             }
-            
-            AppState::Processing(task_count) => {
+
+            AppState::Processing(_task_count) => {
                 // ACTIVE STATE - Poll for events and check background tasks frequently
                 if crossterm::event::poll(Duration::from_millis(50))? {
                     let event = crossterm::event::read()?;
                     match event::handle_event(event, &mut app, &task_sender) {
                         Ok(needs_render) => {
                             if needs_render {
-                                app.refresh_navigator_view_model();
+                                app.navigator.build_view_model();
                                 terminal.draw(|f| ui::draw(f, &mut app))?;
                             }
                         }
                         Err(e) => {
                             app.ui.status_message = format!("Error handling event: {}", e);
-                            app.refresh_navigator_view_model();
+                            app.navigator.build_view_model();
                             terminal.draw(|f| ui::draw(f, &mut app))?;
                         }
                     }
                 }
-                
+
                 // Check background tasks frequently when active
-                let mut tasks_completed = 0;
                 while let Ok(result) = result_receiver.try_recv() {
-                    log::debug!("📨 main: Received async task result: {:?}", std::mem::discriminant(&result));
+                    log::debug!(
+                        "📨 main: Received async task result: {:?}",
+                        std::mem::discriminant(&result)
+                    );
                     app.complete_background_task();
                     main_lib::handle_task_result(&mut app, result);
-                    tasks_completed += 1;
                     // Render immediately when background task completes
-                    app.refresh_navigator_view_model();
+                    app.navigator.build_view_model();
                     terminal.draw(|f| ui::draw(f, &mut app))?;
                 }
-                
+
                 // Update state based on actual task count
                 if app.active_background_tasks == 0 {
                     app_state = AppState::Idle;
@@ -308,7 +312,7 @@ async fn run_interactive() -> Result<()> {
                 }
             }
         }
-        
+
         // Check if we should quit
         if app.should_quit {
             break;

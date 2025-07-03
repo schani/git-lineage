@@ -1,42 +1,27 @@
 // Library module containing testable functions from main.rs
 
 use crate::app::App;
-use crate::tree::FileTreeState;
 use crate::async_task::TaskResult;
 use crate::error::Result;
 use std::fs;
 
 pub fn handle_task_result(app: &mut App, result: TaskResult) {
-    log::debug!("📥 handle_task_result: Processing result type: {:?}", std::mem::discriminant(&result));
+    log::debug!(
+        "📥 handle_task_result: Processing result type: {:?}",
+        std::mem::discriminant(&result)
+    );
     app.ui.is_loading = false;
 
     match result {
         TaskResult::FileTreeLoaded { files } => {
-            // Initialize both old and new navigator implementations
-            app.navigator.file_tree_state.set_tree_data(files.clone(), String::new(), false);
-            app.navigator.file_tree_state.navigate_down();
-            app.navigator.scroll_offset = 0;
-            app.navigator.cursor_position = 0;
-            app.update_file_navigator_list_state();
-            
-            // Initialize new navigator with the same tree
-            log::info!("🆕 Initializing new navigator with {} files", files.root.len());
-            app.initialize_new_navigator(files);
-            // Select first item in new navigator
-            if let Err(e) = app.handle_navigator_event(crate::navigator::NavigatorEvent::NavigateDown) {
-                log::warn!("Failed to initialize new navigator selection: {}", e);
-            } else {
-                log::info!("🆕 New navigator initialized successfully");
-            }
-            
-            // Verify the new navigator is active
-            if app.new_navigator.is_some() {
-                log::info!("🆕 New navigator confirmed active");
-            } else {
-                log::error!("🆕 New navigator NOT active after initialization!");
-            }
-            
-            app.ui.status_message = "File tree loaded (new navigator active)".to_string();
+            // Initialize the new navigator with the file tree
+            app.navigator.handle_event(crate::navigator::NavigatorEvent::EndSearch).unwrap(); // Reset to browse mode
+            app.navigator = crate::navigator::NavigatorState::new(files);
+            app.navigator
+                .handle_event(crate::navigator::NavigatorEvent::NavigateDown)
+                .unwrap(); // Select first item
+
+            app.ui.status_message = "File tree loaded".to_string();
         }
         TaskResult::CommitHistoryLoaded { file_path, commits } => {
             // Race condition protection: Only apply commits if they're for the currently active file
@@ -50,9 +35,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 let commit_count = commits.len();
                 app.history.commit_list = commits;
                 // Reset commit list selection when new commits are loaded
-                app.history
-                    .list_state
-                    .select(if commit_count == 0 { None } else { Some(0) });
+                app.history.selected_commit_index = if commit_count == 0 { None } else { Some(0) };
                 app.ui.status_message = if commit_count == 0 {
                     "No commits found for this file".to_string()
                 } else {
@@ -68,7 +51,12 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 app.ui.status_message = "Async result ignored (file context changed)".to_string();
             }
         }
-        TaskResult::CommitHistoryChunkLoaded { file_path, commits, is_complete, chunk_offset } => {
+        TaskResult::CommitHistoryChunkLoaded {
+            file_path,
+            commits,
+            is_complete,
+            chunk_offset,
+        } => {
             // Race condition protection: Only apply commits if they're for the currently active file
             let is_still_relevant = app
                 .active_file_context
@@ -81,13 +69,11 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                     // First chunk - replace entire list and auto-load content
                     app.history.commit_list = commits;
                     app.history.next_chunk_offset = app.history.commit_list.len();
-                    
+
                     // Reset commit list selection when new commits are loaded
                     let commit_count = app.history.commit_list.len();
-                    app.history
-                        .list_state
-                        .select(if commit_count == 0 { None } else { Some(0) });
-                    
+                    app.history.selected_commit_index = if commit_count == 0 { None } else { Some(0) };
+
                     // Auto-load content for the first (most recent) commit if available
                     if !app.history.commit_list.is_empty() {
                         crate::event::update_code_inspector_for_commit(app);
@@ -97,10 +83,10 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                     app.history.commit_list.extend(commits);
                     app.history.next_chunk_offset = app.history.commit_list.len();
                 }
-                
+
                 app.history.history_complete = is_complete;
                 app.history.is_loading_more = false;
-                
+
                 let commit_count = app.history.commit_list.len();
                 app.ui.status_message = if commit_count == 0 {
                     "No commits found for this file".to_string()
@@ -114,7 +100,11 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 app.ui.status_message = "Async result ignored (file context changed)".to_string();
             }
         }
-        TaskResult::CommitFound { file_path, commit, total_commits_so_far } => {
+        TaskResult::CommitFound {
+            file_path,
+            commit,
+            total_commits_so_far,
+        } => {
             // Race condition protection: Only apply commits if they're for the currently active file
             let is_still_relevant = app
                 .active_file_context
@@ -125,23 +115,28 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             if is_still_relevant {
                 // Add the new commit to the list
                 app.history.commit_list.push(commit);
-                
+
                 // If this is the first commit, auto-select it and load content
                 if total_commits_so_far == 1 {
-                    app.history.list_state.select(Some(0));
+                    app.history.selected_commit_index = Some(0);
                     crate::event::update_code_inspector_for_commit(app);
                 }
-                
+
                 // Update status message with current progress
-                let filename = app.active_file_context
+                let filename = app
+                    .active_file_context
                     .as_ref()
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy())
                     .unwrap_or_default();
-                app.ui.status_message = format!("{} loaded ({} commits found...)", filename, total_commits_so_far);
+                app.ui.status_message =
+                    format!("{} loaded ({} commits found...)", filename, total_commits_so_far);
             }
         }
-        TaskResult::CommitHistoryComplete { file_path, total_commits } => {
+        TaskResult::CommitHistoryComplete {
+            file_path,
+            total_commits,
+        } => {
             // Race condition protection: Only apply if still relevant
             let is_still_relevant = app
                 .active_file_context
@@ -152,13 +147,14 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
             if is_still_relevant {
                 app.history.history_complete = true;
                 app.history.is_loading_more = false;
-                
-                let filename = app.active_file_context
+
+                let filename = app
+                    .active_file_context
                     .as_ref()
                     .and_then(|p| p.file_name())
                     .map(|n| n.to_string_lossy())
                     .unwrap_or_default();
-                
+
                 app.ui.status_message = if total_commits == 0 {
                     format!("{} loaded (no commit history)", filename)
                 } else {
@@ -174,7 +170,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 .iter()
                 .position(|c| c.hash == commit_hash)
             {
-                app.history.list_state.select(Some(index));
+                app.history.selected_commit_index = Some(index);
                 app.ui.active_panel = crate::app::PanelFocus::History;
                 app.ui.status_message = "Found next change".to_string();
             } else {
@@ -266,14 +262,11 @@ pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
     // Load the file tree directly
     match crate::async_task::load_file_tree(".").await {
         Ok(tree) => {
-            app.navigator.file_tree_state = FileTreeState::from_directory(".")?;
+            app.navigator = crate::navigator::NavigatorState::new(tree);
             // Automatically select the first item in the tree
-            app.navigator.file_tree_state.navigate_down();
-            // Reset viewport state
-            app.navigator.scroll_offset = 0;
-            app.navigator.cursor_position = 0;
-            // Update the list state to match the selection
-            app.update_file_navigator_list_state();
+            app.navigator
+                .handle_event(crate::navigator::NavigatorEvent::NavigateDown)
+                .unwrap();
             app.ui.is_loading = false;
             app.ui.status_message = "File tree loaded".to_string();
         }
@@ -283,7 +276,7 @@ pub async fn save_current_state(output_path: Option<&str>) -> Result<()> {
     }
 
     // Convert app state to TestConfig format
-    let config = crate::test_config::TestConfig::from_app(&app);
+    let config = crate::test_config::TestConfig::from_app(&mut app);
 
     // Convert to JSON
     let config_json = serde_json::to_string_pretty(&config)?;

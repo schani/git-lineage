@@ -1,12 +1,12 @@
 use crate::app::{CommitInfo, PanelFocus};
-use crate::tree::{FileTreeState, TreeNode};
+use crate::tree::{FileTree, TreeNode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestConfig {
     pub active_panel: PanelFocus,
-    pub file_tree_state: FileTreeState,
+    pub file_tree: FileTree,
     pub selected_file_navigator_index: Option<usize>,
     pub search_query: String,
     pub in_search_mode: bool,
@@ -27,7 +27,7 @@ pub struct TestConfig {
 
 impl Default for TestConfig {
     fn default() -> Self {
-        let mut file_tree_state = FileTreeState::new();
+        let mut file_tree = FileTree::new();
 
         // Create sample tree structure
         let mut src_dir = TreeNode::new_dir("src".to_string(), PathBuf::from("src"));
@@ -41,17 +41,16 @@ impl Default for TestConfig {
                 .with_git_status('A'),
         );
 
-        let cargo_toml = TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml"))
-            .with_git_status('M');
+        let cargo_toml =
+            TreeNode::new_file("Cargo.toml".to_string(), PathBuf::from("Cargo.toml"))
+                .with_git_status('M');
 
-        file_tree_state.add_root_node(src_dir);
-        file_tree_state.add_root_node(cargo_toml);
-
-        // Note: selection is handled separately now in FileTreeState
+        file_tree.root.push(src_dir);
+        file_tree.root.push(cargo_toml);
 
         Self {
             active_panel: PanelFocus::Navigator,
-            file_tree_state,
+            file_tree,
             selected_file_navigator_index: Some(0),
             search_query: String::new(),
             in_search_mode: false,
@@ -116,15 +115,16 @@ impl TestConfig {
         Ok(())
     }
 
-    pub fn from_app(app: &crate::app::App) -> Self {
+    pub fn from_app(app: &mut crate::app::App) -> Self {
+        let view_model = app.navigator.build_view_model();
         TestConfig {
             active_panel: app.ui.active_panel.clone(),
-            file_tree_state: app.navigator.file_tree_state.clone(),
-            selected_file_navigator_index: app.navigator.list_state.selected(),
-            search_query: app.navigator.file_tree_state.search_query.clone(),
-            in_search_mode: app.navigator.file_tree_state.in_search_mode,
+            file_tree: crate::tree::FileTree::new(), // TODO: Add public getter for navigator tree
+            selected_file_navigator_index: Some(view_model.cursor_position),
+            search_query: view_model.search_query.clone(),
+            in_search_mode: view_model.is_searching,
             commit_list: app.history.commit_list.clone(),
-            selected_commit_index: app.history.list_state.selected(),
+            selected_commit_index: app.history.selected_commit_index,
             current_content: app.inspector.current_content.clone(),
             cursor_line: app.inspector.cursor_line,
             cursor_column: app.inspector.cursor_column,
