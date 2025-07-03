@@ -1,0 +1,13 @@
+# Test that pressing Enter on a file focuses the Inspector panel
+immediate
+screenshot:01_initial.txt
+# Navigate down to select a file
+key:down
+key:down
+screenshot:02_file_selected.txt
+# Press Enter - should focus Inspector panel, not History panel
+key:enter
+screenshot:03_inspector_focused.txt
+# Verify we can navigate in the Inspector panel
+key:down
+screenshot:04_inspector_navigation.txt
