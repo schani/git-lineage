@@ -29,17 +29,27 @@ pub fn handle_navigator_event(
                 event_handled = true;
             }
             KeyCode::Char(c) => {
+                let previous_selection = app.get_active_file();
                 let mut query = app.navigator.get_search_query();
                 query.push(c);
                 app.navigator
                     .handle_event(crate::navigator::NavigatorEvent::UpdateSearchQuery(query))?;
+                // Check if the active file changed
+                if previous_selection != app.get_active_file() {
+                    file_loader::load_commit_history_for_selected_file(app, task_sender)?;
+                }
                 event_handled = true;
             }
             KeyCode::Backspace => {
+                let previous_selection = app.get_active_file();
                 let mut query = app.navigator.get_search_query();
                 query.pop();
                 app.navigator
                     .handle_event(crate::navigator::NavigatorEvent::UpdateSearchQuery(query))?;
+                // Check if the active file changed
+                if previous_selection != app.get_active_file() {
+                    file_loader::load_commit_history_for_selected_file(app, task_sender)?;
+                }
                 event_handled = true;
             }
             _ => {}
