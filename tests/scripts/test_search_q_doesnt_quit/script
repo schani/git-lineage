@@ -1,0 +1,24 @@
+# Test that typing 'q' in search mode doesn't quit the application
+immediate
+
+# Enter search mode
+char:/
+screenshot:01_search_mode.txt
+
+# Type 'q' - this should NOT quit the app
+char:q
+screenshot:02_after_q.txt
+
+# The app should still be in search mode with 'q' in the search
+# Let's type more to confirm we're still searching
+char:u
+char:i
+char:t
+screenshot:03_search_quit.txt
+
+# Exit search mode
+key:esc
+screenshot:04_after_escape.txt
+
+# Now 'q' should quit the app (when not in search mode)
+key:q

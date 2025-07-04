@@ -19,8 +19,8 @@ pub fn handle_event(
     task_sender: &mpsc::Sender<Task>,
 ) -> EventResult {
     if let Event::Key(key) = event {
-        // Global keybindings
-        if key.code == KeyCode::Char('q') {
+        // Global keybindings - but not in search mode
+        if key.code == KeyCode::Char('q') && !app.navigator.is_searching() {
             app.should_quit = true;
             return Ok(true);
         }

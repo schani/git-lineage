@@ -218,6 +218,7 @@ script_test!(test_enter_toggle_directory, "test_enter_toggle_directory");
 script_test!(test_search_selection_movement, "test_search_selection_movement");
 script_test!(test_direct_file_selection, "test_direct_file_selection");
 script_test!(test_enter_inspector_focus, "test_enter_inspector_focus");
+script_test!(test_search_q_doesnt_quit, "test_search_q_doesnt_quit");
 
 // Additional script tests can be added here as they are created
 // script_test!(test_basic_navigation, "basic_navigation");
