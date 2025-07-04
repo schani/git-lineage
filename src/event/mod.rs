@@ -1,6 +1,6 @@
 use crate::app::{App, PanelFocus};
 use crate::async_task::Task;
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
 
 pub mod code_inspector;
@@ -32,6 +32,12 @@ pub fn handle_event(
 
         if key.code == KeyCode::BackTab {
             app.previous_panel();
+            return Ok(true);
+        }
+
+        // Ctrl-L for screen redraw
+        if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            app.ui.force_redraw = true;
             return Ok(true);
         }
 
