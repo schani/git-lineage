@@ -4,7 +4,6 @@ use git_lineage::git_utils;
 use git_lineage::test_runner::TestRunner;
 use std::path::Path;
 use std::env;
-use tempfile::TempDir;
 use tokio::sync::mpsc;
 
 /// Test driver for running script-based UI tests as regular Rust tests
@@ -90,7 +89,19 @@ impl ScriptTestDriver {
         async_worker.abort();
         
         match result {
-            Ok(_) => Ok(()),
+            Ok(test_result) => {
+                if test_result.success {
+                    Ok(())
+                } else {
+                    // Build error message from test errors
+                    let error_msg = if !test_result.errors.is_empty() {
+                        format!("Test failed with errors: {}", test_result.errors.join(", "))
+                    } else {
+                        "Test failed".to_string()
+                    };
+                    Err(error_msg.into())
+                }
+            }
             Err(e) => Err(format!("Script test failed: {}", e).into()),
         }
     }
@@ -150,7 +161,19 @@ impl ScriptTestDriver {
         async_worker.abort();
         
         match result {
-            Ok(_) => Ok(()),
+            Ok(test_result) => {
+                if test_result.success {
+                    Ok(())
+                } else {
+                    // Build error message from test errors
+                    let error_msg = if !test_result.errors.is_empty() {
+                        format!("Test update failed with errors: {}", test_result.errors.join(", "))
+                    } else {
+                        "Test update failed".to_string()
+                    };
+                    Err(error_msg.into())
+                }
+            }
             Err(e) => Err(format!("Script test update failed: {}", e).into()),
         }
     }
