@@ -112,6 +112,21 @@ cd tests/test-repo
 cargo run --bin git-lineage -- test --script ../../tests/scripts/test_name/script --overwrite
 ```
 
+#### Rebuilding All Script Screenshots
+The `tools/rebuild-screenshots` script automates the process of regenerating all script test screenshots:
+
+```bash
+# Rebuild all script test screenshots
+./tools/rebuild-screenshots
+```
+
+This tool:
+- Automatically finds all script tests in `tests/scripts/`
+- Runs each test with the `--overwrite` flag
+- Removes old screenshots and replaces them with new ones
+- Shows progress and handles errors gracefully
+- Useful when UI changes affect multiple tests
+
 #### ScriptTestDriver API
 The `ScriptTestDriver` provides a reusable testing interface:
 

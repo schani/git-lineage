@@ -1,4 +1,4 @@
-┌ File Navigator (Search: r█ ────────────┐┌ Code Inspector ────────────────────────────────────────────────────────────┐
+┌ File Navigator (Search: r█ ────────────┐┌ Code Inspector - file-in-dir @ 2fa2dd17 ───────────────────────────────────┐
 │▼ dir                                   ││   1 bla                                                                    │
 │    file-in-dir                         ││                                                                            │
 │  README.md                             ││                                                                            │
@@ -13,8 +13,8 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘│                                                                            │
-┌ Commit History (file-in-dir) - Loading.┐│                                                                            │
-│Select a file to view its history       ││                                                                            │
+┌ Commit History (file-in-dir) - 1 commit┐│                                                                            │
+│>> 2fa2dd17 2025-07-02 06:32 Mark Probst││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -27,4 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-file-in-dir loaded (loading history...) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: 
+file-in-dir loaded (1 commits) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | 

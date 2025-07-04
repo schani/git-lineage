@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Script to rebuild all script test screenshots
+
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Change to test-repo directory
+cd "${PROJECT_ROOT}/tests/test-repo"
+
+# Find all directories containing script files
+SCRIPT_DIRS=$(find "${PROJECT_ROOT}/tests/scripts" -name "script" -type f | xargs -n1 dirname | sort)
+
+# Count total number of tests
+TOTAL=$(echo "$SCRIPT_DIRS" | wc -l | tr -d ' ')
+CURRENT=0
+
+echo "Found $TOTAL script tests to rebuild"
+echo
+
+# Process each script test directory
+for TEST_DIR in $SCRIPT_DIRS; do
+    CURRENT=$((CURRENT + 1))
+    TEST_NAME=$(basename "$TEST_DIR")
+    
+    echo "[$CURRENT/$TOTAL] Rebuilding screenshots for: $TEST_NAME"
+    
+    # Run the test with --overwrite flag
+    if cargo run --bin git-lineage -- test --script "${TEST_DIR}/script" --overwrite; then
+        # Move generated screenshots to the test directory
+        # First remove old screenshots (except the script file)
+        find "$TEST_DIR" -name "*.txt" -type f -delete
+        
+        # Move new screenshots
+        mv *.txt "$TEST_DIR/" 2>/dev/null || true
+        
+        echo "✅ Completed $TEST_NAME"
+    else
+        echo "❌ Failed $TEST_NAME"
+        # Clean up any partial screenshots
+        rm -f *.txt
+    fi
+    echo
+done
+
+echo "🎉 All $TOTAL script test screenshots have been rebuilt!"

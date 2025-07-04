@@ -27,4 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-Search mode active | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navigate
+File tree loaded | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | /: Search | ↑↓: Navigate |
