@@ -15,6 +15,17 @@ pub fn load_commit_history_for_selected_file(
         // Reset history state for the new file
         app.history.reset_for_new_file();
 
+        // Clear inspector content immediately to prevent showing stale content
+        app.inspector.current_content.clear();
+        app.inspector.diff_lines = None;
+        app.inspector.parent_commit_hash = None;
+        app.inspector.cursor_line = 0;
+        app.inspector.scroll_vertical = 0;
+        app.inspector.scroll_horizontal = 0;
+        if app.inspector.show_diff_view {
+            app.inspector.show_diff_view = false;
+        }
+
         // Create a cancellation token for this streaming task
         let cancellation_token = CancellationToken::new();
         app.history.streaming_cancellation_token = Some(cancellation_token.clone());
