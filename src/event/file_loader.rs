@@ -22,9 +22,6 @@ pub fn load_commit_history_for_selected_file(
         app.inspector.cursor_line = 0;
         app.inspector.scroll_vertical = 0;
         app.inspector.scroll_horizontal = 0;
-        if app.inspector.show_diff_view {
-            app.inspector.show_diff_view = false;
-        }
 
         // Create a cancellation token for this streaming task
         let cancellation_token = CancellationToken::new();
