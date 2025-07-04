@@ -246,6 +246,9 @@ async fn run_interactive() -> Result<()> {
         if app.ui.force_redraw {
             terminal.clear()?;
             app.ui.force_redraw = false;
+            // Force immediate redraw after clearing
+            app.navigator.build_view_model();
+            terminal.draw(|f| ui::draw(f, &mut app))?;
         }
 
         match app_state {
