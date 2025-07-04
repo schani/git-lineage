@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Git Lineage is a TUI (Terminal User Interface) application for exploring Git file history with line-level "time travel" capabilities. The application provides an interactive three-panel layout for navigating files, viewing commit history, and inspecting code with blame information.
+Git Lineage is a TUI (Terminal User Interface) application for exploring Git file history with line-level "time travel" capabilities. The application provides an interactive three-panel layout for navigating files, viewing commit history, and inspecting code.
 
 ## Architecture
 
@@ -20,19 +20,26 @@ The project follows a clean separation of concerns with these core modules:
 - `main.rs`: Application orchestrator and main event loop
 - `app.rs`: Central state model (single source of truth)
 - `ui.rs`: Rendering logic (View layer)
-- `event.rs`: Input handling and event processing (Controller layer)
+- `event/`: Input handling and event processing module (Controller layer)
+  - `mod.rs`: Module root
+  - `code_inspector.rs`: Code inspector event handling
+  - `file_loader.rs`: File loading events
+  - `history.rs`: History panel events
+  - `navigator.rs`: Navigator panel events
 - `git_utils.rs`: Git operations facade using `gix`
 - `async_task.rs`: Background worker for expensive operations
-- `config.rs`: Application configuration
 - `error.rs`: Error types and Result aliases
+- `cli.rs`: Command-line interface handling
+- `test_runner.rs`: Headless test execution with screenshot capture
+- `theme.rs`: UI theming and styling
 
 ## Key Technical Decisions
 
 ### UI Layout
 Three-panel persistent layout:
-- Panel 1 (left top): File Navigator - tree view of Git repository files
+- Panel 1 (left top): File Navigator - tree view of Git repository files with search functionality (/)
 - Panel 2 (left bottom): Commit History - chronological commits for selected file
-- Panel 3 (right): Code Inspector - file content with Git blame gutter
+- Panel 3 (right): Code Inspector - file content with syntax highlighting and diff view toggle (d)
 
 ### Data Flow
 - Panel 1 selection drives Panel 2 and Panel 3 content
@@ -132,10 +139,10 @@ driver.update_script_test("test_name").await?;
 ## Critical Implementation Notes
 
 ### Async Operations
-The "Next Change" feature requires complex Git operations that must run asynchronously to prevent UI freezing. Use the `async_task.rs` worker pattern with `tokio::sync::mpsc` channels.
+All expensive Git operations run asynchronously to prevent UI freezing, using the `async_task.rs` worker pattern with `tokio::sync::mpsc` channels. The "Next Change" feature (keyboard shortcuts 'n'/'p') is currently a TODO placeholder that will require complex Git operations when implemented.
 
-### Git Blame Integration
-The Code Inspector panel shows blame information for each line. When viewing historical commits, use `blame.at_commit(<selected_commit_id>)` to get blame data for that specific point in time.
+### Git Blame Integration (TODO)
+Git blame functionality is planned but not yet implemented. The codebase includes placeholder functions (`get_blame_at_commit()` in `git_utils.rs`) and data structures (`current_blame` in `InspectorState`) for future blame support. When implemented, the Code Inspector panel will show blame information for each line, with the ability to view blame data at specific commits using `blame.at_commit(<selected_commit_id>)`.
 
 ### State Management
 All application state lives in the `App` struct in `app.rs`. Event handlers in `event.rs` either modify state directly (for fast operations) or send tasks to the async worker (for expensive operations).
@@ -144,9 +151,11 @@ All application state lives in the `App` struct in `app.rs`. Event handlers in `
 
 - **git_utils.rs**: Only module that directly interacts with `gix` API
 - **ui.rs**: Pure rendering - reads from App state but never modifies it
-- **event.rs**: Translates user input into state changes or async tasks
+- **event/**: Module directory that translates user input into state changes or async tasks
 - **async_task.rs**: Handles expensive Git operations without blocking UI
 - **test_runner.rs**: Headless test execution with screenshot capture
 - **tests/script_tests.rs**: Reusable script test driver and test definitions
+- **cli.rs**: Command-line argument parsing and command dispatch
+- **theme.rs**: Syntax highlighting and UI theming
 
 The architecture enforces clear boundaries between Git operations, UI rendering, state management, and testing to maintain code clarity and testability.
