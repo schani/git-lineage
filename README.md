@@ -28,6 +28,7 @@ A TUI (Terminal User Interface) application for exploring Git file history with 
 - Line-level blame information with jump-to-commit functionality
 - "Next Change" feature to trace line evolution through history
 - Syntax highlighting for code inspection
+- Diff view to see changes between commits
 - Fuzzy file search
 - Async operations to prevent UI blocking
 
@@ -66,6 +67,24 @@ git-lineage
 - **↑** / **↓** / **PageUp** / **PageDown** - Navigate up/down
 - **Home** / **End** - Go to first/last line
 - **g** / **G** - Go to top/bottom of file
+- **d** - Toggle diff view (shows changes between selected commit and its parent)
+
+#### Diff View
+
+The diff view feature allows you to see what changed in a file between the selected commit and its parent commit:
+
+- **Toggle**: Press 'd' in the Code Inspector panel to switch between normal and diff view
+- **Display**: Shows the full file with inline changes highlighted:
+  - 🟢 Green lines (prefix: +) - Lines added in the selected commit
+  - 🔴 Red lines (prefix: -) - Lines removed in the selected commit
+  - Lines without highlighting - Unchanged lines
+- **Line numbers**: Shows both old and new line numbers for easy reference
+- **Edge cases handled**:
+  - Initial commits (no parent) - Shows a message instead of diff
+  - Binary files - Displays "Binary file - diff not available"
+  - New files - All lines shown as added
+  - Deleted files - All lines shown as removed
+- **Performance**: Diffs are generated asynchronously to keep the UI responsive
 
 ### Screenshot Mode (Visual Testing)
 
