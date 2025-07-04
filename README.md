@@ -4,6 +4,24 @@ A TUI (Terminal User Interface) application for exploring Git file history with 
 
 [Loom](https://www.loom.com/share/f9a7db55217e4f21aa294de038cd08dc)
 
+```
++------------------+------------------------------------------+
+|  [PANEL 1]       |                                          |
+|  File Navigator  |                                          |
+|  (Focus: 1)      |                                          |
+|                  |                                          |
+|                  |          [PANEL 3]                       |
++------------------+          Code Inspector                  |
+|  [PANEL 2]       |          (File Content + Blame)          |
+|  Commit History  |                                          |
+|  (Focus: 2)      |          (Focus: 3)                      |
+|                  |                                          |
+|                  |                                          |
++------------------+------------------------------------------+
+| [STATUS BAR] Help text, current line info, async status     |
++-------------------------------------------------------------+
+```
+
 ## Features
 
 - Interactive three-panel layout for navigating files, viewing commit history, and inspecting code
@@ -35,23 +53,19 @@ git-lineage
 
 ### File Navigator Panel
 - **↑** / **↓** - Navigate up/down through files
-- **→** / **←** - Expand/collapse directories
-- **Enter** - Select file and switch to History panel
+- **→** / **←** / **Enter** - Expand/collapse directories
+- **Enter** on a file - Switch to Code Inspector panel
 - **/** - Start search mode
 - **Esc** - Exit search mode
 
 ### Commit History Panel
 - **↑** / **↓** - Navigate through commit history
-- **Enter** - Select commit and load file content
+- **Enter** - Switch to Code Inspector panel
 
 ### Code Inspector Panel
-- **↑** / **↓** - Navigate up/down through lines
-- **PageUp** / **PageDown** - Move by 10 lines
+- **↑** / **↓** / **PageUp** / **PageDown** - Navigate up/down
 - **Home** / **End** - Go to first/last line
 - **g** / **G** - Go to top/bottom of file
-- **p** - Jump to previous change (blame navigation)
-- **n** - Find next change for current line
-- **d** - Toggle diff view
 
 ### Screenshot Mode (Visual Testing)
 
@@ -159,7 +173,7 @@ Test scripts use a simple command language:
 
 # Send key events
 key:/                   # Press the '/' key
-key:s                   # Press the 's' key  
+key:s                   # Press the 's' key
 key:Escape              # Press the Escape key
 key:Enter               # Press Enter
 key:Tab                 # Press Tab
