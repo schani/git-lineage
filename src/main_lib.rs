@@ -11,6 +11,14 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         std::mem::discriminant(&result)
     );
     app.ui.is_loading = false;
+    
+    // Decrement active background tasks counter for task types that increment it
+    match &result {
+        TaskResult::DiffGenerated { .. } => {
+            app.active_background_tasks = app.active_background_tasks.saturating_sub(1);
+        }
+        _ => {}
+    }
 
     match result {
         TaskResult::FileTreeLoaded { files } => {
@@ -175,6 +183,34 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
         }
         TaskResult::NextChangeNotFound => {
             app.ui.status_message = "No subsequent changes found for this line".to_string();
+        }
+        TaskResult::DiffGenerated {
+            file_path,
+            current_commit,
+            parent_commit,
+            diff_lines,
+        } => {
+            // Race condition protection: Only apply diff if it's for the currently active file and commit
+            let is_still_relevant = app
+                .get_active_file()
+                .as_ref()
+                .map(|active_path| active_path.to_string_lossy() == file_path)
+                .unwrap_or(false)
+                && app
+                    .history
+                    .selected_commit_hash
+                    .as_ref()
+                    .map(|hash| hash == &current_commit)
+                    .unwrap_or(false);
+
+            if is_still_relevant {
+                app.inspector.diff_lines = Some(diff_lines);
+                app.inspector.parent_commit_hash = Some(parent_commit);
+                app.ui.status_message = "Diff view loaded".to_string();
+            } else {
+                // Async result is stale - ignore it
+                app.ui.status_message = "Async diff result ignored (context changed)".to_string();
+            }
         }
         TaskResult::Error { message } => {
             app.ui.status_message = format!("Error: {}", message);

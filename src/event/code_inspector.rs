@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 pub fn handle_code_inspector_event(
     key: KeyEvent,
     app: &mut App,
-    _task_sender: &mpsc::Sender<Task>,
+    task_sender: &mpsc::Sender<Task>,
 ) -> EventResult {
     if app.ui.active_panel != PanelFocus::Inspector {
         return Ok(false);
@@ -61,11 +61,53 @@ pub fn handle_code_inspector_event(
         }
         KeyCode::Char('d') => {
             app.inspector.show_diff_view = !app.inspector.show_diff_view;
-            app.ui.status_message = if app.inspector.show_diff_view {
-                "Switched to diff view".to_string()
+            
+            if app.inspector.show_diff_view {
+                // Check if we need to generate diff
+                if app.inspector.diff_lines.is_none() {
+                    // Get current commit and file
+                    if let (Some(current_commit), Some(file_path)) = (
+                        &app.history.selected_commit_hash,
+                        app.get_active_file()
+                    ) {
+                        // Get parent commit
+                        match crate::git_utils::get_parent_commit(&app.repo, current_commit) {
+                            Ok(Some(parent_commit)) => {
+                                app.inspector.parent_commit_hash = Some(parent_commit.clone());
+                                app.ui.status_message = format!(
+                                    "Loading diff view for {} at {}...",
+                                    file_path.display(),
+                                    &current_commit[..8]
+                                );
+                                app.ui.is_loading = true;
+                                app.active_background_tasks += 1;
+                                
+                                // Send diff generation task
+                                let _ = task_sender.try_send(Task::GenerateDiff {
+                                    file_path: file_path.to_string_lossy().to_string(),
+                                    current_commit: current_commit.clone(),
+                                    parent_commit,
+                                });
+                            }
+                            Ok(None) => {
+                                app.ui.status_message = "No parent commit - this is the initial commit".to_string();
+                                app.inspector.show_diff_view = false; // Revert toggle
+                            }
+                            Err(e) => {
+                                app.ui.status_message = format!("Failed to get parent commit: {}", e);
+                                app.inspector.show_diff_view = false; // Revert toggle
+                            }
+                        }
+                    } else {
+                        app.ui.status_message = "No file or commit selected for diff view".to_string();
+                        app.inspector.show_diff_view = false; // Revert toggle
+                    }
+                } else {
+                    app.ui.status_message = "Switched to diff view".to_string();
+                }
             } else {
-                "Switched to full file view".to_string()
-            };
+                app.ui.status_message = "Switched to full file view".to_string();
+            }
         }
         _ => return Ok(false),
     }

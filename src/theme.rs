@@ -34,6 +34,14 @@ pub struct Theme {
     pub syntax_string: Color,
     pub syntax_comment: Color,
     pub code_default: Color,
+    
+    // Diff view colors
+    pub diff_added_fg: Color,
+    pub diff_added_bg: Color,
+    pub diff_removed_fg: Color,
+    pub diff_removed_bg: Color,
+    pub diff_modified_fg: Color,
+    pub diff_modified_bg: Color,
 
     // Status bar
     pub status_bar_bg: Color,
@@ -79,6 +87,14 @@ impl Default for Theme {
             syntax_string: Color::Green,
             syntax_comment: Color::Yellow,
             code_default: Color::Reset,
+            
+            // Diff view colors
+            diff_added_fg: Color::Green,
+            diff_added_bg: Color::Reset,
+            diff_removed_fg: Color::Red,
+            diff_removed_bg: Color::Reset,
+            diff_modified_fg: Color::Yellow,
+            diff_modified_bg: Color::Reset,
 
             // Status bar
             status_bar_bg: Color::DarkGray,

@@ -288,7 +288,7 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_style(border_style);
 
-    if app.inspector.current_content.is_empty() {
+    if app.inspector.current_content.is_empty() && !app.inspector.show_diff_view {
         let message = if app.get_active_file().is_none() {
             "Select a file to view its content"
         } else if app.history.selected_commit_hash.is_none() {
@@ -303,6 +303,12 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
             .block(block)
             .style(Style::default().fg(theme.panel_title));
         frame.render_widget(paragraph, area);
+        return;
+    }
+
+    // Check if we should render diff view
+    if app.inspector.show_diff_view && app.inspector.diff_lines.is_some() {
+        draw_diff_view(frame, app, area, block);
         return;
     }
 
@@ -360,6 +366,100 @@ fn draw_code_inspector(frame: &mut Frame, app: &mut App, area: Rect) {
         .scroll((0, app.inspector.scroll_horizontal));
 
     frame.render_widget(paragraph, area);
+}
+
+/// Draw the diff view in the code inspector
+fn draw_diff_view(frame: &mut Frame, app: &mut App, area: Rect, block: Block) {
+    let theme = get_theme();
+    
+    if let Some(diff_lines) = &app.inspector.diff_lines {
+        let content_lines: Vec<Line> = diff_lines
+            .iter()
+            .enumerate()
+            .skip(app.inspector.scroll_vertical as usize)
+            .take((area.height - 2) as usize) // Account for borders
+            .map(|(idx, diff_line)| {
+                let visible_line_num = idx + 1; // Line number in the diff view
+                
+                // Format line numbers - show old and new line numbers
+                let line_number = match (diff_line.old_line_num, diff_line.new_line_num) {
+                    (Some(old), Some(new)) => format!("{:4} {:4} ", old, new),
+                    (Some(old), None) => format!("{:4}      ", old),
+                    (None, Some(new)) => format!("     {:4} ", new),
+                    (None, None) => "          ".to_string(),
+                };
+                
+                // Get base syntax highlighting for the line
+                let line_style = get_line_style(&diff_line.content, &app.get_active_file());
+                
+                // Apply diff-specific styling
+                let (prefix, diff_style) = match diff_line.line_type {
+                    crate::app::DiffLineType::Added => (
+                        "+",
+                        line_style.fg(theme.diff_added_fg).bg(theme.diff_added_bg)
+                    ),
+                    crate::app::DiffLineType::Removed => (
+                        "-",
+                        line_style.fg(theme.diff_removed_fg).bg(theme.diff_removed_bg)
+                    ),
+                    crate::app::DiffLineType::Modified => (
+                        "~",
+                        line_style.fg(theme.diff_modified_fg).bg(theme.diff_modified_bg)
+                    ),
+                    crate::app::DiffLineType::Unchanged => (
+                        " ",
+                        line_style
+                    ),
+                };
+                
+                // Strip trailing newline if present
+                let content = diff_line.content.trim_end_matches('\n');
+                
+                // Check if this is the cursor line
+                if visible_line_num - 1 == app.inspector.cursor_line {
+                    // Calculate content width and add padding for full-width highlighting
+                    let content_width = (area.width as usize).saturating_sub(2); // Account for borders
+                    let line_number_width = line_number.len() + 1; // +1 for prefix
+                    let content_len = content.chars().count();
+                    let total_used = line_number_width + content_len;
+                    let padding_needed = content_width.saturating_sub(total_used);
+                    
+                    Line::from(vec![
+                        Span::styled(
+                            line_number,
+                            Style::default()
+                                .fg(theme.line_numbers_current)
+                                .bg(theme.code_background_current)
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            format!("{}{}{}", prefix, content, " ".repeat(padding_needed)),
+                            diff_style
+                                .bg(theme.code_background_current)
+                                .add_modifier(ratatui::style::Modifier::BOLD),
+                        ),
+                    ])
+                } else {
+                    Line::from(vec![
+                        Span::styled(
+                            line_number,
+                            Style::default().fg(theme.line_numbers),
+                        ),
+                        Span::styled(
+                            format!("{}{}", prefix, content),
+                            diff_style,
+                        ),
+                    ])
+                }
+            })
+            .collect();
+        
+        let paragraph = Paragraph::new(content_lines)
+            .block(block)
+            .scroll((0, app.inspector.scroll_horizontal));
+        
+        frame.render_widget(paragraph, area);
+    }
 }
 
 /// Basic syntax highlighting based on file content and extension

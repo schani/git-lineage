@@ -35,6 +35,22 @@ pub struct HistoryState {
     pub streaming_cancellation_token: Option<CancellationToken>,
 }
 
+#[derive(Debug, Clone)]
+pub enum DiffLineType {
+    Added,
+    Removed,
+    Modified,
+    Unchanged,
+}
+
+#[derive(Debug, Clone)]
+pub struct DiffLine {
+    pub line_type: DiffLineType,
+    pub old_line_num: Option<usize>,
+    pub new_line_num: Option<usize>,
+    pub content: String,
+}
+
 #[derive(Debug)]
 pub struct InspectorState {
     pub current_content: Vec<String>,
@@ -45,6 +61,8 @@ pub struct InspectorState {
     pub cursor_line: usize,
     pub cursor_column: usize,
     pub show_diff_view: bool,
+    pub diff_lines: Option<Vec<DiffLine>>,
+    pub parent_commit_hash: Option<String>,
 }
 
 #[derive(Debug)]
@@ -365,6 +383,8 @@ impl App {
                 cursor_line: config.cursor_line,
                 cursor_column: config.cursor_column,
                 show_diff_view: config.show_diff_view,
+                diff_lines: None,
+                parent_commit_hash: None,
             },
             ui: UIState {
                 active_panel: config.active_panel,
@@ -1330,6 +1350,8 @@ impl InspectorState {
             cursor_line: 0,
             cursor_column: 0,
             show_diff_view: false,
+            diff_lines: None,
+            parent_commit_hash: None,
         }
     }
 }

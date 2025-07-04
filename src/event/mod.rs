@@ -72,6 +72,14 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
         if let Some(commit) = app.history.commit_list.get(selected) {
             let commit_hash = commit.hash.clone();
             app.history.selected_commit_hash = Some(commit_hash.clone());
+            
+            // Clear diff data when switching commits
+            app.inspector.diff_lines = None;
+            app.inspector.parent_commit_hash = None;
+            if app.inspector.show_diff_view {
+                app.inspector.show_diff_view = false;
+                app.ui.status_message = "Diff view cleared - press 'd' to regenerate".to_string();
+            }
 
             if let Some(file_path) = app.get_active_file() {
                 // Save current cursor position before switching

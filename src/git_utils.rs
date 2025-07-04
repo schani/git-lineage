@@ -441,6 +441,29 @@ pub fn get_file_content_at_commit(
     get_file_content_with_gix(repo, file_path, commit_hash)
 }
 
+pub fn get_parent_commit(
+    repo: &Repository,
+    commit_hash: &str,
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let start_time = Instant::now();
+    log::debug!("🕐 get_parent_commit: Starting for commit: {}", &commit_hash[..8]);
+    
+    // Parse the commit hash
+    let oid = gix::ObjectId::from_hex(commit_hash.as_bytes())?;
+    let commit = repo.find_object(oid)?.try_into_commit()?;
+    
+    // Get first parent if it exists
+    let parent_id = commit.parent_ids().next();
+    
+    let result = parent_id.map(|id| id.to_string());
+    
+    log::debug!("🕐 get_parent_commit: Completed in {:?}, parent: {:?}", 
+               start_time.elapsed(), 
+               result.as_ref().map(|h| &h[..8]));
+    
+    Ok(result)
+}
+
 pub fn get_file_content_at_head(
     repo: &Repository,
     file_path: &str,

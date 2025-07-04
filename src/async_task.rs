@@ -22,6 +22,11 @@ pub enum Task {
         current_commit: String,
         line_number: usize,
     },
+    GenerateDiff {
+        file_path: String,
+        current_commit: String,
+        parent_commit: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +57,12 @@ pub enum TaskResult {
         commit_hash: String,
     },
     NextChangeNotFound,
+    DiffGenerated {
+        file_path: String,
+        current_commit: String,
+        parent_commit: String,
+        diff_lines: Vec<crate::app::DiffLine>,
+    },
     Error {
         message: String,
     },
@@ -166,6 +177,32 @@ pub async fn run_worker(
                     Err(e) => {
                         log::warn!("🕐 run_worker: FindNextChange for '{}' line {} from {} failed in {:?}: {}", 
                                  file_path, line_number, &current_commit[..8], find_start.elapsed(), e);
+                        TaskResult::Error {
+                            message: e.to_string(),
+                        }
+                    },
+                }
+            },
+            Task::GenerateDiff {
+                file_path,
+                current_commit,
+                parent_commit,
+            } => {
+                let diff_start = Instant::now();
+                match generate_diff(&repo_path, &file_path, &current_commit, &parent_commit).await {
+                    Ok(diff_lines) => {
+                        log::info!("🕐 run_worker: GenerateDiff for '{}' between {} and {} completed in {:?} - {} lines", 
+                                 file_path, &parent_commit[..8], &current_commit[..8], diff_start.elapsed(), diff_lines.len());
+                        TaskResult::DiffGenerated {
+                            file_path,
+                            current_commit,
+                            parent_commit,
+                            diff_lines,
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("🕐 run_worker: GenerateDiff for '{}' between {} and {} failed in {:?}: {}", 
+                                 file_path, &parent_commit[..8], &current_commit[..8], diff_start.elapsed(), e);
                         TaskResult::Error {
                             message: e.to_string(),
                         }
@@ -343,6 +380,137 @@ async fn find_next_change(
 
     // For now, return mock result
     Ok(Some("d4e5f6789012345678901234567890abcdef0123".to_string()))
+}
+
+async fn generate_diff(
+    repo_path: &str,
+    file_path: &str,
+    current_commit: &str,
+    parent_commit: &str,
+) -> Result<Vec<crate::app::DiffLine>, Box<dyn std::error::Error + Send + Sync>> {
+    let async_start = Instant::now();
+    log::debug!("🕐 generate_diff: Starting async wrapper for '{}' between {} and {}", 
+               file_path, &parent_commit[..8], &current_commit[..8]);
+    
+    // Run in blocking task since git operations are sync
+    let repo_path = repo_path.to_string();
+    let file_path = file_path.to_string();
+    let current_commit = current_commit.to_string();
+    let parent_commit = parent_commit.to_string();
+
+    let blocking_start = Instant::now();
+    let result = tokio::task::spawn_blocking(move || -> Result<Vec<crate::app::DiffLine>, Box<dyn std::error::Error + Send + Sync>> {
+        let repo = crate::git_utils::open_repository(&repo_path)?;
+
+        // Get file content at both commits
+        let current_content = match crate::git_utils::get_file_content_at_commit(&repo, &file_path, &current_commit) {
+            Ok(content) => content,
+            Err(e) => {
+                // Check if it's a binary file or other error
+                if e.to_string().contains("binary") {
+                    return Ok(vec![crate::app::DiffLine {
+                        line_type: crate::app::DiffLineType::Unchanged,
+                        old_line_num: None,
+                        new_line_num: None,
+                        content: "Binary file - diff not available".to_string(),
+                    }]);
+                }
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                )) as Box<dyn std::error::Error + Send + Sync>);
+            }
+        };
+        
+        let parent_content = match crate::git_utils::get_file_content_at_commit(&repo, &file_path, &parent_commit) {
+            Ok(content) => content,
+            Err(e) => {
+                // File might not exist in parent (new file)
+                if e.to_string().contains("not found") || e.to_string().contains("does not exist") {
+                    Vec::new() // Empty content for parent
+                } else if e.to_string().contains("binary") {
+                    return Ok(vec![crate::app::DiffLine {
+                        line_type: crate::app::DiffLineType::Unchanged,
+                        old_line_num: None,
+                        new_line_num: None,
+                        content: "Binary file - diff not available".to_string(),
+                    }]);
+                } else {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        e.to_string(),
+                    )) as Box<dyn std::error::Error + Send + Sync>);
+                }
+            }
+        };
+
+        // Handle special case where file is new (no parent content)
+        if parent_content.is_empty() && !current_content.is_empty() {
+            // File was added - mark all lines as added
+            let mut diff_lines = Vec::new();
+            for (idx, line) in current_content.iter().enumerate() {
+                diff_lines.push(crate::app::DiffLine {
+                    line_type: crate::app::DiffLineType::Added,
+                    old_line_num: None,
+                    new_line_num: Some(idx + 1),
+                    content: line.clone() + "\n",
+                });
+            }
+            return Ok(diff_lines);
+        }
+        
+        // Use similar to generate the diff
+        use similar::{ChangeTag, TextDiff};
+        let parent_text = parent_content.join("\n");
+        let current_text = current_content.join("\n");
+        let diff = TextDiff::from_lines(&parent_text, &current_text);
+        
+        let mut diff_lines = Vec::new();
+        let mut old_line_num = 1;
+        let mut new_line_num = 1;
+
+        for change in diff.iter_all_changes() {
+            let line_content = change.value().to_string();
+            
+            match change.tag() {
+                ChangeTag::Delete => {
+                    diff_lines.push(crate::app::DiffLine {
+                        line_type: crate::app::DiffLineType::Removed,
+                        old_line_num: Some(old_line_num),
+                        new_line_num: None,
+                        content: line_content,
+                    });
+                    old_line_num += 1;
+                },
+                ChangeTag::Insert => {
+                    diff_lines.push(crate::app::DiffLine {
+                        line_type: crate::app::DiffLineType::Added,
+                        old_line_num: None,
+                        new_line_num: Some(new_line_num),
+                        content: line_content,
+                    });
+                    new_line_num += 1;
+                },
+                ChangeTag::Equal => {
+                    diff_lines.push(crate::app::DiffLine {
+                        line_type: crate::app::DiffLineType::Unchanged,
+                        old_line_num: Some(old_line_num),
+                        new_line_num: Some(new_line_num),
+                        content: line_content,
+                    });
+                    old_line_num += 1;
+                    new_line_num += 1;
+                },
+            }
+        }
+
+        Ok(diff_lines)
+    }).await?;
+    
+    log::debug!("🕐 generate_diff: Blocking task completed in {:?}, total async time: {:?}", 
+              blocking_start.elapsed(), async_start.elapsed());
+    
+    result
 }
 
 #[cfg(test)]
