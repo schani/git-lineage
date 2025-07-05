@@ -52,7 +52,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
 
                 // Auto-load content for the first (most recent) commit if available
                 if !app.history.commit_list.is_empty() {
-                    crate::event::update_code_inspector_for_commit(app);
+                    crate::event::update_code_inspector_for_commit_no_diff(app);
                 }
             } else {
                 // Async result is stale - ignore it
@@ -84,7 +84,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
 
                     // Auto-load content for the first (most recent) commit if available
                     if !app.history.commit_list.is_empty() {
-                        crate::event::update_code_inspector_for_commit(app);
+                        crate::event::update_code_inspector_for_commit_no_diff(app);
                     }
                 } else {
                     // Subsequent chunks - append to existing list
@@ -127,7 +127,7 @@ pub fn handle_task_result(app: &mut App, result: TaskResult) {
                 // If this is the first commit, auto-select it and load content
                 if total_commits_so_far == 1 {
                     app.history.selected_commit_index = Some(0);
-                    crate::event::update_code_inspector_for_commit(app);
+                    crate::event::update_code_inspector_for_commit_no_diff(app);
                 }
 
                 // Update status message with current progress

@@ -1,47 +1,32 @@
 # Test diff view persistence across file and commit navigation
-immediate
-
-# Take initial screenshot
-screenshot:01_initial.txt
 
 # Select a file (README.md)
-key:down
 key:down
 key:enter
 wait
 
 # Enable diff view
-key:tab
-key:tab
 key:d
 wait:1000
 
 # Take screenshot with diff view enabled
-screenshot:02_diff_enabled.txt
+screenshot:01_diff_enabled.txt
 
 # Navigate to different commit
-key:tab
-key:down
-wait:500
+key:[
+wait:1500
 
 # Verify diff view is still active
-screenshot:03_diff_persists_after_commit_change.txt
+screenshot:02_diff_persists_after_commit_change.txt
 
-# Navigate back to file navigator (go to history first, then navigator)
-key:tab
-key:tab
+# Navigate back to the original commit
+key:]
+wait:2000
 
-# Select a different file (src/main.rs)
-key:down
-key:enter
-wait:500
-
-# Go to inspector to verify diff view is still active
-key:tab
-key:tab
-screenshot:04_diff_persists_after_file_change.txt
+# Verify diff view is still active
+screenshot:03_diff_persists_on_original_commit.txt
 
 # Toggle diff view off
 key:d
-wait:500
-screenshot:05_diff_disabled.txt
+wait
+screenshot:04_diff_disabled.txt

@@ -1,8 +1,10 @@
 use crate::app::{App, PanelFocus};
+use crate::async_task::Task;
 use crate::event::EventResult;
 use crossterm::event::{KeyCode, KeyEvent};
+use tokio::sync::mpsc;
 
-pub fn handle_navigation_event(key: KeyEvent, app: &mut App) -> EventResult {
+pub fn handle_navigation_event(key: KeyEvent, app: &mut App, task_sender: &mpsc::Sender<Task>) -> EventResult {
     match key.code {
         // Direct panel focus
         KeyCode::Char('1') => {
@@ -21,7 +23,7 @@ pub fn handle_navigation_event(key: KeyEvent, app: &mut App) -> EventResult {
             if let Some(selected) = app.history.selected_commit_index {
                 if selected < app.history.commit_list.len() - 1 {
                     app.history.selected_commit_index = Some(selected + 1);
-                    crate::event::update_code_inspector_for_commit(app);
+                    crate::event::update_code_inspector_for_commit(app, task_sender);
                 }
             }
         }
@@ -30,7 +32,7 @@ pub fn handle_navigation_event(key: KeyEvent, app: &mut App) -> EventResult {
             if let Some(selected) = app.history.selected_commit_index {
                 if selected > 0 {
                     app.history.selected_commit_index = Some(selected - 1);
-                    crate::event::update_code_inspector_for_commit(app);
+                    crate::event::update_code_inspector_for_commit(app, task_sender);
                 }
             }
         }

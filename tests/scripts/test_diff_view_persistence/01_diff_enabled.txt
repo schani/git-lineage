@@ -1,8 +1,8 @@
-┌ File Navigator ────────────────────────┐┌ Code Inspector - file-in-root @ 2fa2dd17 ──────────────────────────────────┐
-│▶ dir                                   ││   1 blu                                                                    │
-│  README.md                             ││                                                                            │
-│  file-in-root                          ││                                                                            │
-│                                        ││                                                                            │
+┌ File Navigator ────────────────────────┐┌ Code Inspector (Diff View) ────────────────────────────────────────────────┐
+│▶ dir                                   ││   1    1  # git-lineage-test                                               │
+│  README.md                             ││   2    2                                                                   │
+│  file-in-root                          ││   3      -This repo is test data for [git-lineage](https://github.com/schan│
+│                                        ││        3 +This repo is test data for [git-lineage](https://github.com/schan│
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -13,8 +13,9 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 └────────────────────────────────────────┘│                                                                            │
-┌ Commit History (file-in-root) - 1 commi┐│                                                                            │
-│>> 2fa2dd17 2025-07-02 06:32 Mark Probst││                                                                            │
+┌ Commit History (README.md) - 2 commits ┐│                                                                            │
+│>> 83a4c7e6 2025-07-04 15:19 Mark Probst││                                                                            │
+│   9a4a274d 2025-07-02 06:33 Mark Probst││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
@@ -26,5 +27,4 @@
 │                                        ││                                                                            │
 │                                        ││                                                                            │
 │                                        ││                                                                            │
-│                                        ││                                                                            │
-file-in-root loaded (1 commits) | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigat
+Diff view loaded | Tab: Switch panel | 1/2/3: Direct panel focus | []: Older/Younger commit | ↑↓: Navigate | p: Previous

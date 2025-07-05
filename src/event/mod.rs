@@ -64,7 +64,7 @@ pub fn handle_event(
         }
 
         // Other global keybindings
-        if navigation::handle_navigation_event(key, app)? {
+        if navigation::handle_navigation_event(key, app, task_sender)? {
             return Ok(true);
         }
     }
@@ -72,8 +72,8 @@ pub fn handle_event(
     Ok(false)
 }
 
-/// Update the code inspector with content from the selected commit
-pub fn update_code_inspector_for_commit(app: &mut App) {
+/// Update the code inspector with content from the selected commit (without diff regeneration)
+pub fn update_code_inspector_for_commit_no_diff(app: &mut App) {
     if let Some(selected) = app.history.selected_commit_index {
         if let Some(commit) = app.history.commit_list.get(selected) {
             let commit_hash = commit.hash.clone();
@@ -114,6 +114,56 @@ pub fn update_code_inspector_for_commit(app: &mut App) {
                 
                 // Update the last commit for future line mapping
                 app.last_commit_for_mapping = Some(commit_hash);
+            }
+        }
+    }
+}
+
+/// Update the code inspector with content from the selected commit and regenerate diff if needed
+pub fn update_code_inspector_for_commit(app: &mut App, task_sender: &mpsc::Sender<Task>) {
+    update_code_inspector_for_commit_no_diff(app);
+    
+    // If diff view is active, regenerate diff for the new commit
+    if app.inspector.show_diff_view {
+        if let Some(selected) = app.history.selected_commit_index {
+            if let Some(commit) = app.history.commit_list.get(selected) {
+                if let Some(file_path) = app.get_active_file() {
+                    let current_commit = commit.hash.clone();
+                    
+                    // Get parent commit
+                    match crate::git_utils::get_parent_commit(&app.repo, &current_commit) {
+                        Ok(Some(parent_commit)) => {
+                            let file_path_str = file_path.to_string_lossy().to_string();
+                            let task = Task::GenerateDiff {
+                                file_path: file_path_str,
+                                current_commit: current_commit.clone(),
+                                parent_commit,
+                            };
+                            
+                            let sender = task_sender.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = sender.send(task).await {
+                                    log::error!("Failed to send GenerateDiff task: {}", e);
+                                }
+                            });
+                            
+                            app.start_background_task();
+                            app.ui.status_message = "Loading diff view...".to_string();
+                        }
+                        Ok(None) => {
+                            app.ui.status_message = "No parent commit - this is the initial commit".to_string();
+                            // Clear diff data for initial commit
+                            app.inspector.diff_lines = None;
+                            app.inspector.parent_commit_hash = None;
+                        }
+                        Err(e) => {
+                            app.ui.status_message = format!("Failed to get parent commit: {}", e);
+                            // Clear diff data on error
+                            app.inspector.diff_lines = None;
+                            app.inspector.parent_commit_hash = None;
+                        }
+                    }
+                }
             }
         }
     }

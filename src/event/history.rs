@@ -17,25 +17,25 @@ pub fn handle_history_event(
             if let Some(selected) = app.history.selected_commit_index {
                 if selected > 0 {
                     app.history.selected_commit_index = Some(selected - 1);
-                    update_code_inspector_for_commit(app);
+                    update_code_inspector_for_commit(app, task_sender);
                 }
             } else if !app.history.commit_list.is_empty() {
                 app.history.selected_commit_index = Some(0);
-                update_code_inspector_for_commit(app);
+                update_code_inspector_for_commit(app, task_sender);
             }
         }
         KeyCode::Down => {
             if let Some(selected) = app.history.selected_commit_index {
                 if selected < app.history.commit_list.len() - 1 {
                     app.history.selected_commit_index = Some(selected + 1);
-                    update_code_inspector_for_commit(app);
+                    update_code_inspector_for_commit(app, task_sender);
                 } else {
                     // At the bottom of the list, try to load more
                     file_loader::load_more_commit_history(app, task_sender)?;
                 }
             } else if !app.history.commit_list.is_empty() {
                 app.history.selected_commit_index = Some(0);
-                update_code_inspector_for_commit(app);
+                update_code_inspector_for_commit(app, task_sender);
             }
         }
         KeyCode::Enter => {
