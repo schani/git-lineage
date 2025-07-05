@@ -1,0 +1,43 @@
+# Test diff view persistence when switching panels
+
+# Select README.md
+key:down
+key:enter
+wait
+
+# Move to an older commit that has a parent (so we can see a diff)
+key:[
+wait:1500
+
+# Enable diff view
+key:d
+wait:1500
+
+# Take screenshot with diff view enabled
+screenshot:01_diff_enabled.txt
+
+# Switch to tree view (panel 1)
+key:1
+wait
+
+# Navigate down
+key:down
+wait
+
+# Navigate back up to README.md
+key:up
+wait
+
+# Take screenshot - diff view should still be active (title shows it)
+screenshot:02_diff_persists_after_panel_switch.txt
+
+# Go back to code inspector to verify
+key:3
+wait
+
+# Move back to the older commit to see the diff again
+key:[
+wait:2000
+
+# Take final screenshot to confirm diff view is still active with content
+screenshot:03_diff_still_active_with_content.txt
